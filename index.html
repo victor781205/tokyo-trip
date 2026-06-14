@@ -3601,7 +3601,12 @@
             showToast('行程已重置');
         }
 
-        renderItinerary();
+        // Render itinerary on load
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', renderItinerary);
+        } else {
+            renderItinerary();
+        }
 
         // ========== Today's Itinerary ==========
         function goToToday() {
