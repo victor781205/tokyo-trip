@@ -3610,11 +3610,13 @@
         }
 
         // Render itinerary on load
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', renderItinerary);
-        } else {
-            renderItinerary();
-        }
+        try {
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', renderItinerary);
+            } else {
+                renderItinerary();
+            }
+        } catch(e) { console.error('renderItinerary error:', e); }
 
         // ========== Today's Itinerary ==========
         function goToToday() {
@@ -3644,10 +3646,15 @@
         }
 
         // ========== Initialize ==========
-        loadChecklist();
+        try { loadChecklist(); } catch(e) { console.error('loadChecklist error:', e); }
 
-        // Loading screen
-        window.addEventListener('load', () => { setTimeout(() => document.getElementById('loadingScreen').classList.add('hidden'), 800); });
+        // Loading screen - ALWAYS hide after 2 seconds
+        function hideLoading() {
+            const ls = document.getElementById('loadingScreen');
+            if (ls) ls.classList.add('hidden');
+        }
+        setTimeout(hideLoading, 2000);
+        window.addEventListener('load', () => { setTimeout(hideLoading, 500); });
 
         // Scroll Reveal with IntersectionObserver
         function initScrollReveal() {
@@ -3699,9 +3706,9 @@
         document.querySelectorAll('.routemap-container > div:last-child').forEach(el => el.classList.add('reveal'));
         document.querySelectorAll('.map-container').forEach(el => el.classList.add('reveal'));
 
-        initScrollReveal();
+        try { initScrollReveal(); } catch(e) { console.error('scrollReveal error:', e); }
 
-        document.querySelectorAll('.marker[role="button"]').forEach(m => { m.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); m.dispatchEvent(new Event('click')); } }); });
+        try { document.querySelectorAll('.marker[role="button"]').forEach(m => { m.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); m.dispatchEvent(new Event('click')); } }); }); } catch(e) {}
 
         // === Web Share API ===
         function nativeShare() {
