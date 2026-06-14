@@ -1464,12 +1464,11 @@
             .scroll-indicator { bottom: 1rem; }
             .scroll-indicator i { font-size: 1.5rem; }
             
-            /* Nav */
-            .nav { padding: 0.7rem 1rem; }
-            .nav-logo { font-size: 1.1rem; }
-            .hamburger { padding: 8px; }
-            .hamburger span { width: 20px; }
-            .mobile-nav a { font-size: 1rem; padding: 0.6rem 1.2rem; }
+            /* Nav - hidden on mobile, use FAB instead */
+            .nav { display: none !important; }
+            .hamburger { display: none !important; }
+            .mobile-nav { display: none !important; }
+            .scroll-progress { display: none !important; }
             
             /* Flight */
             .flight-card { padding: 1rem; border-radius: 12px; }
