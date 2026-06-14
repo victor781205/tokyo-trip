@@ -2297,6 +2297,42 @@
         </div>
     </section>
 
+    <!-- Activity Modal -->
+    <div id="activityModal" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); z-index:10000; align-items:center; justify-content:center; padding:1rem;">
+        <div style="background:var(--card-bg); border-radius:16px; padding:1.5rem; max-width:400px; width:100%; max-height:90vh; overflow-y:auto;">
+            <h3 id="modalTitle" style="margin-bottom:1rem; color:var(--secondary); font-size:1.2rem;">新增活動</h3>
+            <input type="hidden" id="modalDay">
+            <input type="hidden" id="modalIndex" value="-1">
+            <div style="margin-bottom:0.8rem;">
+                <label style="font-size:0.85rem; color:var(--text-light); margin-bottom:0.3rem; display:block;">時間</label>
+                <input type="time" id="modalTime" style="width:100%; padding:0.6rem; border:2px solid var(--border-color); border-radius:8px; font-size:0.95rem; background:var(--bg);">
+            </div>
+            <div style="margin-bottom:0.8rem;">
+                <label style="font-size:0.85rem; color:var(--text-light); margin-bottom:0.3rem; display:block;">活動名稱</label>
+                <input type="text" id="modalName" placeholder="如：淺草寺" style="width:100%; padding:0.6rem; border:2px solid var(--border-color); border-radius:8px; font-size:0.95rem; background:var(--bg);">
+            </div>
+            <div style="margin-bottom:0.8rem;">
+                <label style="font-size:0.85rem; color:var(--text-light); margin-bottom:0.3rem; display:block;">描述</label>
+                <input type="text" id="modalDesc" placeholder="如：東京最古老寺廟" style="width:100%; padding:0.6rem; border:2px solid var(--border-color); border-radius:8px; font-size:0.95rem; background:var(--bg);">
+            </div>
+            <div style="margin-bottom:1rem;">
+                <label style="font-size:0.85rem; color:var(--text-light); margin-bottom:0.3rem; display:block;">標籤</label>
+                <div style="display:flex; gap:0.4rem; flex-wrap:wrap;">
+                    <button type="button" onclick="selectTag(this,'')" class="tag-btn-selected" style="padding:0.4rem 0.8rem; border-radius:15px; border:2px solid var(--border-color); background:var(--bg); cursor:pointer; font-size:0.85rem;">無</button>
+                    <button type="button" onclick="selectTag(this,'美食')" style="padding:0.4rem 0.8rem; border-radius:15px; border:2px solid var(--border-color); background:var(--bg); cursor:pointer; font-size:0.85rem;">🍽️ 美食</button>
+                    <button type="button" onclick="selectTag(this,'景點')" style="padding:0.4rem 0.8rem; border-radius:15px; border:2px solid var(--border-color); background:var(--bg); cursor:pointer; font-size:0.85rem;">📍 景點</button>
+                    <button type="button" onclick="selectTag(this,'交通')" style="padding:0.4rem 0.8rem; border-radius:15px; border:2px solid var(--border-color); background:var(--bg); cursor:pointer; font-size:0.85rem;">🚃 交通</button>
+                    <button type="button" onclick="selectTag(this,'購物')" style="padding:0.4rem 0.8rem; border-radius:15px; border:2px solid var(--border-color); background:var(--bg); cursor:pointer; font-size:0.85rem;">🛍️ 購物</button>
+                </div>
+                <input type="hidden" id="modalTag" value="">
+            </div>
+            <div style="display:flex; gap:0.8rem;">
+                <button onclick="closeModal()" style="flex:1; padding:0.7rem; border:2px solid var(--border-color); background:var(--bg); border-radius:8px; font-size:0.95rem; cursor:pointer; color:var(--text);">取消</button>
+                <button onclick="saveActivity()" style="flex:1; padding:0.7rem; background:var(--gradient); color:white; border:none; border-radius:8px; font-size:0.95rem; font-weight:600; cursor:pointer;">儲存</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Tools Section -->
     <section class="tools-section" id="tools">
         <div class="container">
@@ -3563,35 +3599,101 @@
             }, 100);
         }
 
-        function addActivity(day) {
-            const time = prompt('時間（如：10:00）：');
-            if (!time) return;
-            const name = prompt('活動名稱：');
-            if (!name) return;
-            const desc = prompt('描述：') || '';
-            const tag = prompt('標籤（美食/景點/交通/購物/留空）：') || '';
+        // ========== Activity Modal ==========
+        let selectedTag = '';
+
+        function selectTag(btn, tag) {
+            selectedTag = tag;
+            document.getElementById('modalTag').value = tag;
+            document.querySelectorAll('#activityModal .tag-btn-selected, #activityModal [style*="border-radius:15px"]').forEach(b => {
+                b.style.borderColor = 'var(--border-color)';
+                b.style.background = 'var(--bg)';
+                b.classList.remove('tag-btn-selected');
+            });
+            btn.style.borderColor = 'var(--primary)';
+            btn.style.background = 'var(--primary)';
+            btn.style.color = 'white';
+            btn.classList.add('tag-btn-selected');
+        }
+
+        function openModal(day, index) {
+            const modal = document.getElementById('activityModal');
+            const title = document.getElementById('modalTitle');
+            document.getElementById('modalDay').value = day;
+            document.getElementById('modalIndex').value = index;
             
-            itinerary[day].activities.push({ time, name, desc, tag });
+            if (index >= 0) {
+                const act = itinerary[day].activities[index];
+                title.textContent = '編輯活動';
+                document.getElementById('modalTime').value = act.time;
+                document.getElementById('modalName').value = act.name;
+                document.getElementById('modalDesc').value = act.desc;
+                selectTagByValue(act.tag);
+            } else {
+                title.textContent = '新增活動';
+                document.getElementById('modalTime').value = '';
+                document.getElementById('modalName').value = '';
+                document.getElementById('modalDesc').value = '';
+                selectTagByValue('');
+            }
+            
+            modal.style.display = 'flex';
+        }
+
+        function closeModal() {
+            document.getElementById('activityModal').style.display = 'none';
+        }
+
+        function selectTagByValue(tag) {
+            selectedTag = tag;
+            document.getElementById('modalTag').value = tag;
+            const buttons = document.querySelectorAll('#activityModal [onclick^="selectTag"]');
+            buttons.forEach(btn => {
+                const btnTag = btn.getAttribute('onclick').match(/'([^']*)'/)[1];
+                if (btnTag === tag) {
+                    btn.style.borderColor = 'var(--primary)';
+                    btn.style.background = 'var(--primary)';
+                    btn.style.color = 'white';
+                } else {
+                    btn.style.borderColor = 'var(--border-color)';
+                    btn.style.background = 'var(--bg)';
+                    btn.style.color = 'var(--text)';
+                }
+            });
+        }
+
+        function saveActivity() {
+            const day = document.getElementById('modalDay').value;
+            const index = parseInt(document.getElementById('modalIndex').value);
+            const time = document.getElementById('modalTime').value;
+            const name = document.getElementById('modalName').value.trim();
+            const desc = document.getElementById('modalDesc').value.trim();
+            const tag = document.getElementById('modalTag').value;
+
+            if (!time || !name) {
+                showToast('請填寫時間和活動名稱');
+                return;
+            }
+
+            if (index >= 0) {
+                itinerary[day].activities[index] = { time, name, desc, tag };
+            } else {
+                itinerary[day].activities.push({ time, name, desc, tag });
+            }
+
             itinerary[day].activities.sort((a, b) => a.time.localeCompare(b.time));
             localStorage.setItem('tokyoItinerary', JSON.stringify(itinerary));
             renderItinerary();
-            showToast('已新增活動');
+            closeModal();
+            showToast(index >= 0 ? '已更新活動' : '已新增活動');
+        }
+
+        function addActivity(day) {
+            openModal(day, -1);
         }
 
         function editActivity(day, index) {
-            const act = itinerary[day].activities[index];
-            const time = prompt('時間：', act.time);
-            if (!time) return;
-            const name = prompt('活動名稱：', act.name);
-            if (!name) return;
-            const desc = prompt('描述：', act.desc);
-            const tag = prompt('標籤（美食/景點/交通/購物/留空）：', act.tag);
-            
-            itinerary[day].activities[index] = { time, name, desc: desc || '', tag: tag || '' };
-            itinerary[day].activities.sort((a, b) => a.time.localeCompare(b.time));
-            localStorage.setItem('tokyoItinerary', JSON.stringify(itinerary));
-            renderItinerary();
-            showToast('已更新活動');
+            openModal(day, index);
         }
 
         function deleteActivity(day, index) {
