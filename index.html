@@ -2279,7 +2279,7 @@
         <div class="container">
             <div class="section-title">
                 <h2>📋 行程規劃</h2>
-                <p>6 天 5 夜精彩東京之旅（點擊展開/收合）</p>
+                <p>自訂你的東京之旅（點擊展開/收合）</p>
             </div>
 
             <div class="tabs">
@@ -2289,109 +2289,10 @@
                 <button class="tab-btn" onclick="showTab('day4', this)">Day 4</button>
                 <button class="tab-btn" onclick="showTab('day5', this)">Day 5</button>
                 <button class="tab-btn" onclick="showTab('day6', this)">Day 6</button>
+                <button class="tab-btn" onclick="resetItinerary()" style="background:#e74c3c; color:white;">↺ 重置</button>
             </div>
 
-            <div class="tab-content active" id="day1">
-                <div class="day-header" role="button" tabindex="0" onclick="toggleDay(this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleDay(this);}" aria-expanded="false" aria-controls="day1-content">
-                    <h3>🛬 Day 1 - 抵達東京</h3>
-                    <span class="date">9/1 (二) <i class="fas fa-chevron-down"></i></span>
-                </div>
-                <div class="day-content">
-                    <div class="activity"><div class="activity-time">12:55</div><div class="activity-info"><h4>抵達成田機場</h4><p>辦理入境手續、領取行李</p><span class="activity-tag tag-train">交通</span></div></div>
-                    <div class="activity"><div class="activity-time">14:30</div><div class="activity-info"><h4>前往飯店</h4><p>搭建成田特快 N'EX 或 Skyliner → 錦系町站</p><span class="activity-tag tag-train">交通</span></div></div>
-                    <div class="activity"><div class="activity-time">16:00</div><div class="activity-info"><h4>飯店 Check-in / 寄放行李</h4><p>東武黎凡特飯店，先寄放行李</p></div></div>
-                    <div class="activity"><div class="activity-time">16:30</div><div class="activity-info"><h4>淺草寺・雷門</h4><p>東京最古老的寺廟，仲見世通商店街買零食</p><span class="activity-tag tag-temple">景點</span></div></div>
-                    <div class="activity"><div class="activity-time">18:30</div><div class="activity-info"><h4>晴空塔 Sky Tree</h4><p>東京最高建築物，350m 或 450m 展望台欣赏夜景</p><span class="activity-tag tag-spot">景點</span></div></div>
-                    <div class="activity"><div class="activity-time">20:00</div><div class="activity-info"><h4>晚餐：淺草老字號天婦羅</h4><p>大黑家天婦羅 或 木村家人形燒</p><span class="activity-tag tag-food">美食</span></div></div>
-                    <div class="activity"><div class="activity-time">21:30</div><div class="activity-info"><h4>回飯店休息</h4><p>享受大浴場，為明天養精蓄銳</p></div></div>
-                </div>
-            </div>
-
-            <div class="tab-content" id="day2">
-                <div class="day-header" style="background: var(--gradient-secondary);" role="button" tabindex="0" onclick="toggleDay(this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleDay(this);}" aria-expanded="false" aria-controls="day2-content">
-                    <h3>⛩️ Day 2 - 澀谷・新宿</h3>
-                    <span class="date">9/2 (三) <i class="fas fa-chevron-down"></i></span>
-                </div>
-                <div class="day-content">
-                    <div class="activity"><div class="activity-time">08:00</div><div class="activity-info"><h4>飯店早餐</h4><p>享用豐富的日式早餐</p><span class="activity-tag tag-food">美食</span></div></div>
-                    <div class="activity"><div class="activity-time">09:30</div><div class="activity-info"><h4>明治神宮</h4><p>東京最大的神社，散步於森林參道</p><span class="activity-tag tag-temple">景點</span></div></div>
-                    <div class="activity"><div class="activity-time">11:30</div><div class="activity-info"><h4>原宿竹下通</h4><p>年輕人潮流聖地，個性小店與甜點</p><span class="activity-tag tag-shopping">購物</span></div></div>
-                    <div class="activity"><div class="activity-time">13:00</div><div class="activity-info"><h4>午餐：澀谷拉麵</h4><p>一蘭拉麵 或 麺屋一蘭</p><span class="activity-tag tag-food">美食</span></div></div>
-                    <div class="activity"><div class="activity-time">14:30</div><div class="activity-info"><h4>澀谷 Scramble Square</h4><p>Sky 展望台，俯瞰澀谷十字路口</p><span class="activity-tag tag-spot">景點</span></div></div>
-                    <div class="activity"><div class="activity-time">16:00</div><div class="activity-info"><h4>忠犬八公像</h4><p>澀谷地標，拍照留念</p><span class="activity-tag tag-spot">景點</span></div></div>
-                    <div class="activity"><div class="activity-time">17:00</div><div class="activity-info"><h4>新宿御苑</h4><p>都市中的綠洲，欣賞日式庭園</p><span class="activity-tag tag-spot">景點</span></div></div>
-                    <div class="activity"><div class="activity-time">19:00</div><div class="activity-info"><h4>晚餐：新宿思出橫丁</h4><p>懷舊小巷，各式串燒與關東煮</p><span class="activity-tag tag-food">美食</span></div></div>
-                    <div class="activity"><div class="activity-time">21:00</div><div class="activity-info"><h4>歌舞伎町散步</h4><p>東京不夜城，體驗夜生活氛圍</p><span class="activity-tag tag-spot">景點</span></div></div>
-                </div>
-            </div>
-
-            <div class="tab-content" id="day3">
-                <div class="day-header" style="background: var(--gradient);" role="button" tabindex="0" onclick="toggleDay(this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleDay(this);}" aria-expanded="false" aria-controls="day3-content">
-                    <h3>🏰 Day 3 - 秋葉原・東京車站</h3>
-                    <span class="date">9/3 (四) <i class="fas fa-chevron-down"></i></span>
-                </div>
-                <div class="day-content">
-                    <div class="activity"><div class="activity-time">08:00</div><div class="activity-info"><h4>飯店早餐</h4><p>享用豐富的日式早餐</p><span class="activity-tag tag-food">美食</span></div></div>
-                    <div class="activity"><div class="activity-time">09:30</div><div class="activity-info"><h4>秋葉原電氣街</h4><p>動漫、電器、女僕咖啡廳</p><span class="activity-tag tag-shopping">購物</span></div></div>
-                    <div class="activity"><div class="activity-time">12:00</div><div class="activity-info"><h4>午餐：秋葉原女僕咖啡廳</h4><p>體驗道地日本女僕文化</p><span class="activity-tag tag-food">美食</span></div></div>
-                    <div class="activity"><div class="activity-time">14:00</div><div class="activity-info"><h4>東京車站一番街</h4><p>地下街購物、動漫人物街</p><span class="activity-tag tag-shopping">購物</span></div></div>
-                    <div class="activity"><div class="activity-time">15:30</div><div class="activity-info"><h4>皇居外苑</h4><p>二重橋、江戶城遺跡散步</p><span class="activity-tag tag-spot">景點</span></div></div>
-                    <div class="activity"><div class="activity-time">17:00</div><div class="activity-info"><h4>銀座逛街</h4><p>東京最高級的商店街</p><span class="activity-tag tag-shopping">購物</span></div></div>
-                    <div class="activity"><div class="activity-time">19:00</div><div class="activity-info"><h4>晚餐：銀座壽司</h4><p>筑地外市場或銀座壽司名店</p><span class="activity-tag tag-food">美食</span></div></div>
-                    <div class="activity"><div class="activity-time">21:00</div><div class="activity-info"><h4>東京車站夜景</h4><p>紅磚車站的夜間照明非常美麗</p><span class="activity-tag tag-spot">景點</span></div></div>
-                </div>
-            </div>
-
-            <div class="tab-content" id="day4">
-                <div class="day-header" style="background: var(--gradient-secondary);" role="button" tabindex="0" onclick="toggleDay(this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleDay(this);}" aria-expanded="false" aria-controls="day4-content">
-                    <h3>🌊 Day 4 - 台場・豐洲</h3>
-                    <span class="date">9/4 (五) <i class="fas fa-chevron-down"></i></span>
-                </div>
-                <div class="day-content">
-                    <div class="activity"><div class="activity-time">08:00</div><div class="activity-info"><h4>飯店早餐</h4><p>享用豐富的日式早餐</p><span class="activity-tag tag-food">美食</span></div></div>
-                    <div class="activity"><div class="activity-time">09:30</div><div class="activity-info"><h4>豐洲市場</h4><p>新鮮海鮮早餐，體驗築地遷移後的市場</p><span class="activity-tag tag-food">美食</span></div></div>
-                    <div class="activity"><div class="activity-time">11:30</div><div class="activity-info"><h4>台場海濱公園</h4><p>自由女神、彩虹大橋、海邊散步</p><span class="activity-tag tag-spot">景點</span></div></div>
-                    <div class="activity"><div class="activity-time">13:00</div><div class="activity-info"><h4>午餐：台場海鮮</h4><p>Aqua City 或 Decks 的海鮮餐廳</p><span class="activity-tag tag-food">美食</span></div></div>
-                    <div class="activity"><div class="activity-time">14:30</div><div class="activity-info"><h4>DiverCity Tokyo Plaza</h4><p>1:1 鋼彈模型、購物中心</p><span class="activity-tag tag-spot">景點</span></div></div>
-                    <div class="activity"><div class="activity-time">16:30</div><div class="activity-info"><h4>teamLab Borderless</h4><p>沉浸式數位藝術體驗（<a href="https://www.teamlab.art/e/ticket/" target="_blank" rel="noopener noreferrer" style="color:var(--primary);">需預約購票</a>）</p><span class="activity-tag tag-spot">景點</span></div></div>
-                    <div class="activity"><div class="activity-time">19:00</div><div class="activity-info"><h4>晚餐：台場燒肉</h4><p>欣賞彩虹大橋夜景的燒肉店</p><span class="activity-tag tag-food">美食</span></div></div>
-                    <div class="activity"><div class="activity-time">21:00</div><div class="activity-info"><h4>台場夜景</h4><p>摩天輪、自由女神夜間燈光</p><span class="activity-tag tag-spot">景點</span></div></div>
-                </div>
-            </div>
-
-            <div class="tab-content" id="day5">
-                <div class="day-header" style="background: var(--gradient);" role="button" tabindex="0" onclick="toggleDay(this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleDay(this);}" aria-expanded="false" aria-controls="day5-content">
-                    <h3>🌸 Day 5 - 下北澤・吉祥寺</h3>
-                    <span class="date">9/5 (六) <i class="fas fa-chevron-down"></i></span>
-                </div>
-                <div class="day-content">
-                    <div class="activity"><div class="activity-time">08:00</div><div class="activity-info"><h4>飯店早餐</h4><p>享用豐富的日式早餐</p><span class="activity-tag tag-food">美食</span></div></div>
-                    <div class="activity"><div class="activity-time">09:30</div><div class="activity-info"><h4>下北澤古著街</h4><p>二手服飾、獨立書店、個性小店</p><span class="activity-tag tag-shopping">購物</span></div></div>
-                    <div class="activity"><div class="activity-time">12:00</div><div class="activity-info"><h4>午餐：下北澤咖哩</h4><p>印度咖哩或日式咖哩名店</p><span class="activity-tag tag-food">美食</span></div></div>
-                    <div class="activity"><div class="activity-time">13:30</div><div class="activity-info"><h4>吉祥寺井之頭公園</h4><p>划船、散步、享受自然</p><span class="activity-tag tag-spot">景點</span></div></div>
-                    <div class="activity"><div class="activity-time">15:00</div><div class="activity-info"><h4>口琴橫丁</h4><p>懷舊商店街，小吃與雜貨</p><span class="activity-tag tag-shopping">購物</span></div></div>
-                    <div class="activity"><div class="activity-time">16:30</div><div class="activity-info"><h4>三鷹之森吉卜力美術館</h4><p>宮崎駿動畫迷必訪（<a href="https://www.ghibli-museum.jp/ticket/" target="_blank" rel="noopener noreferrer" style="color:var(--primary);">需預約購票</a>）</p><span class="activity-tag tag-spot">景點</span></div></div>
-                    <div class="activity"><div class="activity-time">19:00</div><div class="activity-info"><h4>晚餐：迴轉壽司</h4><p>最後一晚的壽司饗宴</p><span class="activity-tag tag-food">美食</span></div></div>
-                    <div class="activity"><div class="activity-time">21:00</div><div class="activity-info"><h4>飯店收拾行李</h4><p>整理戰利品，準備明天回程</p></div></div>
-                </div>
-            </div>
-
-            <div class="tab-content" id="day6">
-                <div class="day-header" style="background: var(--gradient-secondary);" role="button" tabindex="0" onclick="toggleDay(this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleDay(this);}" aria-expanded="false" aria-controls="day6-content">
-                    <h3>🛫 Day 6 - 回家</h3>
-                    <span class="date">9/6 (日) <i class="fas fa-chevron-down"></i></span>
-                </div>
-                <div class="day-content">
-                    <div class="activity"><div class="activity-time">08:00</div><div class="activity-info"><h4>飯店早餐</h4><p>享用最後一頓日式早餐</p><span class="activity-tag tag-food">美食</span></div></div>
-                    <div class="activity"><div class="activity-time">09:30</div><div class="activity-info"><h4>上野阿美橫丁</h4><p>最後採購伴手禮</p><span class="activity-tag tag-shopping">購物</span></div></div>
-                    <div class="activity"><div class="activity-time">12:00</div><div class="activity-info"><h4>午餐</h4><p>上野或淺草周邊用餐</p><span class="activity-tag tag-food">美食</span></div></div>
-                    <div class="activity"><div class="activity-time">14:00</div><div class="activity-info"><h4>飯店 Check-out</h4><p>寄放行李或帶往機場</p></div></div>
-                    <div class="activity"><div class="activity-time">16:00</div><div class="activity-info"><h4>前往成田機場</h4><p>錦系町站 → JR總武線 → 成田機場</p><span class="activity-tag tag-train">交通</span></div></div>
-                    <div class="activity"><div class="activity-time">18:00</div><div class="activity-info"><h4>成田機場免稅店</h4><p>最後的購物機會，伴手禮補貨</p><span class="activity-tag tag-shopping">購物</span></div></div>
-                    <div class="activity"><div class="activity-time">20:40</div><div class="activity-info"><h4>登機 JX805</h4><p>返回溫暖的家～台北桃園機場</p><span class="activity-tag tag-train">交通</span></div></div>
-                    <div class="activity"><div class="activity-time">23:20</div><div class="activity-info"><h4>抵達桃園機場</h4><p>期待下次再見，東京！</p></div></div>
-                </div>
-            </div>
+            <div id="itineraryContainer"></div>
         </div>
     </section>
 
@@ -3524,6 +3425,183 @@
                 { enableHighAccuracy: true, timeout: 10000 }
             );
         }
+
+        // ========== Customizable Itinerary ==========
+        const defaultItinerary = {
+            day1: {
+                title: '🛬 Day 1 - 抵達東京',
+                date: '9/1 (二)',
+                activities: [
+                    { time: '12:55', name: '抵達成田機場', desc: '辦理入境手續、領取行李', tag: '交通' },
+                    { time: '14:30', name: '前往飯店', desc: '搭建成田特快 → 錦系町站', tag: '交通' },
+                    { time: '16:00', name: '飯店 Check-in', desc: '東武黎凡特飯店', tag: '' },
+                    { time: '16:30', name: '淺草寺・雷門', desc: '東京最古老的寺廟', tag: '景點' },
+                    { time: '18:30', name: '晴空塔', desc: '欣賞夜景', tag: '景點' },
+                    { time: '20:00', name: '晚餐', desc: '淺草老字號天婦羅', tag: '美食' },
+                    { time: '21:30', name: '回飯店休息', desc: '享受大浴場', tag: '' }
+                ]
+            },
+            day2: {
+                title: '⛩️ Day 2 - 澀谷・新宿',
+                date: '9/2 (三)',
+                activities: [
+                    { time: '08:00', name: '飯店早餐', desc: '享用日式早餐', tag: '美食' },
+                    { time: '09:30', name: '明治神宮', desc: '東京最大的神社', tag: '景點' },
+                    { time: '11:30', name: '原宿竹下通', desc: '年輕人潮流聖地', tag: '購物' },
+                    { time: '13:00', name: '午餐：拉麵', desc: '一蘭拉麵', tag: '美食' },
+                    { time: '14:30', name: '澀谷 Scramble Square', desc: 'Sky 展望台', tag: '景點' },
+                    { time: '17:00', name: '新宿御苑', desc: '欣賞日式庭園', tag: '景點' },
+                    { time: '19:00', name: '晚餐：思出橫丁', desc: '串燒與關東煮', tag: '美食' }
+                ]
+            },
+            day3: {
+                title: '🏰 Day 3 - 秋葉原・東京車站',
+                date: '9/3 (四)',
+                activities: [
+                    { time: '08:00', name: '飯店早餐', desc: '享用日式早餐', tag: '美食' },
+                    { time: '09:30', name: '秋葉原電氣街', desc: '動漫、電器', tag: '購物' },
+                    { time: '12:00', name: '午餐', desc: '秋葉原女僕咖啡廳', tag: '美食' },
+                    { time: '14:00', name: '東京車站一番街', desc: '地下街購物', tag: '購物' },
+                    { time: '15:30', name: '皇居外苑', desc: '二重橋散步', tag: '景點' },
+                    { time: '17:00', name: '銀座逛街', desc: '東京最高級商店街', tag: '購物' },
+                    { time: '19:00', name: '晚餐：銀座壽司', desc: '新鮮握壽司', tag: '美食' }
+                ]
+            },
+            day4: {
+                title: '🌊 Day 4 - 台場・豐洲',
+                date: '9/4 (五)',
+                activities: [
+                    { time: '08:00', name: '飯店早餐', desc: '享用日式早餐', tag: '美食' },
+                    { time: '09:30', name: '豐洲市場', desc: '新鮮海鮮早餐', tag: '美食' },
+                    { time: '11:30', name: '台場海濱公園', desc: '自由女神、彩虹大橋', tag: '景點' },
+                    { time: '14:30', name: 'DiverCity', desc: '1:1 鋼彈模型', tag: '景點' },
+                    { time: '16:30', name: 'teamLab Borderless', desc: '沉浸式數位藝術', tag: '景點' },
+                    { time: '19:00', name: '晚餐：燒肉', desc: '欣賞夜景', tag: '美食' },
+                    { time: '21:00', name: '台場夜景', desc: '摩天輪', tag: '景點' }
+                ]
+            },
+            day5: {
+                title: '🌸 Day 5 - 下北澤・吉祥寺',
+                date: '9/5 (六)',
+                activities: [
+                    { time: '08:00', name: '飯店早餐', desc: '享用日式早餐', tag: '美食' },
+                    { time: '09:30', name: '下北澤古著街', desc: '二手服飾', tag: '購物' },
+                    { time: '12:00', name: '午餐：咖哩', desc: '日式咖哩名店', tag: '美食' },
+                    { time: '13:30', name: '吉祥寺井之頭公園', desc: '划船、散步', tag: '景點' },
+                    { time: '16:30', name: '吉卜力美術館', desc: '宮崎駿動畫迷必訪', tag: '景點' },
+                    { time: '19:00', name: '晚餐：迴轉壽司', desc: '最後一晚的壽司', tag: '美食' },
+                    { time: '21:00', name: '飯店收拾行李', desc: '準備明天回程', tag: '' }
+                ]
+            },
+            day6: {
+                title: '🛫 Day 6 - 回家',
+                date: '9/6 (日)',
+                activities: [
+                    { time: '08:00', name: '飯店早餐', desc: '最後一頓日式早餐', tag: '美食' },
+                    { time: '09:30', name: '上野阿美橫丁', desc: '採購伴手禮', tag: '購物' },
+                    { time: '12:00', name: '午餐', desc: '上野周邊用餐', tag: '美食' },
+                    { time: '14:00', name: '飯店 Check-out', desc: '寄放行李', tag: '' },
+                    { time: '16:00', name: '前往成田機場', desc: 'JR總武線', tag: '交通' },
+                    { time: '20:40', name: '登機 JX805', desc: '返回台北', tag: '交通' }
+                ]
+            }
+        };
+
+        let itinerary = JSON.parse(localStorage.getItem('tokyoItinerary'));
+        if (!itinerary) itinerary = JSON.parse(JSON.stringify(defaultItinerary));
+
+        function getTagClass(tag) {
+            const map = { '美食': 'tag-food', '景點': 'tag-spot', '交通': 'tag-train', '購物': 'tag-shopping', '寺廟': 'tag-temple' };
+            return map[tag] || '';
+        }
+
+        function renderItinerary() {
+            const container = document.getElementById('itineraryContainer');
+            const gradients = ['var(--gradient)', 'var(--gradient-secondary)', 'var(--gradient)', 'var(--gradient-secondary)', 'var(--gradient)', 'var(--gradient-secondary)'];
+            
+            container.innerHTML = Object.entries(itinerary).map(([day, data], i) => `
+                <div class="tab-content ${i === 0 ? 'active' : ''}" id="${day}">
+                    <div class="day-header" style="background: ${gradients[i]};" role="button" tabindex="0" onclick="toggleDay(this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleDay(this);}" aria-expanded="false">
+                        <h3>${data.title}</h3>
+                        <span class="date">${data.date} <i class="fas fa-chevron-down"></i></span>
+                    </div>
+                    <div class="day-content">
+                        ${data.activities.map((act, j) => `
+                            <div class="activity" style="position:relative;">
+                                <div class="activity-time">${act.time}</div>
+                                <div class="activity-info" style="flex:1;">
+                                    <h4>${act.name}</h4>
+                                    <p>${act.desc}</p>
+                                    ${act.tag ? `<span class="activity-tag ${getTagClass(act.tag)}">${act.tag}</span>` : ''}
+                                </div>
+                                <div style="display:flex; gap:4px; position:absolute; top:8px; right:0;">
+                                    <button onclick="editActivity('${day}', ${j})" style="background:none; border:none; cursor:pointer; font-size:0.8rem; color:var(--text-light); padding:4px;" title="編輯">✏️</button>
+                                    <button onclick="deleteActivity('${day}', ${j})" style="background:none; border:none; cursor:pointer; font-size:0.8rem; color:var(--text-light); padding:4px;" title="刪除">✕</button>
+                                </div>
+                            </div>
+                        `).join('')}
+                        <button onclick="addActivity('${day}')" style="width:100%; padding:0.8rem; margin-top:0.5rem; background:var(--bg); border:2px dashed var(--border-color); border-radius:10px; cursor:pointer; font-size:0.9rem; color:var(--text-light); transition:all 0.3s;" onmouseover="this.style.borderColor='var(--primary)'; this.style.color='var(--primary)'" onmouseout="this.style.borderColor='var(--border-color)'; this.style.color='var(--text-light)'">
+                            ➕ 新增活動
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+            
+            // Auto-expand first day
+            setTimeout(() => {
+                const firstContent = document.querySelector('#day1 .day-content');
+                if (firstContent) firstContent.classList.add('expanded');
+            }, 100);
+        }
+
+        function addActivity(day) {
+            const time = prompt('時間（如：10:00）：');
+            if (!time) return;
+            const name = prompt('活動名稱：');
+            if (!name) return;
+            const desc = prompt('描述：') || '';
+            const tag = prompt('標籤（美食/景點/交通/購物/留空）：') || '';
+            
+            itinerary[day].activities.push({ time, name, desc, tag });
+            itinerary[day].activities.sort((a, b) => a.time.localeCompare(b.time));
+            localStorage.setItem('tokyoItinerary', JSON.stringify(itinerary));
+            renderItinerary();
+            showToast('已新增活動');
+        }
+
+        function editActivity(day, index) {
+            const act = itinerary[day].activities[index];
+            const time = prompt('時間：', act.time);
+            if (!time) return;
+            const name = prompt('活動名稱：', act.name);
+            if (!name) return;
+            const desc = prompt('描述：', act.desc);
+            const tag = prompt('標籤（美食/景點/交通/購物/留空）：', act.tag);
+            
+            itinerary[day].activities[index] = { time, name, desc: desc || '', tag: tag || '' };
+            itinerary[day].activities.sort((a, b) => a.time.localeCompare(b.time));
+            localStorage.setItem('tokyoItinerary', JSON.stringify(itinerary));
+            renderItinerary();
+            showToast('已更新活動');
+        }
+
+        function deleteActivity(day, index) {
+            if (!confirm('確定要刪除此活動嗎？')) return;
+            itinerary[day].activities.splice(index, 1);
+            localStorage.setItem('tokyoItinerary', JSON.stringify(itinerary));
+            renderItinerary();
+            showToast('已刪除活動');
+        }
+
+        function resetItinerary() {
+            if (!confirm('確定要重置行程嗎？所有自訂內容將被清除。')) return;
+            itinerary = JSON.parse(JSON.stringify(defaultItinerary));
+            localStorage.setItem('tokyoItinerary', JSON.stringify(itinerary));
+            renderItinerary();
+            showToast('行程已重置');
+        }
+
+        renderItinerary();
 
         // ========== Today's Itinerary ==========
         function goToToday() {
