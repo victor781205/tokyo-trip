@@ -3228,27 +3228,29 @@
         let lastTouchDistance = 0;
         const mapContainer = document.getElementById('mapSvg');
         
-        mapContainer.addEventListener('touchstart', (e) => {
-            if (e.touches.length === 2) {
-                lastTouchDistance = Math.hypot(
-                    e.touches[0].clientX - e.touches[1].clientX,
-                    e.touches[0].clientY - e.touches[1].clientY
-                );
-            }
-        });
-        
-        mapContainer.addEventListener('touchmove', (e) => {
-            if (e.touches.length === 2) {
-                e.preventDefault();
-                const distance = Math.hypot(
-                    e.touches[0].clientX - e.touches[1].clientX,
-                    e.touches[0].clientY - e.touches[1].clientY
-                );
-                const factor = distance / lastTouchDistance;
-                zoomMap(factor);
-                lastTouchDistance = distance;
-            }
-        }, { passive: false });
+        if (mapContainer) {
+            mapContainer.addEventListener('touchstart', (e) => {
+                if (e.touches.length === 2) {
+                    lastTouchDistance = Math.hypot(
+                        e.touches[0].clientX - e.touches[1].clientX,
+                        e.touches[0].clientY - e.touches[1].clientY
+                    );
+                }
+            });
+            
+            mapContainer.addEventListener('touchmove', (e) => {
+                if (e.touches.length === 2) {
+                    e.preventDefault();
+                    const distance = Math.hypot(
+                        e.touches[0].clientX - e.touches[1].clientX,
+                        e.touches[0].clientY - e.touches[1].clientY
+                    );
+                    const factor = distance / lastTouchDistance;
+                    zoomMap(factor);
+                    lastTouchDistance = distance;
+                }
+            }, { passive: false });
+        }
 
         // ========== Custom Food Map ==========
         let customFoods = JSON.parse(localStorage.getItem('tokyoCustomFoods') || '[]');

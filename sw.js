@@ -1,5 +1,5 @@
-// Tokyo Trip Service Worker - v2
-const CACHE_NAME = 'tokyo-trip-v2';
+// Tokyo Trip Service Worker - v3
+const CACHE_NAME = 'tokyo-trip-v3';
 const ASSETS = [
   './',
   './index.html',
