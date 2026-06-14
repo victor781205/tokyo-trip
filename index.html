@@ -3713,12 +3713,10 @@
         }
 
         // Render itinerary on load
-        console.log('Rendering itinerary...');
         try {
             if (document.readyState === 'loading') {
-                document.addEventListener('DOMContentLoaded', function() { console.log('DOM ready, rendering...'); renderItinerary(); });
+                document.addEventListener('DOMContentLoaded', renderItinerary);
             } else {
-                console.log('DOM already ready, rendering...');
                 renderItinerary();
             }
         } catch(e) { console.error('renderItinerary call error:', e); }
