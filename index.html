@@ -1457,8 +1457,8 @@
             .hero h1 { font-size: 2rem; margin-bottom: 0.6rem; }
             .hero .subtitle { font-size: 0.95rem; margin-bottom: 1rem; }
             .hero .dates { font-size: 1rem; padding: 0.6rem 1rem; border-radius: 25px; }
-            .countdown { gap: 0.6rem; margin-top: 1rem; }
-            .countdown-item { padding: 0.5rem 0.8rem; min-width: 65px; border-radius: 10px; }
+            .countdown { gap: 0.5rem; margin-top: 1rem; flex-wrap: nowrap; }
+            .countdown-item { padding: 0.4rem 0.6rem; min-width: 0; flex: 1; border-radius: 10px; }
             .countdown-item .number { font-size: 1.8rem; }
             .countdown-item .label { font-size: 0.8rem; }
             .scroll-indicator { bottom: 1rem; }
@@ -1623,7 +1623,7 @@
         @media (max-width: 380px) {
             .hero h1 { font-size: 1.6rem; }
             .hero .dates { font-size: 0.9rem; padding: 0.5rem 0.8rem; }
-            .countdown-item { min-width: 55px; padding: 0.4rem 0.6rem; }
+            .countdown-item { padding: 0.3rem 0.4rem; flex: 1; }
             .countdown-item .number { font-size: 1.5rem; }
             .food-grid { grid-template-columns: 1fr; }
             .share-btn { font-size: 0.75rem; padding: 0.4rem 0.6rem; }
