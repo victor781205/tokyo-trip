@@ -2594,7 +2594,7 @@
                                 <option value="🍡">🍡 甜點</option>
                                 <option value="🍺">🍺 居酒屋</option>
                                 <option value="☕">☕ 咖啡</option>
-                                <option value="🍰">蛋糕</option>
+                                <option value="🍰">🍰 蛋糕</option>
                                 <option value="🥟">🥟 餃子</option>
                                 <option value="🍛">🍛 咖哩</option>
                                 <option value="🍩">🍩 甜甜圈</option>
@@ -2605,6 +2605,11 @@
                             <label class="sr-only" for="customFoodName">店名</label>
                             <input type="text" id="customFoodName" placeholder="店名（如：一蘭拉麵）" style="width:100%; padding:0.6rem; border:2px solid var(--border-color); border-radius:8px; font-size:0.95rem; background:var(--bg);">
                         </div>
+                    </div>
+                    <div style="margin-bottom:0.8rem;">
+                        <label class="sr-only" for="customFoodMapLink">Google Maps 連結</label>
+                        <input type="url" id="customFoodMapLink" placeholder="📍 貼上 Google Maps 連結（可選）" style="width:100%; padding:0.6rem; border:2px solid var(--border-color); border-radius:8px; font-size:0.9rem; background:var(--bg);" oninput="parseMapLink(this.value)">
+                        <p style="font-size:0.75rem; color:var(--text-light); margin-top:0.3rem;">從 Google Maps 複製連結貼上，可自動帶入店名和地點</p>
                     </div>
                     <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.8rem; margin-bottom:0.8rem;">
                         <div>
@@ -3339,12 +3344,42 @@
         // ========== Custom Food Map ==========
         let customFoods = JSON.parse(localStorage.getItem('tokyoCustomFoods') || '[]');
         
+        function parseMapLink(url) {
+            if (!url) return;
+            try {
+                const urlObj = new URL(url);
+                // Parse Google Maps place name from URL
+                if (urlObj.hostname.includes('google.com') || urlObj.hostname.includes('maps.app.goo.gl')) {
+                    const nameInput = document.getElementById('customFoodName');
+                    const locInput = document.getElementById('customFoodLocation');
+                    
+                    // Try to extract place name from /maps/place/ path
+                    const placeMatch = url.match(/\/maps\/place\/([^/@]+)/);
+                    if (placeMatch && !nameInput.value) {
+                        nameInput.value = decodeURIComponent(placeMatch[1].replace(/\+/g, ' '));
+                    }
+                    
+                    // Try to extract from query parameter
+                    const qMatch = url.match(/[?&]q=([^&]+)/);
+                    if (qMatch && !nameInput.value) {
+                        nameInput.value = decodeURIComponent(qMatch[1].replace(/\+/g, ' '));
+                    }
+                    
+                    // Try to extract from short URL title (approximate)
+                    if (!nameInput.value && url.includes('maps.app.goo.gl')) {
+                        showToast('已偵測到 Google Maps 連結，請手動輸入店名');
+                    }
+                }
+            } catch(e) {}
+        }
+        
         function addCustomFood() {
             const emoji = document.getElementById('customFoodEmoji').value;
             const name = document.getElementById('customFoodName').value.trim();
             const location = document.getElementById('customFoodLocation').value.trim();
             const hours = document.getElementById('customFoodHours').value.trim();
             const desc = document.getElementById('customFoodDesc').value.trim();
+            const mapLink = document.getElementById('customFoodMapLink').value.trim();
             
             if (!name) {
                 showToast('請輸入店名');
@@ -3357,7 +3392,8 @@
                 name,
                 location: location || '未設定',
                 hours: hours || '未設定',
-                desc: desc || '美味推薦'
+                desc: desc || '美味推薦',
+                mapLink: mapLink || ''
             });
             
             localStorage.setItem('tokyoCustomFoods', JSON.stringify(customFoods));
@@ -3392,6 +3428,7 @@
                     <p>${food.desc}</p>
                     <span class="location">📍 ${food.location}</span>
                     <span class="hours">⏰ ${food.hours}</span>
+                    ${food.mapLink ? `<a href="${food.mapLink}" target="_blank" rel="noopener noreferrer" style="display:inline-block; margin-top:0.4rem; padding:0.2rem 0.6rem; background:var(--primary); color:white; border-radius:10px; font-size:0.75rem; text-decoration:none;">🗺️ 在 Google Maps 打開</a>` : ''}
                 </div>
             `).join('');
         }
@@ -3401,6 +3438,7 @@
             document.getElementById('customFoodLocation').value = '';
             document.getElementById('customFoodHours').value = '';
             document.getElementById('customFoodDesc').value = '';
+            document.getElementById('customFoodMapLink').value = '';
         }
         
         renderCustomFoods();
