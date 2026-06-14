@@ -2575,6 +2575,60 @@
                 <div class="food-card"><div class="emoji">🍱</div><h4>便當</h4><p>車站便當「駅弁」是日本特色，種類豐富</p><span class="location">📍 各大車站</span><span class="hours">⏰ 隨車站營業時間</span></div>
                 <div class="food-card"><div class="emoji">🍺</div><h4>居酒屋</h4><p>串燒、關東煮配啤酒，體驗道地日本夜生活</p><span class="location">📍 上野/新宿</span><span class="hours">⏰ 17:00-翌日01:00</span></div>
             </div>
+
+            <!-- Custom Food Map -->
+            <div style="margin-top:3rem;">
+                <h3 style="text-align:center; color:var(--secondary); margin-bottom:1rem;">📌 我的美食地圖</h3>
+                <p style="text-align:center; color:var(--text-light); font-size:0.9rem; margin-bottom:1.5rem;">加入你想去的餐廳，打造專屬美食地圖</p>
+                
+                <!-- Add Form -->
+                <div class="custom-food-form" style="max-width:500px; margin:0 auto 1.5rem; background:var(--card-bg); padding:1.2rem; border-radius:12px; box-shadow:var(--shadow);">
+                    <div style="display:grid; grid-template-columns:60px 1fr; gap:0.8rem; margin-bottom:0.8rem;">
+                        <div>
+                            <label class="sr-only" for="customFoodEmoji">圖示</label>
+                            <select id="customFoodEmoji" style="width:100%; padding:0.6rem; border:2px solid var(--border-color); border-radius:8px; font-size:1.2rem; background:var(--bg);">
+                                <option value="🍣">🍣 壽司</option>
+                                <option value="🍜">🍜 拉麵</option>
+                                <option value="🥩">🥩 燒肉</option>
+                                <option value="🍱">🍱 便當</option>
+                                <option value="🍡">🍡 甜點</option>
+                                <option value="🍺">🍺 居酒屋</option>
+                                <option value="☕">☕ 咖啡</option>
+                                <option value="🍰">蛋糕</option>
+                                <option value="🥟">🥟 餃子</option>
+                                <option value="🍛">🍛 咖哩</option>
+                                <option value="🍩">🍩 甜甜圈</option>
+                                <option value="🧁">🧁 杯子蛋糕</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="sr-only" for="customFoodName">店名</label>
+                            <input type="text" id="customFoodName" placeholder="店名（如：一蘭拉麵）" style="width:100%; padding:0.6rem; border:2px solid var(--border-color); border-radius:8px; font-size:0.95rem; background:var(--bg);">
+                        </div>
+                    </div>
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.8rem; margin-bottom:0.8rem;">
+                        <div>
+                            <label class="sr-only" for="customFoodLocation">地點</label>
+                            <input type="text" id="customFoodLocation" placeholder="地點（如：新宿）" style="width:100%; padding:0.6rem; border:2px solid var(--border-color); border-radius:8px; font-size:0.9rem; background:var(--bg);">
+                        </div>
+                        <div>
+                            <label class="sr-only" for="customFoodHours">營業時間</label>
+                            <input type="text" id="customFoodHours" placeholder="營業時間（如：11:00-22:00）" style="width:100%; padding:0.6rem; border:2px solid var(--border-color); border-radius:8px; font-size:0.9rem; background:var(--bg);">
+                        </div>
+                    </div>
+                    <div style="margin-bottom:0.8rem;">
+                        <label class="sr-only" for="customFoodDesc">描述</label>
+                        <input type="text" id="customFoodDesc" placeholder="簡短描述（如：必點豚骨拉麵）" style="width:100%; padding:0.6rem; border:2px solid var(--border-color); border-radius:8px; font-size:0.9rem; background:var(--bg);">
+                    </div>
+                    <button onclick="addCustomFood()" style="width:100%; padding:0.7rem; background:var(--gradient); color:white; border:none; border-radius:8px; font-size:0.95rem; font-weight:600; cursor:pointer;">➕ 加入美食地圖</button>
+                </div>
+
+                <!-- Custom Food List -->
+                <div id="customFoodList" class="food-grid"></div>
+                <div id="customFoodEmpty" style="text-align:center; padding:2rem; color:var(--text-light); font-size:0.9rem;">
+                    還沒有新增任何美食，快來添加吧！
+                </div>
+            </div>
         </div>
     </section>
 
@@ -3281,6 +3335,75 @@
                 lastTouchDistance = distance;
             }
         }, { passive: false });
+
+        // ========== Custom Food Map ==========
+        let customFoods = JSON.parse(localStorage.getItem('tokyoCustomFoods') || '[]');
+        
+        function addCustomFood() {
+            const emoji = document.getElementById('customFoodEmoji').value;
+            const name = document.getElementById('customFoodName').value.trim();
+            const location = document.getElementById('customFoodLocation').value.trim();
+            const hours = document.getElementById('customFoodHours').value.trim();
+            const desc = document.getElementById('customFoodDesc').value.trim();
+            
+            if (!name) {
+                showToast('請輸入店名');
+                return;
+            }
+            
+            customFoods.push({
+                id: Date.now(),
+                emoji,
+                name,
+                location: location || '未設定',
+                hours: hours || '未設定',
+                desc: desc || '美味推薦'
+            });
+            
+            localStorage.setItem('tokyoCustomFoods', JSON.stringify(customFoods));
+            renderCustomFoods();
+            clearFoodForm();
+            showToast('已加入美食地圖！');
+        }
+        
+        function deleteCustomFood(id) {
+            customFoods = customFoods.filter(f => f.id !== id);
+            localStorage.setItem('tokyoCustomFoods', JSON.stringify(customFoods));
+            renderCustomFoods();
+            showToast('已移除美食');
+        }
+        
+        function renderCustomFoods() {
+            const list = document.getElementById('customFoodList');
+            const empty = document.getElementById('customFoodEmpty');
+            
+            if (customFoods.length === 0) {
+                list.innerHTML = '';
+                empty.style.display = 'block';
+                return;
+            }
+            
+            empty.style.display = 'none';
+            list.innerHTML = customFoods.map(food => `
+                <div class="food-card" style="position:relative;">
+                    <button onclick="deleteCustomFood(${food.id})" style="position:absolute; top:8px; right:8px; background:none; border:none; cursor:pointer; font-size:1rem; color:var(--text-light); padding:4px;" title="刪除">✕</button>
+                    <div class="emoji">${food.emoji}</div>
+                    <h4>${food.name}</h4>
+                    <p>${food.desc}</p>
+                    <span class="location">📍 ${food.location}</span>
+                    <span class="hours">⏰ ${food.hours}</span>
+                </div>
+            `).join('');
+        }
+        
+        function clearFoodForm() {
+            document.getElementById('customFoodName').value = '';
+            document.getElementById('customFoodLocation').value = '';
+            document.getElementById('customFoodHours').value = '';
+            document.getElementById('customFoodDesc').value = '';
+        }
+        
+        renderCustomFoods();
 
         // ========== Geolocation ==========
         const landmarks = {
