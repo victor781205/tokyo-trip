@@ -1282,6 +1282,11 @@
         html.dark .badge-recommended { background: #1a3a2a; color: #6bff8e; }
         html.dark .badge-fast { background: #1a2a3a; color: #6eb5ff; }
         html.dark .badge-cheap { background: #3a3020; color: #ffdb6e; }
+        html.dark .tag-food { background: #4a3a1a; color: #ffd700; }
+        html.dark .tag-spot { background: #2a3040; color: #a0b0c0; }
+        html.dark .tag-train { background: #1a3a3a; color: #5ecdc6; }
+        html.dark .tag-shopping { background: #4a2040; color: #ff8fb4; }
+        html.dark .tag-temple { background: #3a3050; color: #b0a0e0; }
 
         .transfer-card h4 { font-size: 1.3rem; font-weight: 700; color: var(--secondary); margin-bottom: 0.8rem; }
         .transfer-card .route-visual {
@@ -1558,8 +1563,9 @@
             
             /* Budget */
             .budget-tracker { padding: 1rem; border-radius: 12px; }
-            .budget-input-row { gap: 0.4rem; }
-            .budget-input-row input, .budget-input-row select { padding: 0.6rem; font-size: 0.85rem; }
+            .budget-input-row { flex-direction: column; gap: 0.5rem; }
+            .budget-input-row input, .budget-input-row select { width: 100%; padding: 0.7rem; font-size: 0.9rem; }
+            .budget-btn { width: 100%; }
             .budget-btn { padding: 0.6rem 1rem; font-size: 0.85rem; }
             .budget-summary { gap: 0.5rem; margin: 0.8rem 0; }
             .budget-item { padding: 0.6rem; }
@@ -2290,6 +2296,7 @@
                 <button class="tab-btn" onclick="showTab('day4', this)">Day 4</button>
                 <button class="tab-btn" onclick="showTab('day5', this)">Day 5</button>
                 <button class="tab-btn" onclick="showTab('day6', this)">Day 6</button>
+                <button class="tab-btn" onclick="toggleAllDays()" style="background:var(--secondary); color:white;">📖 全部展開</button>
                 <button class="tab-btn" onclick="resetItinerary()" style="background:#e74c3c; color:white;">↺ 重置</button>
             </div>
 
@@ -2577,7 +2584,9 @@
                 <!-- Custom Food List -->
                 <div id="customFoodList" class="food-grid"></div>
                 <div id="customFoodEmpty" style="text-align:center; padding:2rem; color:var(--text-light); font-size:0.9rem;">
-                    還沒有新增任何美食，快來添加吧！
+                    <div style="font-size:3rem; margin-bottom:0.5rem;">🍜</div>
+                    <p style="margin-bottom:0.3rem;">還沒有新增任何美食</p>
+                    <p style="font-size:0.8rem;">快來添加你想去的餐廳吧！</p>
                 </div>
             </div>
         </div>
@@ -2637,6 +2646,7 @@
     <!-- Floating Action Button -->
     <div class="fab-container" id="fabContainer">
             <div class="fab-menu" id="fabMenu">
+                <div class="fab-item" onclick="goToToday(); toggleFab();" style="background:var(--primary); color:white;"><i class="fas fa-calendar-day"></i> 今日行程</div>
                 <div class="fab-item" onclick="scrollToSection('flights')"><i class="fas fa-plane"></i> 航班</div>
                 <div class="fab-item" onclick="scrollToSection('transfer')"><i class="fas fa-bus"></i> 交通</div>
                 <div class="fab-item" onclick="scrollToSection('hotel')"><i class="fas fa-hotel"></i> 住宿</div>
@@ -3702,6 +3712,23 @@
             localStorage.setItem('tokyoItinerary', JSON.stringify(itinerary));
             renderItinerary();
             showToast('已刪除活動');
+        }
+
+        let allExpanded = false;
+        function toggleAllDays() {
+            allExpanded = !allExpanded;
+            document.querySelectorAll('.day-content').forEach(el => {
+                if (allExpanded) {
+                    el.classList.add('expanded');
+                } else {
+                    el.classList.remove('expanded');
+                }
+            });
+            document.querySelectorAll('.day-header .fa-chevron-down').forEach(icon => {
+                icon.style.transform = allExpanded ? 'rotate(180deg)' : 'rotate(0)';
+            });
+            const btn = document.querySelector('[onclick="toggleAllDays()"]');
+            if (btn) btn.textContent = allExpanded ? '📖 全部收合' : '📖 全部展開';
         }
 
         function resetItinerary() {
