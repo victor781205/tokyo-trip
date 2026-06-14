@@ -3507,8 +3507,14 @@
             }
         };
 
-        let itinerary = JSON.parse(localStorage.getItem('tokyoItinerary'));
-        if (!itinerary) itinerary = JSON.parse(JSON.stringify(defaultItinerary));
+        let itinerary;
+        try {
+            const saved = localStorage.getItem('tokyoItinerary');
+            itinerary = saved ? JSON.parse(saved) : null;
+        } catch(e) {
+            itinerary = null;
+        }
+        if (!itinerary || !itinerary.day1) itinerary = JSON.parse(JSON.stringify(defaultItinerary));
 
         function getTagClass(tag) {
             const map = { '美食': 'tag-food', '景點': 'tag-spot', '交通': 'tag-train', '購物': 'tag-shopping', '寺廟': 'tag-temple' };
