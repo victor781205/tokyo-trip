@@ -2611,6 +2611,15 @@
                         <input type="url" id="customFoodMapLink" placeholder="📍 貼上 Google Maps 連結（可選）" style="width:100%; padding:0.6rem; border:2px solid var(--border-color); border-radius:8px; font-size:0.9rem; background:var(--bg);" oninput="parseMapLink(this.value)">
                         <p style="font-size:0.75rem; color:var(--text-light); margin-top:0.3rem;">從 Google Maps 複製連結貼上，可自動帶入店名和地點</p>
                     </div>
+                    <div style="margin-bottom:0.8rem;">
+                        <label class="sr-only" for="customFoodImage">圖片網址</label>
+                        <input type="url" id="customFoodImage" placeholder="🖼️ 圖片網址（可選，如 Instagram/Facebook 圖片連結）" style="width:100%; padding:0.6rem; border:2px solid var(--border-color); border-radius:8px; font-size:0.9rem; background:var(--bg);">
+                        <p style="font-size:0.75rem; color:var(--text-light); margin-top:0.3rem;">貼上美食照片的圖片網址，讓地圖更豐富</p>
+                    </div>
+                    <div id="imagePreview" style="display:none; margin-bottom:0.8rem; text-align:center;">
+                        <img id="previewImg" style="max-width:100%; max-height:150px; border-radius:8px; object-fit:cover;" alt="預覽">
+                        <button onclick="clearImagePreview()" style="margin-top:0.3rem; background:none; border:none; color:var(--primary); cursor:pointer; font-size:0.8rem;">移除圖片</button>
+                    </div>
                     <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.8rem; margin-bottom:0.8rem;">
                         <div>
                             <label class="sr-only" for="customFoodLocation">地點</label>
@@ -3348,29 +3357,44 @@
             if (!url) return;
             try {
                 const urlObj = new URL(url);
-                // Parse Google Maps place name from URL
                 if (urlObj.hostname.includes('google.com') || urlObj.hostname.includes('maps.app.goo.gl')) {
                     const nameInput = document.getElementById('customFoodName');
                     const locInput = document.getElementById('customFoodLocation');
                     
-                    // Try to extract place name from /maps/place/ path
                     const placeMatch = url.match(/\/maps\/place\/([^/@]+)/);
                     if (placeMatch && !nameInput.value) {
                         nameInput.value = decodeURIComponent(placeMatch[1].replace(/\+/g, ' '));
                     }
                     
-                    // Try to extract from query parameter
                     const qMatch = url.match(/[?&]q=([^&]+)/);
                     if (qMatch && !nameInput.value) {
                         nameInput.value = decodeURIComponent(qMatch[1].replace(/\+/g, ' '));
                     }
                     
-                    // Try to extract from short URL title (approximate)
                     if (!nameInput.value && url.includes('maps.app.goo.gl')) {
                         showToast('已偵測到 Google Maps 連結，請手動輸入店名');
                     }
                 }
             } catch(e) {}
+        }
+        
+        // Image preview
+        document.getElementById('customFoodImage').addEventListener('input', function(e) {
+            const url = e.target.value.trim();
+            const preview = document.getElementById('imagePreview');
+            const img = document.getElementById('previewImg');
+            if (url) {
+                img.src = url;
+                img.onerror = function() { preview.style.display = 'none'; };
+                img.onload = function() { preview.style.display = 'block'; };
+            } else {
+                preview.style.display = 'none';
+            }
+        });
+        
+        function clearImagePreview() {
+            document.getElementById('customFoodImage').value = '';
+            document.getElementById('imagePreview').style.display = 'none';
         }
         
         function addCustomFood() {
@@ -3380,6 +3404,7 @@
             const hours = document.getElementById('customFoodHours').value.trim();
             const desc = document.getElementById('customFoodDesc').value.trim();
             const mapLink = document.getElementById('customFoodMapLink').value.trim();
+            const image = document.getElementById('customFoodImage').value.trim();
             
             if (!name) {
                 showToast('請輸入店名');
@@ -3393,7 +3418,8 @@
                 location: location || '未設定',
                 hours: hours || '未設定',
                 desc: desc || '美味推薦',
-                mapLink: mapLink || ''
+                mapLink: mapLink || '',
+                image: image || ''
             });
             
             localStorage.setItem('tokyoCustomFoods', JSON.stringify(customFoods));
@@ -3421,14 +3447,19 @@
             
             empty.style.display = 'none';
             list.innerHTML = customFoods.map(food => `
-                <div class="food-card" style="position:relative;">
-                    <button onclick="deleteCustomFood(${food.id})" style="position:absolute; top:8px; right:8px; background:none; border:none; cursor:pointer; font-size:1rem; color:var(--text-light); padding:4px;" title="刪除">✕</button>
-                    <div class="emoji">${food.emoji}</div>
-                    <h4>${food.name}</h4>
-                    <p>${food.desc}</p>
-                    <span class="location">📍 ${food.location}</span>
-                    <span class="hours">⏰ ${food.hours}</span>
-                    ${food.mapLink ? `<a href="${food.mapLink}" target="_blank" rel="noopener noreferrer" style="display:inline-block; margin-top:0.4rem; padding:0.2rem 0.6rem; background:var(--primary); color:white; border-radius:10px; font-size:0.75rem; text-decoration:none;">🗺️ 在 Google Maps 打開</a>` : ''}
+                <div class="food-card" style="position:relative; padding:0; overflow:hidden;">
+                    <button onclick="deleteCustomFood(${food.id})" style="position:absolute; top:8px; right:8px; background:rgba(0,0,0,0.5); border:none; cursor:pointer; font-size:0.9rem; color:white; padding:4px 8px; border-radius:50%; z-index:2;" title="刪除">✕</button>
+                    ${food.image ? `<div style="width:100%; height:140px; overflow:hidden;"><img src="${food.image}" style="width:100%; height:100%; object-fit:cover;" alt="${food.name}" onerror="this.parentElement.style.display='none'"></div>` : `<div style="width:100%; height:100px; background:var(--gradient); display:flex; align-items:center; justify-content:center; font-size:3rem;">${food.emoji}</div>`}
+                    <div style="padding:0.8rem;">
+                        <div style="display:flex; align-items:center; gap:0.3rem; margin-bottom:0.3rem;">
+                            <span style="font-size:1.2rem;">${food.emoji}</span>
+                            <h4 style="font-size:0.95rem; margin:0;">${food.name}</h4>
+                        </div>
+                        <p style="font-size:0.8rem; color:var(--text-light); margin-bottom:0.3rem; line-height:1.3;">${food.desc}</p>
+                        <span class="location" style="font-size:0.7rem;">📍 ${food.location}</span>
+                        <span class="hours" style="font-size:0.65rem;">⏰ ${food.hours}</span>
+                        ${food.mapLink ? `<a href="${food.mapLink}" target="_blank" rel="noopener noreferrer" style="display:inline-block; margin-top:0.4rem; padding:0.2rem 0.6rem; background:var(--primary); color:white; border-radius:10px; font-size:0.7rem; text-decoration:none;">🗺️ 導航</a>` : ''}
+                    </div>
                 </div>
             `).join('');
         }
@@ -3439,6 +3470,8 @@
             document.getElementById('customFoodHours').value = '';
             document.getElementById('customFoodDesc').value = '';
             document.getElementById('customFoodMapLink').value = '';
+            document.getElementById('customFoodImage').value = '';
+            document.getElementById('imagePreview').style.display = 'none';
         }
         
         renderCustomFoods();
