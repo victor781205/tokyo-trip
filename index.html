@@ -3251,9 +3251,21 @@
                 <div style="font-size:0.95rem;color:var(--text-light);line-height:1.6;">${info.desc}</div>
             `;
             popup.style.display = 'block';
-            popup.style.top = '50%';
-            popup.style.left = '50%';
-            popup.style.transform = 'translate(-50%, -50%)';
+            // Position popup safely within viewport
+            const isMobile = window.innerWidth < 768;
+            if (isMobile) {
+                popup.style.top = '50%';
+                popup.style.left = '10px';
+                popup.style.right = '10px';
+                popup.style.maxWidth = 'none';
+                popup.style.transform = 'translateY(-50%)';
+            } else {
+                popup.style.top = '50%';
+                popup.style.left = '50%';
+                popup.style.right = 'auto';
+                popup.style.maxWidth = '250px';
+                popup.style.transform = 'translate(-50%, -50%)';
+            }
         }
 
         // ========== Map Zoom ==========
