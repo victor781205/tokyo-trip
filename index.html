@@ -3562,8 +3562,10 @@
 
         function renderItinerary() {
             const container = document.getElementById('itineraryContainer');
+            if (!container) { console.error('itineraryContainer not found'); return; }
             const gradients = ['var(--gradient)', 'var(--gradient-secondary)', 'var(--gradient)', 'var(--gradient-secondary)', 'var(--gradient)', 'var(--gradient-secondary)'];
             
+            try {
             container.innerHTML = Object.entries(itinerary).map(([day, data], i) => `
                 <div class="tab-content ${i === 0 ? 'active' : ''}" id="${day}">
                     <div class="day-header" style="background: ${gradients[i]};" role="button" tabindex="0" onclick="toggleDay(this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleDay(this);}" aria-expanded="false">
@@ -3571,12 +3573,12 @@
                         <span class="date">${data.date} <i class="fas fa-chevron-down"></i></span>
                     </div>
                     <div class="day-content">
-                        ${data.activities.map((act, j) => `
+                        ${(data.activities || []).map((act, j) => `
                             <div class="activity" style="position:relative;">
                                 <div class="activity-time">${act.time}</div>
                                 <div class="activity-info" style="flex:1;">
                                     <h4>${act.name}</h4>
-                                    <p>${act.desc}</p>
+                                    <p>${act.desc || ''}</p>
                                     ${act.tag ? `<span class="activity-tag ${getTagClass(act.tag)}">${act.tag}</span>` : ''}
                                 </div>
                                 <div style="display:flex; gap:4px; position:absolute; top:8px; right:0;">
@@ -3585,12 +3587,13 @@
                                 </div>
                             </div>
                         `).join('')}
-                        <button onclick="addActivity('${day}')" style="width:100%; padding:0.8rem; margin-top:0.5rem; background:var(--bg); border:2px dashed var(--border-color); border-radius:10px; cursor:pointer; font-size:0.9rem; color:var(--text-light); transition:all 0.3s;" onmouseover="this.style.borderColor='var(--primary)'; this.style.color='var(--primary)'" onmouseout="this.style.borderColor='var(--border-color)'; this.style.color='var(--text-light)'">
+                        <button onclick="addActivity('${day}')" style="width:100%; padding:0.8rem; margin-top:0.5rem; background:var(--bg); border:2px dashed var(--border-color); border-radius:10px; cursor:pointer; font-size:0.9rem; color:var(--text-light); transition:all 0.3s;">
                             ➕ 新增活動
                         </button>
                     </div>
                 </div>
             `).join('');
+            } catch(e) { console.error('renderItinerary inner error:', e); }
             
             // Auto-expand first day
             setTimeout(() => {
@@ -3713,13 +3716,15 @@
         }
 
         // Render itinerary on load
+        console.log('Rendering itinerary...');
         try {
             if (document.readyState === 'loading') {
-                document.addEventListener('DOMContentLoaded', renderItinerary);
+                document.addEventListener('DOMContentLoaded', function() { console.log('DOM ready, rendering...'); renderItinerary(); });
             } else {
+                console.log('DOM already ready, rendering...');
                 renderItinerary();
             }
-        } catch(e) { console.error('renderItinerary error:', e); }
+        } catch(e) { console.error('renderItinerary call error:', e); }
 
         // ========== Today's Itinerary ==========
         function goToToday() {
