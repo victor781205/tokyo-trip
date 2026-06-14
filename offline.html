@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>離線模式 - 東京自由行</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Noto Sans TC', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #e74c3c 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            text-align: center;
+            padding: 2rem;
+        }
+        .icon { font-size: 5rem; margin-bottom: 1.5rem; animation: pulse 2s infinite; }
+        h1 { font-size: 2rem; margin-bottom: 1rem; }
+        p { font-size: 1.1rem; opacity: 0.9; margin-bottom: 0.5rem; max-width: 400px; line-height: 1.6; }
+        .tip {
+            background: rgba(255,255,255,0.2);
+            backdrop-filter: blur(10px);
+            padding: 1rem 1.5rem;
+            border-radius: 15px;
+            margin-top: 1.5rem;
+            font-size: 0.95rem;
+        }
+        button {
+            margin-top: 1.5rem;
+            background: rgba(255,255,255,0.2);
+            border: 1px solid rgba(255,255,255,0.3);
+            color: white;
+            padding: 0.8rem 1.5rem;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: all 0.3s;
+        }
+        button:hover { background: rgba(255,255,255,0.3); }
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+        }
+    </style>
+</head>
+<body>
+    <div class="icon">📡</div>
+    <h1>目前處於離線模式</h1>
+    <p>您的行程資料已快取，可以正常瀏覽！</p>
+    <p>部分功能（如匯率換算）需要網路連線。</p>
+    <div class="tip">
+        💡 提示：已快取的頁面在離線時仍可正常使用
+    </div>
+    <button onclick="window.location.reload()">重新嘗試連線</button>
+</body>
+</html>

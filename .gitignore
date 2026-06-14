@@ -1,0 +1,16 @@
+# Dependencies
+node_modules/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+
+# Backup files
+*.bak
+
+# Check script (dev only)
+check.js
