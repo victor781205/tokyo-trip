@@ -3,8 +3,8 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from "react";
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() ?? "";
+const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim() ?? "";
 
 export type Activity = { time: string; name: string; desc: string; tag: string; };
 export type DayPlan = { title: string; date: string; activities: Activity[]; };
