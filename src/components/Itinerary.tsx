@@ -225,12 +225,12 @@ export function Itinerary() {
   );
 
   return (
-    <section id="itinerary" className="py-20 px-4 md:px-12 max-w-5xl mx-auto transition-colors duration-300">
+    <section id="itinerary" className="py-20 px-4 md:px-6 lg:px-8 max-w-7xl mx-auto transition-colors duration-300">
       {/* ── Header ── */}
       <div className="text-center mb-10 relative">
         <div className="inline-block bg-primary/10 text-primary px-4 py-1 rounded-full text-xs font-black uppercase tracking-widest mb-4">Travel Timeline</div>
         <h2 className="text-3xl md:text-5xl font-black mb-4">📅 行程詳情</h2>
-        <p className="text-gray-600 dark:text-gray-400 mb-6">滑動切換天數，查看每日行程</p>
+        <p className="text-gray-600 dark:text-gray-400 mb-6">桌面版可一次瀏覽所有天數，手機版左右滑動切換</p>
         <button
           onClick={handleExport}
           disabled={isExporting}
@@ -329,49 +329,50 @@ export function Itinerary() {
             </div>
           </div>
 
-          {/* ══════ Desktop：一次展開所有天數 ══════ */}
-          <div className="hidden md:block space-y-10">
+          {/* ══════ Desktop：6 天水平並排 ══════ */}
+          <div className="hidden md:flex md:gap-5 md:overflow-x-auto md:pb-4 md:snap-x md:snap-mandatory scrollbar-hide">
             {dayKeys.map((dayKey, dayIdx) => {
               const dayData = currentItin[dayKey];
               return (
-                <div key={dayKey} className="animate-in fade-in slide-in-from-bottom-4 duration-500" style={{ animationDelay: `${dayIdx * 80}ms` }}>
+                <div key={dayKey} className="snap-start shrink-0 w-[22rem] lg:w-[24rem] xl:w-[26rem] animate-in fade-in slide-in-from-bottom-4 duration-500" style={{ animationDelay: `${dayIdx * 80}ms` }}>
                   {/* ── Day Header ── */}
-                  <div className="bg-gradient-to-r from-primary to-accent text-white p-6 rounded-[2rem] shadow-xl mb-6 flex items-center gap-4">
-                    <div className="bg-white/20 p-3 rounded-2xl backdrop-blur-sm">
-                      <Calendar className="w-6 h-6" />
+                  <div className="bg-gradient-to-r from-primary to-accent text-white p-4 rounded-[1.5rem] shadow-xl mb-4 flex items-center gap-3 sticky top-0 z-10">
+                    <div className="bg-white/20 p-2 rounded-xl backdrop-blur-sm">
+                      <Calendar className="w-5 h-5" />
                     </div>
-                    <div className="flex-1">
-                      <h3 className="text-2xl font-black leading-tight">{dayData.title}</h3>
-                      <p className="text-sm font-bold text-white/70 mt-0.5">{dayData.date}・{dayData.activities.length} 項行程</p>
+                    <div className="flex-1 min-w-0">
+                      <h3 className="text-lg font-black leading-tight truncate">{dayData.title}</h3>
+                      <p className="text-xs font-bold text-white/70 mt-0.5">{dayData.date}・{dayData.activities.length} 項</p>
                     </div>
                   </div>
 
-                  {/* ── Activities Timeline ── */}
-                  <div className="relative space-y-6 before:absolute before:inset-0 before:ml-[5.5rem] before:-translate-x-px before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-gray-200 dark:before:via-slate-700 before:to-transparent">
+                  {/* ── Activities List ── */}
+                  <div className="space-y-3">
                     {dayData.activities.map((act, idx) => (
-                      <div key={idx} className="relative flex items-start gap-10 group">
-                        <div className="flex items-center justify-center w-6 h-6 rounded-full border-4 border-white dark:border-slate-900 bg-primary absolute left-[5.5rem] -translate-x-1/2 z-10 shadow-lg group-hover:scale-125 transition-transform"></div>
-                        <div className="w-[5.5rem] pr-3 text-right text-primary font-black text-2xl pt-0.5 shrink-0 tabular-nums">{act.time}</div>
-                        <div className="flex-1 pb-2">
-                          <div className="bg-white dark:bg-slate-800 p-6 rounded-[1.5rem] shadow-sm border border-gray-100 dark:border-slate-700 hover:shadow-xl hover:-translate-y-1 transition-all relative group/card overflow-hidden">
-                            <div className="absolute top-0 right-0 w-2 h-full bg-primary opacity-0 group-hover/card:opacity-100 transition-opacity"></div>
-                            <div className="flex items-center justify-between gap-3 mb-3">
-                              <h4 className="font-black text-2xl text-gray-900 dark:text-white leading-tight">{act.name}</h4>
-                              {act.tag && <span className={`text-xs font-black px-3 py-1 rounded-lg uppercase tracking-widest ${getTagColor(act.tag)}`}>{act.tag}</span>}
-                            </div>
-                            {act.desc && <p className="text-base text-gray-500 dark:text-gray-400 leading-relaxed mb-4">{act.desc}</p>}
-                            <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-all duration-300">
-                              <button onClick={() => openModal(dayKey, idx)} className="text-primary hover:bg-primary/10 p-2 rounded-xl transition-colors"><Pencil className="w-4 h-4" /></button>
-                              <button onClick={() => deleteActivity(dayKey, idx)} className="text-red-500 hover:bg-red-50 p-2 rounded-xl transition-colors"><Trash2 className="w-4 h-4" /></button>
-                            </div>
+                      <div key={idx} className="group">
+                        <div className="bg-white dark:bg-slate-800 p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-700 hover:shadow-xl hover:-translate-y-1 transition-all relative group/card overflow-hidden">
+                          <div className="absolute top-0 right-0 w-1.5 h-full bg-primary opacity-0 group-hover/card:opacity-100 transition-opacity"></div>
+
+                          <div className="flex items-center gap-2 mb-2">
+                            <span className="text-primary font-black text-lg tabular-nums shrink-0">{act.time}</span>
+                            <div className="h-px flex-1 bg-gray-100 dark:bg-slate-700"></div>
+                            {act.tag && <span className={`text-[10px] font-black px-2 py-0.5 rounded-md uppercase tracking-widest shrink-0 ${getTagColor(act.tag)}`}>{act.tag}</span>}
+                          </div>
+
+                          <h4 className="font-black text-base text-gray-900 dark:text-white leading-tight mb-1">{act.name}</h4>
+                          {act.desc && <p className="text-sm text-gray-400 leading-relaxed mb-3 line-clamp-2">{act.desc}</p>}
+
+                          <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-all duration-300">
+                            <button onClick={() => openModal(dayKey, idx)} className="text-primary hover:bg-primary/10 p-1.5 rounded-lg transition-colors"><Pencil className="w-3.5 h-3.5" /></button>
+                            <button onClick={() => deleteActivity(dayKey, idx)} className="text-red-500 hover:bg-red-50 p-1.5 rounded-lg transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
                           </div>
                         </div>
                       </div>
                     ))}
 
                     {/* Add Button per day */}
-                    <button onClick={() => openModal(dayKey)} className="w-full mt-4 p-4 border-2 border-dashed border-gray-200 dark:border-slate-700 rounded-3xl text-gray-400 hover:text-primary hover:border-primary hover:bg-primary/5 transition-all flex items-center justify-center gap-2 font-black text-sm uppercase tracking-widest">
-                      <Plus className="w-5 h-5" /> 新增行程活動
+                    <button onClick={() => openModal(dayKey)} className="w-full p-3 border-2 border-dashed border-gray-200 dark:border-slate-700 rounded-2xl text-gray-400 hover:text-primary hover:border-primary hover:bg-primary/5 transition-all flex items-center justify-center gap-2 font-black text-xs uppercase tracking-widest">
+                      <Plus className="w-4 h-4" /> 新增
                     </button>
                   </div>
                 </div>
