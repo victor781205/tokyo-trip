@@ -253,7 +253,7 @@ export function Itinerary() {
                   const dayData = currentItin[dayKey];
                   const isActive = i === activeDayIndex;
                   const emoji = dayData.title.split(" ")[0];
-                  const label = dayData.title.replace(/^[^\s]+\s/, "");
+                  const label = dayData.title.replace(/^[^\s]+\s+Day\s+\d+\s*[-–—:：]?\s*/, "");
                   return (
                     <button
                       key={dayKey}
@@ -337,7 +337,7 @@ export function Itinerary() {
                 const dayData = currentItin[dayKey];
                 const isActive = i === activeDayIndex;
                 const emoji = dayData.title.split(" ")[0];
-                const label = dayData.title.replace(/^[^\s]+\s/, "");
+                const label = dayData.title.replace(/^[^\s]+\s+Day\s+\d+\s*[-–—:：]?\s*/, "");
                 return (
                   <button
                     key={dayKey}
