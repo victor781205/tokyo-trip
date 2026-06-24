@@ -27,7 +27,7 @@ export async function GET() {
 
       if (flight) {
         outbound = {
-          gate: String(flight.Gate || "尚未公佈"),
+          gate: String(flight.Gate || "尚未公佈").trim(),
           status: String(
             flight.ArrivalStatus || flight.DepartureStatus || "準時"
           ),
