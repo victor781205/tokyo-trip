@@ -1,0 +1,1055 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="東京自由行 9/1-9/6 六天五夜行程規劃 - 航班、住宿、交通、景點、美食推薦">
+    <meta name="theme-color" content="#e74c3c">
+    <meta name="author" content="Tokyo Trip Planner">
+    <!-- Open Graph -->
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="東京自由行 9/1-9/6 六天五夜行程規劃">
+    <meta property="og:description" content="東京自由行 9/1-9/6 六天五夜行程規劃 - 航班、住宿、交通、景點、美食推薦">
+    <meta property="og:locale" content="zh_TW">
+    <meta property="og:image" content="icon.svg">
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="東京自由行 9/1-9/6 六天五夜行程規劃">
+    <meta name="twitter:description" content="東京自由行 9/1-9/6 六天五夜行程規劃 - 航班、住宿、交通、景點、美食推薦">
+    <meta name="twitter:image" content="icon.svg">
+    <!-- Canonical -->
+    <link rel="canonical" href="./index.html">
+    <!-- Meta Keywords -->
+    <meta name="keywords" content="東京自由行,東京行程,六天五夜,東京景點,東京美食,日本旅遊,東京交通,東京住宿">
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="icon.svg">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="mobile-web-app-capable" content="yes">
+    <!-- JSON-LD -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "TouristTrip",
+      "name": "東京自由行 9/1-9/6",
+      "description": "東京六天五夜行程規劃",
+      "itinerary": {
+        "@type": "ItemList",
+        "numberOfItems": 6,
+        "itemListElement": [
+          {"@type":"ListItem","position":1,"name":"Day 1 - 抵達東京"},
+          {"@type":"ListItem","position":2,"name":"Day 2 - 澀谷・新宿"},
+          {"@type":"ListItem","position":3,"name":"Day 3 - 秋葉原・東京車站"},
+          {"@type":"ListItem","position":4,"name":"Day 4 - 台場・豐洲"},
+          {"@type":"ListItem","position":5,"name":"Day 5 - 下北澤・吉祥寺"},
+          {"@type":"ListItem","position":6,"name":"Day 6 - 回家"}
+        ]
+      }
+    }
+    </script>
+
+    <title>🗼 東京自由行 9/1-9/6</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="preconnect" href="https://cdnjs.cloudflare.com">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" media="print" onload="this.media='all'">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <a href="#main-content" class="skip-link">Skip to main content / 跳到主要內容</a>
+    <main id="main-content" role="main">
+    <!-- Loading Screen -->
+    <div class="loading-screen" id="loadingScreen">
+        <div class="loading-tower">🗼</div>
+        <div class="loading-text">東京自由行</div>
+        <div class="loading-bar"><div class="loading-bar-inner"></div></div>
+    </div>
+
+    <canvas id="particles"></canvas>
+
+    <!-- Navigation -->
+    <nav class="nav" id="navbar">
+        <a class="nav-logo" href="#hero">🗼 東京自由行</a>
+        <button class="hamburger" id="hamburger" onclick="toggleMobileNav()" aria-label="開啟選單" aria-expanded="false" aria-controls="mobileNav">
+            <span></span><span></span><span></span>
+        </button>
+        <div class="nav-links">
+            <a href="#flights" data-section="flights">航班資訊</a>
+            <a href="#transfer" data-section="transfer">機場交通</a>
+            <a href="#hotel" data-section="hotel">住宿</a>
+            <a href="#routemap" data-section="routemap">路線圖</a>
+            <a href="#map" data-section="map">景點地圖</a>
+            <a href="#itinerary" data-section="itinerary">行程</a>
+            <a href="#tools" data-section="tools">實用工具</a>
+            <a href="#food" data-section="food">美食</a>
+            <a href="#tips" data-section="tips">小提醒</a>
+            <button class="dark-toggle" onclick="toggleDarkMode()" title="切換深色/淺色模式" aria-label="切換深色/淺色模式">
+                <span id="themeIcon">🌙</span>
+            </button>
+            <button class="dark-toggle" onclick="toggleLanguage()" title="切換語言" aria-label="切換語言" style="font-size:1rem;">
+                <span id="langIcon">🇹🇼</span>
+            </button>
+        </div>
+    </nav>
+
+    <!-- Mobile Nav Overlay -->
+    <div class="mobile-nav" id="mobileNav">
+        <a href="#flights" data-section="flights" onclick="closeMobileNav()">✈️ 航班資訊</a>
+        <a href="#transfer" data-section="transfer" onclick="closeMobileNav()">🚌 機場交通</a>
+        <a href="#hotel" data-section="hotel" onclick="closeMobileNav()">🏨 住宿</a>
+        <a href="#routemap" data-section="routemap" onclick="closeMobileNav()">🗺️ 路線圖</a>
+        <a href="#map" data-section="map" onclick="closeMobileNav()">📍 景點地圖</a>
+        <a href="#itinerary" data-section="itinerary" onclick="closeMobileNav()">📋 行程</a>
+        <a href="#tools" data-section="tools" onclick="closeMobileNav()">🛠️ 實用工具</a>
+        <a href="#food" data-section="food" onclick="closeMobileNav()">🍜 美食</a>
+        <a href="#tips" data-section="tips" onclick="closeMobileNav()">📝 小提醒</a>
+        <button class="mobile-dark-toggle" onclick="toggleDarkMode(); closeMobileNav();">
+            <span id="mobileThemeIcon">🌙</span>
+        </button>
+    </div>
+
+    <!-- Hero Section -->
+    <section class="hero">
+        <div class="hero-content">
+            <h1>🗼 東京自由行</h1>
+            <p class="subtitle">與毓寧的第一次愛的旅行</p>
+            <div class="dates">📅 2026年9月1日 - 9月6日</div>
+            <div class="countdown" id="countdown">
+                <div class="countdown-item">
+                    <div class="number" id="days">--</div>
+                    <div class="label">天</div>
+                </div>
+                <div class="countdown-item">
+                    <div class="number" id="hours">--</div>
+                    <div class="label">時</div>
+                </div>
+                <div class="countdown-item">
+                    <div class="number" id="minutes">--</div>
+                    <div class="label">分</div>
+                </div>
+                <div class="countdown-item">
+                    <div class="number" id="seconds">--</div>
+                    <div class="label">秒</div>
+                </div>
+            </div>
+            <div style="margin-top:2rem;">
+                <button class="hero-btn" onclick="goToToday()">
+                    📋 查看今日行程
+                </button>
+            </div>
+        </div>
+        <div class="scroll-indicator">
+            <i class="fas fa-chevron-down"></i>
+        </div>
+    </section>
+
+    <!-- Flight Information -->
+    <section class="flight-section" id="flights">
+        <div class="container">
+            <div class="section-title">
+                <h2>✈️ 航班資訊</h2>
+                <p>星宇航空 STARLUX Airlines</p>
+            </div>
+            <div class="flight-cards">
+                <div class="flight-card">
+                    <h3><i class="fas fa-plane-departure"></i> 去程航班</h3>
+                    <div class="airline">星宇航空 STARLUX | JX800</div>
+                    <div class="flight-route">
+                        <div class="flight-point">
+                            <div class="code">TPE</div>
+                            <div class="city">桃園機場</div>
+                            <div class="time">08:30</div>
+                        </div>
+                        <div class="flight-line"></div>
+                        <div class="flight-point">
+                            <div class="code">NRT</div>
+                            <div class="city">成田機場</div>
+                            <div class="time">12:55</div>
+                        </div>
+                    </div>
+                    <div class="flight-duration">飛行時間：約 3 小時 25 分鐘</div>
+                    <p style="text-align:center; margin-top:1rem; color: var(--text-light); font-size:0.9rem;">📅 2026年9月1日 (二)</p>
+                </div>
+                <div class="flight-card">
+                    <h3><i class="fas fa-plane-arrival"></i> 回程航班</h3>
+                    <div class="airline">星宇航空 STARLUX | JX805</div>
+                    <div class="flight-route">
+                        <div class="flight-point">
+                            <div class="code">NRT</div>
+                            <div class="city">成田機場</div>
+                            <div class="time">20:40</div>
+                        </div>
+                        <div class="flight-line"></div>
+                        <div class="flight-point">
+                            <div class="code">TPE</div>
+                            <div class="city">桃園機場</div>
+                            <div class="time">23:20</div>
+                        </div>
+                    </div>
+                    <div class="flight-duration">飛行時間：約 3 小時 40 分鐘</div>
+                    <p style="text-align:center; margin-top:1rem; color: var(--text-light); font-size:0.9rem;">📅 2026年9月6日 (日)</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Transportation Guide -->
+    <section class="transfer-section" id="transfer">
+        <div class="container">
+            <div class="section-title">
+                <h2>🚃 交通攻略</h2>
+                <p>機場往返 + 市內交通完整指南</p>
+            </div>
+            <div class="transfer-options">
+                <!-- Option A: JR Direct -->
+                <div class="transfer-card">
+                    <span class="badge badge-recommended">⭐ 最推薦</span>
+                    <h4><i class="fas fa-train"></i> JR 直達錦系町</h4>
+                    <div class="route-visual">
+                        <span class="station">成田機場</span>
+                        <span class="arrow">→</span>
+                        <span class="station">錦系町</span>
+                    </div>
+                    <div class="details">
+                        <div class="detail-row"><span>票價</span><span class="value">¥1,408</span></div>
+                        <div class="detail-row"><span>時間</span><span class="value">約 1 小時 23 分</span></div>
+                        <div class="detail-row"><span>換乘</span><span class="value">0 次（直達）</span></div>
+                        <div class="detail-row"><span>班次</span><span class="value">約每 30-60 分鐘</span></div>
+                    </div>
+                    <div class="transfer-steps">
+                        <h5><i class="fas fa-list-ol"></i> 搭乘步驟</h5>
+                        <div class="step"><span class="step-num">1</span><span>抵達成田機場後，跟隨「JR」指標前往 JR 月台</span></div>
+                        <div class="step"><span class="step-num">2</span><span>搭乘「JR 成田線（快速）往千葉/逗子方向」</span></div>
+                        <div class="step"><span class="step-num">3</span><span>在千葉站不停車，直通「JR 總武線快速」</span></div>
+                        <div class="step"><span class="step-num">4</span><span>坐到底站「錦系町」下車（不用換車！）</span></div>
+                        <div class="step"><span class="step-num">5</span><span>中央口出站，步行約 5 分鐘到飯店</span></div>
+                    </div>
+                </div>
+
+                <!-- Option B: N'EX -->
+                <div class="transfer-card">
+                    <span class="badge badge-fast">⚡ 最快速</span>
+                    <h4><i class="fas fa-bolt"></i> 成田特快 N'EX</h4>
+                    <div class="route-visual">
+                        <span class="station">成田機場</span>
+                        <span class="arrow">→</span>
+                        <span class="station">東京站</span>
+                        <span class="arrow">→</span>
+                        <span class="station">錦系町</span>
+                    </div>
+                    <div class="details">
+                        <div class="detail-row"><span>票價</span><span class="value">¥3,070（來回票 ¥4,070）</span></div>
+                        <div class="detail-row"><span>時間</span><span class="value">約 70 分鐘</span></div>
+                        <div class="detail-row"><span>換乘</span><span class="value">1 次（東京站）</span></div>
+                        <div class="detail-row"><span>班次</span><span class="value">約每 30-40 分鐘</span></div>
+                    </div>
+                    <div class="transfer-steps">
+                        <h5><i class="fas fa-list-ol"></i> 搭乘步驟</h5>
+                        <div class="step"><span class="step-num">1</span><span>跟隨「JR」指標前往 JR 售票處</span></div>
+                        <div class="step"><span class="step-num">2</span><span>購買 N'EX 車票（Foreign Tourist 專用）</span></div>
+                        <div class="step"><span class="step-num">3</span><span>月台搭車，方向為「東京」</span></div>
+                        <div class="step"><span class="step-num">4</span><span>到東京站轉乘 JR 總武線（各停車）→「錦系町」</span></div>
+                        <div class="step"><span class="step-num">5</span><span>錦系町站中央口出站，步行約 5 分鐘到飯店</span></div>
+                    </div>
+                </div>
+
+                <!-- Option C: Access Express -->
+                <div class="transfer-card">
+                    <span class="badge badge-cheap">💰 最便宜</span>
+                    <h4><i class="fas fa-coins"></i> 京成 Access Express</h4>
+                    <div class="route-visual">
+                        <span class="station">成田機場</span>
+                        <span class="arrow">→</span>
+                        <span class="station">押上</span>
+                        <span class="arrow">→</span>
+                        <span class="station">錦系町</span>
+                    </div>
+                    <div class="details">
+                        <div class="detail-row"><span>票價</span><span class="value">約 ¥1,450</span></div>
+                        <div class="detail-row"><span>時間</span><span class="value">約 75 分鐘</span></div>
+                        <div class="detail-row"><span>換乘</span><span class="value">1 次（押上轉淺草線）</span></div>
+                        <div class="detail-row"><span>班次</span><span class="value">約每 20 分鐘</span></div>
+                    </div>
+                    <div class="transfer-steps">
+                        <h5><i class="fas fa-list-ol"></i> 搭乘步驟</h5>
+                        <div class="step"><span class="step-num">1</span><span>跟隨「京成電鐵」指標前往一般電車月台</span></div>
+                        <div class="step"><span class="step-num">2</span><span>搭 Access Express 到「押上」站（¥1,270）</span></div>
+                        <div class="step"><span class="step-num">3</span><span>轉乘都營淺草線直通 →「錦系町」（+¥180）</span></div>
+                        <div class="step"><span class="step-num">4</span><span>步行 5 分鐘到飯店</span></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Return Trip -->
+            <div style="margin-top: 3rem; background: var(--bg); border-radius: 20px; padding: 2rem; transition: background 0.3s;">
+                <h3 style="text-align: center; color: var(--secondary); margin-bottom: 1rem;">🔄 回程：飯店 → 成田機場</h3>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.5rem;">
+                    <div style="padding: 1rem; background: var(--card-bg); border-radius: 12px; border-left: 3px solid var(--primary); transition: background 0.3s;">
+                        <h5 style="color: var(--secondary); margin-bottom: 0.5rem;">⭐ 推薦方案</h5>
+                        <p style="color: var(--text-light); font-size: 0.95rem;">錦系町站 → JR 總武線快速直達 → 成田機場<br><strong>不用換車，約 1 小時 23 分，¥1,408</strong></p>
+                    </div>
+                    <div style="padding: 1rem; background: var(--card-bg); border-radius: 12px; border-left: 3px solid var(--accent); transition: background 0.3s;">
+                        <h5 style="color: var(--secondary); margin-bottom: 0.5rem;">⏰ 時間估算</h5>
+                        <p style="color: var(--text-light); font-size: 0.95rem;">回程航班 20:40，建議 <strong>17:00 前</strong>離開飯店<br>報到需 2 小時前到機場（18:40）＋ 車程 83 分鐘</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- City Transport -->
+            <div style="margin-top: 3rem;">
+                <h3 style="text-align: center; color: var(--secondary); margin-bottom: 1.5rem;">🏙️ 市內交通</h3>
+                <div class="transport-cards">
+                    <div class="transport-card">
+                        <h4><i class="fas fa-subway"></i> 地鐵一日券</h4>
+                        <p>Tokyo Subway Ticket（觀光客專用）24小時 ¥1,000、48小時 ¥1,500、72小時 ¥2,000，可搭乘 Metro + 都營全部路線。建議購買 Suica 或 Pasmo 卡，方便搭乘所有交通工具。</p>
+                    </div>
+                    <div class="transport-card">
+                        <h4><i class="fas fa-walking"></i> 飯店周邊</h4>
+                        <p>飯店在錦系町站附近，步行 5 分鐘。JR 總武線可到東京站、新宿、澀谷。東武線可到淺草、晴空塔。</p>
+                    </div>
+                    <div class="transport-card">
+                        <h4><i class="fas fa-ticket-alt"></i> Suica/Pasmo</h4>
+                        <p>可搭乘JR、地鐵、公車，也可在便利商店消費。建議在機場購買或使用手機版。</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Hotel Information -->
+    <section class="hotel-section" id="hotel">
+        <div class="container">
+            <div class="section-title">
+                <h2>🏨 住宿資訊</h2>
+                <p>東京東武黎凡特飯店 Tobu Levant Hotel Tokyo</p>
+            </div>
+            <div class="hotel-card">
+                <div class="hotel-info">
+                    <h3>東京東武黎凡特飯店</h3>
+                    <p><i class="fas fa-map-marker-alt"></i> 東京都墨田區錦志 1-2-2 130-0013</p>
+                    <p><i class="fas fa-train"></i> JR總武線「錦系町」站步行 5 分鐘</p>
+                    <p><i class="fas fa-subway"></i> 東武晴空塔線直通，方便前往日光</p>
+                    <div class="hotel-features">
+                        <span class="hotel-feature">🍳 含早餐</span>
+                        <span class="hotel-feature">📶 免費 WiFi</span>
+                        <span class="hotel-feature">♨️ 大浴場</span>
+                        <span class="hotel-feature">🏋️ 健身房</span>
+                        <span class="hotel-feature">👔 西裝熨燙</span>
+                        <span class="hotel-feature">🧺 洗衣服務</span>
+                    </div>
+                    <div style="margin-top: 1.5rem;">
+                        <a href="https://tc.tobuhotel.co.jp/levant/" target="_blank" rel="noopener noreferrer" class="quick-link" style="display: inline-flex;">
+                            <i class="fas fa-globe"></i> 官方網站
+                        </a>
+                    </div>
+                </div>
+                <div class="hotel-map">
+                    <iframe src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3241.8!2d139.8126!3d35.6966!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x60188ed0d1bfd3d1%3A0x3b9d96d0748f6b6d!2z5p2x5paH5YmN5Y6f6IiI5bqX!5e0!3m2!1szh-TW!2stw!4v1700000000000!5m2!1szh-TW!2stw" allowfullscreen="" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Metro Route Map -->
+    <section class="routemap-section" id="routemap">
+        <div class="container">
+            <div class="section-title">
+                <h2>🗺️ 東京地鐵路線圖</h2>
+                <p>本次旅程會用到的主要路線</p>
+            </div>
+            <div class="routemap-container">
+
+                <!-- JR Sobu Line -->
+                <div class="metro-line" style="border-color: #ffd33b;">
+                    <div class="metro-line-header" style="background: #ffd33b; color: #333;">JR</div>
+                    <div class="metro-line-name">JR 總武線（中央・總武線各停車）</div>
+                    <div class="metro-line-desc">連接錦系町與東京站、新宿、澀谷方向的主要路線</div>
+                    <div class="station-list">
+                        <span class="station-chip key-station">錦系町 🏨</span>
+                        <span class="station-arrow">→</span>
+                        <span class="station-chip">兩國</span>
+                        <span class="station-arrow">→</span>
+                        <span class="station-chip key-station">東京 🚉</span>
+                        <span class="station-arrow">→</span>
+                        <span class="station-chip">神田</span>
+                        <span class="station-arrow">→</span>
+                        <span class="station-chip">御茶水</span>
+                        <span class="station-arrow">→</span>
+                        <span class="station-chip key-station">新宿 🛍️</span>
+                        <span class="station-arrow">→</span>
+                        <span class="station-chip key-station">澀谷 🐕</span>
+                    </div>
+                </div>
+
+                <!-- Tokyo Metro Ginza Line -->
+                <div class="metro-line" style="border-color: #f62b73;">
+                    <div class="metro-line-header" style="background: #f62b73;">G</div>
+                    <div class="metro-line-name">東京Metro 銀座線</div>
+                    <div class="metro-line-desc">連接淺草與澀谷，經銀座、新橋，觀光必備路線</div>
+                    <div class="station-list">
+                        <span class="station-chip key-station">淺草 🏯</span>
+                        <span class="station-arrow">→</span>
+                        <span class="station-chip">田原町</span>
+                        <span class="station-arrow">→</span>
+                        <span class="station-chip">稻荷町</span>
+                        <span class="station-arrow">→</span>
+                        <span class="station-chip key-station">上野 🌸</span>
+                        <span class="station-arrow">→</span>
+                        <span class="station-chip">末廣町</span>
+                        <span class="station-arrow">→</span>
+                        <span class="station-chip key-station">秋葉原 🎮</span>
+                        <span class="station-arrow">→</span>
+                        <span class="station-chip">三越前</span>
+                        <span class="station-arrow">→</span>
+                        <span class="station-chip key-station">銀座 💎</span>
+                        <span class="station-arrow">→</span>
+                        <span class="station-chip">新橋</span>
+                        <span class="station-arrow">→</span>
+                        <span class="station-chip">虎之門</span>
+                        <span class="station-arrow">→</span>
+                        <span class="station-chip key-station">澀谷 🐕</span>
+                    </div>
+                </div>
+
+                <!-- Tobu Skytree Line -->
+                <div class="metro-line" style="border-color: #009b4e;">
+                    <div class="metro-line-header" style="background: #009b4e;">TS</div>
+                    <div class="metro-line-name">東武晴空塔線（東武スカイツリーライン）</div>
+                    <div class="metro-line-desc">從錦系町直通淺草/晴空塔方向，也可轉往日光</div>
+                    <div class="station-list">
+                        <span class="station-chip key-station">錦系町 🏨</span>
+                        <span class="station-arrow">→</span>
+                        <span class="station-chip">鐘淵</span>
+                        <span class="station-arrow">→</span>
+                        <span class="station-chip">北千住</span>
+                        <span class="station-arrow">→</span>
+                        <span class="station-chip key-station">淺草 🏯</span>
+                        <span class="station-arrow">→</span>
+                        <span class="station-chip key-station">東京晴空塔 🗼</span>
+                    </div>
+                </div>
+
+                <!-- Toei Shinjuku Line -->
+                <div class="metro-line" style="border-color: #9b7cb6;">
+                    <div class="metro-line-header" style="background: #9b7cb6;">S</div>
+                    <div class="metro-line-name">都營新宿線</div>
+                    <div class="metro-line-desc">連接錦系町直通新宿，適合前往新宿購物區</div>
+                    <div class="station-list">
+                        <span class="station-chip key-station">錦系町 🏨</span>
+                        <span class="station-arrow">→</span>
+                        <span class="station-chip">小岩</span>
+                        <span class="station-arrow">→</span>
+                        <span class="station-chip">大島</span>
+                        <span class="station-arrow">→</span>
+                        <span class="station-chip">月島</span>
+                        <span class="station-arrow">→</span>
+                        <span class="station-chip key-station">新宿 🛍️</span>
+                    </div>
+                </div>
+
+                <!-- Yurakucho Line -->
+                <div class="metro-line" style="border-color: #c1a470;">
+                    <div class="metro-line-header" style="background: #c1a470; color: #333;">Y</div>
+                    <div class="metro-line-name">東京Metro 有樂町線</div>
+                    <div class="metro-line-desc">經豐洲市場、東京站、銀座，前往台場方向</div>
+                    <div class="station-list">
+                        <span class="station-chip key-station">豐洲市場 🐟</span>
+                        <span class="station-arrow">→</span>
+                        <span class="station-chip">勝どき</span>
+                        <span class="station-arrow">→</span>
+                        <span class="station-chip">銀座一丁目</span>
+                        <span class="station-arrow">→</span>
+                        <span class="station-chip key-station">有樂町 💎</span>
+                        <span class="station-arrow">→</span>
+                        <span class="station-chip key-station">東京 🚉</span>
+                    </div>
+                </div>
+
+                <!-- Keiyo Line -->
+                <div class="metro-line" style="border-color: #e60012;">
+                    <div class="metro-line-header" style="background: #e60012;">K</div>
+                    <div class="metro-line-name">JR 京葉線（台場方向）</div>
+                    <div class="metro-line-desc">從東京站前往豐洲市場、台場的主要路線</div>
+                    <div class="station-list">
+                        <span class="station-chip key-station">東京 🚉</span>
+                        <span class="station-arrow">→</span>
+                        <span class="station-chip key-station">豐洲 🐟</span>
+                        <span class="station-arrow">→</span>
+                        <span class="station-chip">新木場</span>
+                        <span class="station-arrow">→</span>
+                        <span class="station-chip">葛西臨海公園</span>
+                    </div>
+                </div>
+
+                <!-- Legend -->
+                <div style="margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid var(--border-color); display: flex; flex-wrap: wrap; gap: 1rem; justify-content: center;">
+                    <div style="display: flex; align-items: center; gap: 0.4rem; font-size: 0.85rem; color: var(--text-light);">
+                        <span style="width: 14px; height: 14px; background: var(--primary); border-radius: 50%; display: inline-block;"></span>
+                        <span>你住宿的車站</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 0.4rem; font-size: 0.85rem; color: var(--text-light);">
+                        <span style="width: 14px; height: 14px; background: var(--secondary); border-radius: 50%; display: inline-block;"></span>
+                        <span>重要景點車站</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Destination Map -->
+    <section class="map-section" id="map">
+        <div class="container">
+            <div class="section-title">
+                <h2>📍 景點地圖</h2>
+                <p>所有景點位置一覽，點擊查看簡介</p>
+            </div>
+            <div class="map-container">
+                <div style="position:relative; width:100%; height:500px; background:linear-gradient(180deg, #e8f4f8 0%, #d4eaf0 100%); overflow:hidden; touch-action: pan-x pan-y pinch-zoom;" id="mapSvg">
+                    <!-- Zoom Controls -->
+                    <div style="position:absolute; top:10px; right:10px; z-index:10; display:flex; flex-direction:column; gap:5px;">
+                        <button onclick="zoomMap(1.2)" style="width:36px; height:36px; border-radius:50%; border:none; background:var(--card-bg); box-shadow:0 2px 8px rgba(0,0,0,0.2); cursor:pointer; font-size:1.2rem; display:flex; align-items:center; justify-content:center;">+</button>
+                        <button onclick="zoomMap(0.8)" style="width:36px; height:36px; border-radius:50%; border:none; background:var(--card-bg); box-shadow:0 2px 8px rgba(0,0,0,0.2); cursor:pointer; font-size:1.2rem; display:flex; align-items:center; justify-content:center;">−</button>
+                        <button onclick="resetMapZoom()" style="width:36px; height:36px; border-radius:50%; border:none; background:var(--card-bg); box-shadow:0 2px 8px rgba(0,0,0,0.2); cursor:pointer; font-size:0.8rem; display:flex; align-items:center; justify-content:center;">↺</button>
+                    </div>
+                    <!-- Simplified Tokyo Map -->
+                    <svg viewBox="0 0 800 500" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
+                        <!-- Water bodies -->
+                        <rect x="0" y="380" width="800" height="120" fill="#b3d9e8" rx="0"/>
+                        <path d="M0,380 Q100,350 200,370 Q350,400 500,360 Q650,330 800,350 L800,500 L0,500 Z" fill="#a0cfdf"/>
+
+                        <!-- Roads -->
+                        <line x1="100" y1="100" x2="700" y2="100" stroke="#ccc" stroke-width="2" stroke-dasharray="8,4"/>
+                        <line x1="100" y1="250" x2="700" y2="250" stroke="#ccc" stroke-width="2" stroke-dasharray="8,4"/>
+                        <line x1="400" y1="50" x2="400" y2="400" stroke="#ccc" stroke-width="2" stroke-dasharray="8,4"/>
+                        <line x1="200" y1="50" x2="200" y2="400" stroke="#ccc" stroke-width="1.5" stroke-dasharray="6,3"/>
+                        <line x1="600" y1="50" x2="600" y2="400" stroke="#ccc" stroke-width="1.5" stroke-dasharray="6,3"/>
+
+                        <!-- JR Sobu Line -->
+                        <path d="M150,300 L150,200 L250,180 L400,160 L550,150 L700,140" stroke="#ffd33b" stroke-width="4" fill="none" stroke-linecap="round"/>
+
+                        <!-- Ginza Line -->
+                        <path d="M100,350 L200,300 L350,270 L500,250 L650,200" stroke="#f62b73" stroke-width="3" fill="none" stroke-linecap="round"/>
+
+                        <!-- Tobu Line -->
+                        <path d="M150,300 L200,340 L300,360" stroke="#009b4e" stroke-width="3" fill="none" stroke-linecap="round"/>
+
+                        <!-- Shinjuku Line -->
+                        <path d="M150,300 L300,280 L500,260 L700,250" stroke="#9b7cb6" stroke-width="3" fill="none" stroke-linecap="round"/>
+
+                        <!-- Markers -->
+                        <!-- Hotel -->
+                        <g class="marker" onclick="showMapInfo('hotel')" role="button" tabindex="0" aria-label="飯店：東武黎凡特" style="cursor:pointer">
+                            <circle cx="150" cy="300" r="12" fill="#e74c3c" stroke="white" stroke-width="3"/>
+                            <text x="150" y="304" text-anchor="middle" fill="white" font-size="10" font-weight="bold">🏨</text>
+                            <text x="150" y="280" text-anchor="middle" fill="#333" font-size="11" font-weight="bold">錦系町(飯店)</text>
+                        </g>
+
+                        <!-- Asakusa -->
+                        <g class="marker" onclick="showMapInfo('asakusa')" role="button" tabindex="0" aria-label="景點：淺草寺" style="cursor:pointer">
+                            <circle cx="200" cy="340" r="10" fill="#9b59b6" stroke="white" stroke-width="2"/>
+                            <text x="200" y="344" text-anchor="middle" fill="white" font-size="9">🏯</text>
+                            <text x="200" y="365" text-anchor="middle" fill="#333" font-size="10" font-weight="600">淺草寺</text>
+                        </g>
+
+                        <!-- Skytree -->
+                        <g class="marker" onclick="showMapInfo('skytree')" role="button" tabindex="0" aria-label="景點：晴空塔" style="cursor:pointer">
+                            <circle cx="180" cy="310" r="10" fill="#3498db" stroke="white" stroke-width="2"/>
+                            <text x="180" y="314" text-anchor="middle" fill="white" font-size="9">🗼</text>
+                            <text x="160" y="298" text-anchor="middle" fill="#333" font-size="10" font-weight="600">晴空塔</text>
+                        </g>
+
+                        <!-- Ueno -->
+                        <g class="marker" onclick="showMapInfo('ueno')" role="button" tabindex="0" aria-label="景點：上野" style="cursor:pointer">
+                            <circle cx="250" cy="280" r="10" fill="#27ae60" stroke="white" stroke-width="2"/>
+                            <text x="250" y="284" text-anchor="middle" fill="white" font-size="9">🌸</text>
+                            <text x="250" y="268" text-anchor="middle" fill="#333" font-size="10" font-weight="600">上野</text>
+                        </g>
+
+                        <!-- Akihabara -->
+                        <g class="marker" onclick="showMapInfo('akiba')" role="button" tabindex="0" aria-label="景點：秋葉原" style="cursor:pointer">
+                            <circle cx="350" cy="270" r="10" fill="#e91e63" stroke="white" stroke-width="2"/>
+                            <text x="350" y="274" text-anchor="middle" fill="white" font-size="9">🎮</text>
+                            <text x="350" y="258" text-anchor="middle" fill="#333" font-size="10" font-weight="600">秋葉原</text>
+                        </g>
+
+                        <!-- Tokyo Station -->
+                        <g class="marker" onclick="showMapInfo('tokyo')" role="button" tabindex="0" aria-label="景點：東京車站" style="cursor:pointer">
+                            <circle cx="400" cy="160" r="10" fill="#f39c12" stroke="white" stroke-width="2"/>
+                            <text x="400" y="164" text-anchor="middle" fill="white" font-size="9">🚉</text>
+                            <text x="400" y="148" text-anchor="middle" fill="#333" font-size="10" font-weight="600">東京車站</text>
+                        </g>
+
+                        <!-- Ginza -->
+                        <g class="marker" onclick="showMapInfo('ginza')" role="button" tabindex="0" aria-label="景點：銀座" style="cursor:pointer">
+                            <circle cx="500" cy="250" r="10" fill="#e74c3c" stroke="white" stroke-width="2"/>
+                            <text x="500" y="254" text-anchor="middle" fill="white" font-size="9">💎</text>
+                            <text x="500" y="238" text-anchor="middle" fill="#333" font-size="10" font-weight="600">銀座</text>
+                        </g>
+
+                        <!-- Shibuya -->
+                        <g class="marker" onclick="showMapInfo('shibuya')" role="button" tabindex="0" aria-label="景點：澀谷" style="cursor:pointer">
+                            <circle cx="650" cy="200" r="10" fill="#1abc9c" stroke="white" stroke-width="2"/>
+                            <text x="650" y="204" text-anchor="middle" fill="white" font-size="9">🐕</text>
+                            <text x="650" y="188" text-anchor="middle" fill="#333" font-size="10" font-weight="600">澀谷</text>
+                        </g>
+
+                        <!-- Shinjuku -->
+                        <g class="marker" onclick="showMapInfo('shinjuku')" role="button" tabindex="0" aria-label="景點：新宿" style="cursor:pointer">
+                            <circle cx="700" cy="140" r="10" fill="#8e44ad" stroke="white" stroke-width="2"/>
+                            <text x="700" y="144" text-anchor="middle" fill="white" font-size="9">🛍️</text>
+                            <text x="700" y="128" text-anchor="middle" fill="#333" font-size="10" font-weight="600">新宿</text>
+                        </g>
+
+                        <!-- Harajuku -->
+                        <g class="marker" onclick="showMapInfo('harajuku')" role="button" tabindex="0" aria-label="景點：原宿" style="cursor:pointer">
+                            <circle cx="680" cy="170" r="8" fill="#ff6b6b" stroke="white" stroke-width="2"/>
+                            <text x="680" y="174" text-anchor="middle" fill="white" font-size="8">👘</text>
+                            <text x="715" y="165" text-anchor="middle" fill="#333" font-size="9" font-weight="600">原宿</text>
+                        </g>
+
+                        <!-- Toyosu -->
+                        <g class="marker" onclick="showMapInfo('toyosu')" role="button" tabindex="0" aria-label="景點：豐洲市場" style="cursor:pointer">
+                            <circle cx="550" cy="370" r="10" fill="#e67e22" stroke="white" stroke-width="2"/>
+                            <text x="550" y="374" text-anchor="middle" fill="white" font-size="9">🐟</text>
+                            <text x="550" y="390" text-anchor="middle" fill="#333" font-size="10" font-weight="600">豐洲市場</text>
+                        </g>
+
+                        <!-- Odaiba -->
+                        <g class="marker" onclick="showMapInfo('odaiba')" role="button" tabindex="0" aria-label="景點：台場" style="cursor:pointer">
+                            <circle cx="700" cy="380" r="10" fill="#00bcd4" stroke="white" stroke-width="2"/>
+                            <text x="700" y="384" text-anchor="middle" fill="white" font-size="9">🎡</text>
+                            <text x="700" y="400" text-anchor="middle" fill="#333" font-size="10" font-weight="600">台場</text>
+                        </g>
+
+                        <!-- Nakano/Kichijoji -->
+                        <g class="marker" onclick="showMapInfo('kichijoji')" role="button" tabindex="0" aria-label="景點：吉祥寺" style="cursor:pointer">
+                            <circle cx="550" cy="100" r="10" fill="#4caf50" stroke="white" stroke-width="2"/>
+                            <text x="550" y="104" text-anchor="middle" fill="white" font-size="9">🌿</text>
+                            <text x="550" y="88" text-anchor="middle" fill="#333" font-size="10" font-weight="600">吉祥寺</text>
+                        </g>
+
+                        <!-- Shimokitazawa -->
+                        <g class="marker" onclick="showMapInfo('shimokita')" role="button" tabindex="0" aria-label="景點：下北澤" style="cursor:pointer">
+                            <circle cx="580" cy="130" r="8" fill="#ff9800" stroke="white" stroke-width="2"/>
+                            <text x="580" y="134" text-anchor="middle" fill="white" font-size="8">🎸</text>
+                            <text x="548" y="118" text-anchor="middle" fill="#333" font-size="9" font-weight="600">下北澤</text>
+                        </g>
+
+                        <!-- Narita Airport arrow -->
+                        <g>
+                            <text x="30" y="420" fill="#666" font-size="11" font-weight="600">✈️ 成田機場 →</text>
+                            <line x1="80" y1="415" x2="140" y2="310" stroke="#999" stroke-width="2" stroke-dasharray="5,3"/>
+                        </g>
+                    </svg>
+
+                    <!-- Map Info Popup -->
+                    <div id="mapPopup" style="display:none; position:absolute; background:var(--card-bg); border-radius:12px; padding:1rem; box-shadow:0 5px 25px rgba(0,0,0,0.2); max-width:250px; z-index:10; border:1px solid var(--border-color);">
+                        <div id="mapPopupContent"></div>
+                        <button onclick="document.getElementById('mapPopup').style.display='none'" style="position:absolute; top:0.5rem; right:0.5rem; background:none; border:none; font-size:1.2rem; cursor:pointer; color:var(--text-light);">✕</button>
+                    </div>
+                </div>
+                <div class="map-legend">
+                    <div class="map-legend-item"><span class="dot" style="background:#e74c3c"></span> 🏨 住宿</div>
+                    <div class="map-legend-item"><span class="dot" style="background:#9b59b6"></span> 🏯 景點</div>
+                    <div class="map-legend-item"><span class="dot" style="background:#f39c12"></span> 🚉 交通樞紐</div>
+                    <div class="map-legend-item"><span class="dot" style="background:#1abc9c"></span> 🛍️ 購物區</div>
+                    <div class="map-legend-item"><span class="dot" style="background:#e67e22"></span> 🐟 美食區</div>
+                    <div class="map-legend-item"><span class="dot" style="background:#4caf50"></span> 🌿 自然景點</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Itinerary -->
+    <section class="itinerary-section" id="itinerary">
+        <div class="container">
+            <div class="section-title">
+                <h2>📋 行程規劃</h2>
+                <p>自訂你的東京之旅（點擊展開/收合）</p>
+            </div>
+
+            <div class="tabs">
+                <button class="tab-btn active" onclick="showTab('day1', this)">Day 1</button>
+                <button class="tab-btn" onclick="showTab('day2', this)">Day 2</button>
+                <button class="tab-btn" onclick="showTab('day3', this)">Day 3</button>
+                <button class="tab-btn" onclick="showTab('day4', this)">Day 4</button>
+                <button class="tab-btn" onclick="showTab('day5', this)">Day 5</button>
+                <button class="tab-btn" onclick="showTab('day6', this)">Day 6</button>
+                <button class="tab-btn" onclick="toggleAllDays()" style="background:var(--secondary); color:white;">📖 全部展開</button>
+                <button class="tab-btn" onclick="resetItinerary()" style="background:#e74c3c; color:white;">↺ 重置</button>
+            </div>
+
+            <div id="itineraryContainer"></div>
+        </div>
+    </section>
+
+    <!-- Activity Modal -->
+    <div id="activityModal" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); z-index:10000; align-items:center; justify-content:center; padding:1rem;">
+        <div style="background:var(--card-bg); border-radius:16px; padding:1.5rem; max-width:400px; width:100%; max-height:90vh; overflow-y:auto;">
+            <h3 id="modalTitle" style="margin-bottom:1rem; color:var(--secondary); font-size:1.2rem;">新增活動</h3>
+            <input type="hidden" id="modalDay">
+            <input type="hidden" id="modalIndex" value="-1">
+            <div style="margin-bottom:0.8rem;">
+                <label style="font-size:0.85rem; color:var(--text-light); margin-bottom:0.3rem; display:block;">時間</label>
+                <input type="time" id="modalTime" style="width:100%; padding:0.6rem; border:2px solid var(--border-color); border-radius:8px; font-size:0.95rem; background:var(--bg);">
+            </div>
+            <div style="margin-bottom:0.8rem;">
+                <label style="font-size:0.85rem; color:var(--text-light); margin-bottom:0.3rem; display:block;">活動名稱</label>
+                <input type="text" id="modalName" placeholder="如：淺草寺" style="width:100%; padding:0.6rem; border:2px solid var(--border-color); border-radius:8px; font-size:0.95rem; background:var(--bg);">
+            </div>
+            <div style="margin-bottom:0.8rem;">
+                <label style="font-size:0.85rem; color:var(--text-light); margin-bottom:0.3rem; display:block;">描述</label>
+                <input type="text" id="modalDesc" placeholder="如：東京最古老寺廟" style="width:100%; padding:0.6rem; border:2px solid var(--border-color); border-radius:8px; font-size:0.95rem; background:var(--bg);">
+            </div>
+            <div style="margin-bottom:1rem;">
+                <label style="font-size:0.85rem; color:var(--text-light); margin-bottom:0.3rem; display:block;">標籤</label>
+                <div style="display:flex; gap:0.4rem; flex-wrap:wrap;">
+                    <button type="button" onclick="selectTag(this,'')" class="tag-btn-selected" style="padding:0.4rem 0.8rem; border-radius:15px; border:2px solid var(--border-color); background:var(--bg); cursor:pointer; font-size:0.85rem;">無</button>
+                    <button type="button" onclick="selectTag(this,'美食')" style="padding:0.4rem 0.8rem; border-radius:15px; border:2px solid var(--border-color); background:var(--bg); cursor:pointer; font-size:0.85rem;">🍽️ 美食</button>
+                    <button type="button" onclick="selectTag(this,'景點')" style="padding:0.4rem 0.8rem; border-radius:15px; border:2px solid var(--border-color); background:var(--bg); cursor:pointer; font-size:0.85rem;">📍 景點</button>
+                    <button type="button" onclick="selectTag(this,'交通')" style="padding:0.4rem 0.8rem; border-radius:15px; border:2px solid var(--border-color); background:var(--bg); cursor:pointer; font-size:0.85rem;">🚃 交通</button>
+                    <button type="button" onclick="selectTag(this,'購物')" style="padding:0.4rem 0.8rem; border-radius:15px; border:2px solid var(--border-color); background:var(--bg); cursor:pointer; font-size:0.85rem;">🛍️ 購物</button>
+                </div>
+                <input type="hidden" id="modalTag" value="">
+            </div>
+            <div style="display:flex; gap:0.8rem;">
+                <button onclick="closeModal()" style="flex:1; padding:0.7rem; border:2px solid var(--border-color); background:var(--bg); border-radius:8px; font-size:0.95rem; cursor:pointer; color:var(--text);">取消</button>
+                <button onclick="saveActivity()" style="flex:1; padding:0.7rem; background:var(--gradient); color:white; border:none; border-radius:8px; font-size:0.95rem; font-weight:600; cursor:pointer;">儲存</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tools Section -->
+    <section class="tools-section" id="tools">
+        <div class="container">
+            <div class="section-title">
+                <h2>🛠️ 實用工具</h2>
+                <p>讓你的旅程更加便利</p>
+            </div>
+
+            <!-- Currency Converter & Weather -->
+            <div class="tools-row" style="display:grid; grid-template-columns:1fr 1fr; gap:2rem; margin-bottom:3rem;">
+                <!-- Currency Converter -->
+                <div>
+                    <h3 style="text-align: center; margin-bottom: 1rem; color: var(--secondary);">💰 匯率換算</h3>
+                    <div class="converter-box" style="max-width:100%; margin:0;">
+                        <div style="display:flex; align-items:center; justify-content:center; gap:0.5rem; margin-bottom:1rem;">
+                            <span style="font-size:1rem; font-weight:600;">🇹🇼 TWD</span>
+                            <button onclick="swapCurrency()" style="background:none; border:none; cursor:pointer; font-size:1.2rem; color:var(--primary); padding:0.3rem; transition:transform 0.3s;" onmouseover="this.style.transform='rotate(180deg)'" onmouseout="this.style.transform='rotate(0)'">⇄</button>
+                            <span style="font-size:1rem; font-weight:600;">🇯🇵 JPY</span>
+                        </div>
+                        <div class="converter-input">
+                            <label for="twdAmount" class="sr-only">台幣金額</label>
+                            <input type="number" id="twdAmount" placeholder="台幣金額" oninput="convertCurrency('twd')">
+                        </div>
+                        <div style="text-align: center; margin: 0.5rem 0;">
+                            <i class="fas fa-exchange-alt" style="color: var(--primary); font-size: 1.5rem;"></i>
+                        </div>
+                        <div class="converter-input">
+                            <label for="jpyAmount" class="sr-only">日圓金額</label>
+                            <input type="number" id="jpyAmount" placeholder="日圓金額" oninput="convertCurrency('jpy')">
+                        </div>
+                        <div class="converter-result" id="converterResult">請輸入金額換算</div>
+                        <p style="text-align:center;font-size:0.8rem;color:var(--text-light);margin-top:0.5rem;">* 匯率僅供參考，實際匯率請以銀行為準</p>
+                    </div>
+                </div>
+
+                <!-- Weather Widget -->
+                <div>
+                    <h3 style="text-align: center; margin-bottom: 1rem; color: var(--secondary);">🌤️ 東京天氣預報</h3>
+                    <div class="weather-widget" style="max-width:100%; margin:0;">
+                        <div class="weather-header">
+                            <h4>東京 9月</h4>
+                            <span>🌸 初秋</span>
+                        </div>
+                        <div class="weather-temp" id="weatherTemp">28°C</div>
+                        <div class="weather-desc" id="weatherDesc">晴時多雲，偶有午後雷陣雨</div>
+                        <div class="weather-forecast" id="weatherForecast"></div>
+                        <p style="text-align:center;font-size:0.75rem;color:var(--text-light);margin-top:0.8rem;">* 此為預估資料，實際天氣請以出發前查詢為準</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Packing Checklist -->
+            <div style="margin-bottom: 3rem;">
+                <h3 style="text-align: center; margin-bottom: 1rem; color: var(--secondary);">🎒 行李清單</h3>
+                <div class="checklist" id="checklist">
+                    <h4><i class="fas fa-clipboard-check"></i> 出國必備</h4>
+                    <div class="checklist-progress"><div class="checklist-progress-bar" id="checklistProgress"></div></div>
+                    <div class="checklist-percent" id="checklistPercent">完成 0%</div>
+                    <div class="checklist-item"><input type="checkbox" id="item1" onchange="saveChecklist()"><label for="item1">護照（效期6個月以上）</label></div>
+                    <div class="checklist-item"><input type="checkbox" id="item2" onchange="saveChecklist()"><label for="item2">機票（電子機票）</label></div>
+                    <div class="checklist-item"><input type="checkbox" id="item3" onchange="saveChecklist()"><label for="item3">飯店訂房確認</label></div>
+                    <div class="checklist-item"><input type="checkbox" id="item4" onchange="saveChecklist()"><label for="item4">日幣現金</label></div>
+                    <div class="checklist-item"><input type="checkbox" id="item5" onchange="saveChecklist()"><label for="item5">信用卡</label></div>
+                    <div class="checklist-item"><input type="checkbox" id="item6" onchange="saveChecklist()"><label for="item6">手機充電器 & 行動電源</label></div>
+                    <div class="checklist-item"><input type="checkbox" id="item7" onchange="saveChecklist()"><label for="item7">轉接頭（日本110V）</label></div>
+                    <div class="checklist-item"><input type="checkbox" id="item8" onchange="saveChecklist()"><label for="item8">WiFi分享器 / SIM卡</label></div>
+                    <div class="checklist-item"><input type="checkbox" id="item9" onchange="saveChecklist()"><label for="item9">雨傘 / 輕便雨衣</label></div>
+                    <div class="checklist-item"><input type="checkbox" id="item10" onchange="saveChecklist()"><label for="item10">防曬乳 / 帽子</label></div>
+                    <div class="checklist-item"><input type="checkbox" id="item11" onchange="saveChecklist()"><label for="item11">舒適的走路鞋</label></div>
+                    <div class="checklist-item"><input type="checkbox" id="item12" onchange="saveChecklist()"><label for="item12">常用藥品</label></div>
+                    <div class="checklist-item"><input type="checkbox" id="item13" onchange="saveChecklist()"><label for="item13">旅行平安險單據</label></div>
+                    <div class="checklist-item"><input type="checkbox" id="item14" onchange="saveChecklist()"><label for="item14">護照影本（另存放）</label></div>
+                    <div class="checklist-item"><input type="checkbox" id="item15" onchange="saveChecklist()"><label for="item15">室內拖鞋（大浴場用）</label></div>
+                    <div class="checklist-item"><input type="checkbox" id="item16" onchange="saveChecklist()"><label for="item16">小鎖（大浴場置物櫃）</label></div>
+                    <div class="checklist-item"><input type="checkbox" id="item17" onchange="saveChecklist()"><label for="item17">環保袋（購物用）</label></div>
+                    <div class="checklist-item"><input type="checkbox" id="item18" onchange="saveChecklist()"><label for="item18">隨身小背包</label></div>
+                </div>
+            </div>
+
+            <!-- Budget Tracker -->
+            <div style="margin-bottom: 3rem;">
+                <h3 style="text-align: center; margin-bottom: 1rem; color: var(--secondary); font-size: 1.6rem; font-weight: 800;">💸 旅遊預算追蹤</h3>
+                <div class="budget-tracker">
+                    <div class="budget-input-row">
+                        <label for="budgetDate" class="sr-only">日期</label>
+                        <input type="date" id="budgetDate" title="日期">
+                        <label for="budgetName" class="sr-only">項目名稱</label>
+                        <input type="text" id="budgetName" placeholder="項目名稱（如：午餐）">
+                        <label for="budgetAmount" class="sr-only">金額（日圓）</label>
+                        <input type="number" id="budgetAmount" placeholder="金額（日圓）">
+                        <label for="budgetCategory" class="sr-only">分類</label>
+                        <select id="budgetCategory">
+                            <option value="food">🍽️ 餐飲</option>
+                            <option value="transport">🚃 交通</option>
+                            <option value="shopping">🛍️ 購物</option>
+                            <option value="ticket">🎫 門票</option>
+                            <option value="hotel">🏨 住宿</option>
+                            <option value="other">📦 其他</option>
+                        </select>
+                        <button class="budget-btn" onclick="addBudgetItem()" aria-label="新增預算項目"><i class="fas fa-plus"></i> 新增</button>
+                    </div>
+                    <div class="budget-progress-label" id="budgetProgressLabel">已使用 ¥0 / ¥100,000</div>
+                    <div class="budget-progress"><div class="budget-progress-bar" id="budgetProgressBar"></div></div>
+                    <div class="budget-summary">
+                        <div class="budget-item">
+                            <div class="label">預算</div>
+                            <div class="amount" id="budgetTotal">¥0</div>
+                        </div>
+                        <div class="budget-item">
+                            <div class="label">已花費</div>
+                            <div class="amount" id="budgetSpent">¥0</div>
+                        </div>
+                        <div class="budget-item">
+                            <div class="label">剩餘</div>
+                            <div class="amount" id="budgetRemaining">¥0</div>
+                        </div>
+                    </div>
+                    <div class="budget-chart-area" id="budgetChartArea" style="display:none;">
+                        <div class="budget-pie">
+                            <canvas id="budgetPie" width="160" height="160"></canvas>
+                            <div class="budget-pie-center">
+                                <div class="total" id="pieTotal">¥0</div>
+                                <div class="label">總花費</div>
+                            </div>
+                        </div>
+                        <div class="budget-legend" id="budgetLegend"></div>
+                    </div>
+                    <div class="budget-list" id="budgetList"></div>
+                </div>
+            </div>
+
+            <!-- Quick Links -->
+            <div>
+                <h3 style="text-align: center; margin-bottom: 1rem; color: var(--secondary);">🔗 實用連結</h3>
+                <div class="quick-links">
+                    <a href="https://www.jreast.co.jp/multi/en/" target="_blank" rel="noopener noreferrer" class="quick-link"><i class="fas fa-train"></i> JR官網</a>
+                    <a href="https://www.tokyometro.jp/en/" target="_blank" rel="noopener noreferrer" class="quick-link"><i class="fas fa-subway"></i> 東京metro</a>
+                    <a href="https://www.tobu.co.jp/en/" target="_blank" rel="noopener noreferrer" class="quick-link"><i class="fas fa-train"></i> 東武鐵道</a>
+                    <a href="https://www.japan-guide.com/e/e3070.html" target="_blank" rel="noopener noreferrer" class="quick-link"><i class="fas fa-info-circle"></i> 日本旅遊指南</a>
+                    <a href="https://www.google.com/maps" target="_blank" rel="noopener noreferrer" class="quick-link"><i class="fas fa-map"></i> Google地圖</a>
+                    <a href="https://translate.google.com/" target="_blank" rel="noopener noreferrer" class="quick-link"><i class="fas fa-language"></i> Google翻譯</a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Emergency Contacts -->
+    <section class="emergency-section" id="emergency">
+        <div class="container">
+            <div class="section-title">
+                <h2>🆘 緊急聯絡資訊</h2>
+                <p>請牢記這些重要電話</p>
+            </div>
+            <div class="emergency-grid">
+                <a href="tel:110" class="emergency-card" onclick="event.preventDefault(); copyToClipboard('110')"><i class="fas fa-phone-alt"></i><div class="info"><h5>日本報警</h5><p>110</p></div></a>
+                <a href="tel:119" class="emergency-card" onclick="event.preventDefault(); copyToClipboard('119')"><i class="fas fa-ambulance"></i><div class="info"><h5>日本救護車/消防</h5><p>119</p></div></a>
+                <a href="tel:03-3212-2323" class="emergency-card" onclick="event.preventDefault(); copyToClipboard('03-3212-2323')"><i class="fas fa-hospital"></i><div class="info"><h5>救護車英文服務</h5><p>03-3212-2323</p></div></a>
+                <a href="tel:03-3280-7811" class="emergency-card" onclick="event.preventDefault(); copyToClipboard('03-3280-7811')"><i class="fas fa-passport"></i><div class="info"><h5>駐日台北經濟文化代表處</h5><p>03-3280-7811</p></div></a>
+                <a href="tel:03-5285-8181" class="emergency-card" onclick="event.preventDefault(); copyToClipboard('03-5285-8181')"><i class="fas fa-hospital"></i><div class="info"><h5>國際救急醫療諮詢</h5><p>03-5285-8181</p></div></a>
+                <a href="tel:0476-34-8000" class="emergency-card" onclick="event.preventDefault(); copyToClipboard('0476-34-8000')"><i class="fas fa-suitcase"></i><div class="info"><h5>成田機場服務台</h5><p>0476-34-8000</p></div></a>
+            </div>
+        </div>
+    </section>
+
+    <!-- Food Guide -->
+    <section class="food-section" id="food">
+        <div class="container">
+            <div class="section-title">
+                <h2>🍜 美食推薦</h2>
+                <p>東京必吃美食清單</p>
+            </div>
+            <div class="food-grid">
+                <div class="food-card"><div class="emoji">🍣</div><h4>壽司</h4><p>新鮮美味的握壽司，推薦「壽司大」或「大和壽司」</p><span class="location">📍 豐洲市場</span><span class="hours">⏰ 05:00-14:00（售完為止）</span></div>
+                <div class="food-card"><div class="emoji">🍜</div><h4>拉麵</h4><p>濃郁豚骨或清爽醬油，一蘭拉麵是觀光客最愛</p><span class="location">📍 澀谷/新宿</span><span class="hours">⏰ 11:00-翌日02:00</span></div>
+                <div class="food-card"><div class="emoji">🥩</div><h4>和牛燒肉</h4><p>A5等級和牛入口即化，搭配台場夜景更棒</p><span class="location">📍 台場</span><span class="hours">⏰ 17:00-23:00</span></div>
+                <div class="food-card"><div class="emoji">🍡</div><h4>甜點和菓子</h4><p>人形燒、銅鑼燒、抹茶冰淇淋</p><span class="location">📍 淺草仲見世通</span><span class="hours">⏰ 10:00-18:00</span></div>
+                <div class="food-card"><div class="emoji">🍱</div><h4>便當</h4><p>車站便當「駅弁」是日本特色，種類豐富</p><span class="location">📍 各大車站</span><span class="hours">⏰ 隨車站營業時間</span></div>
+                <div class="food-card"><div class="emoji">🍺</div><h4>居酒屋</h4><p>串燒、關東煮配啤酒，體驗道地日本夜生活</p><span class="location">📍 上野/新宿</span><span class="hours">⏰ 17:00-翌日01:00</span></div>
+            </div>
+
+            <!-- Custom Food Map -->
+            <div style="margin-top:3rem;">
+                <h3 style="text-align:center; color:var(--secondary); margin-bottom:1rem;">📌 我的美食地圖</h3>
+                <p style="text-align:center; color:var(--text-light); font-size:0.9rem; margin-bottom:1.5rem;">加入你想去的餐廳，打造專屬美食地圖</p>
+                
+                <!-- Add Form -->
+                <div id="customFoodForm" class="custom-food-form" style="max-width:500px; margin:0 auto 1.5rem; background:var(--card-bg); padding:1.2rem; border-radius:12px; box-shadow:var(--shadow);">
+                    <div style="display:grid; grid-template-columns:60px 1fr; gap:0.8rem; margin-bottom:0.8rem;">
+                        <div>
+                            <label class="sr-only" for="customFoodEmoji">圖示</label>
+                            <select id="customFoodEmoji" style="width:100%; padding:0.6rem; border:2px solid var(--border-color); border-radius:8px; font-size:1.2rem; background:var(--bg);">
+                                <option value="🍣">🍣 壽司</option>
+                                <option value="🍜">🍜 拉麵</option>
+                                <option value="🥩">🥩 燒肉</option>
+                                <option value="🍱">🍱 便當</option>
+                                <option value="🍡">🍡 甜點</option>
+                                <option value="🍺">🍺 居酒屋</option>
+                                <option value="☕">☕ 咖啡</option>
+                                <option value="🍰">🍰 蛋糕</option>
+                                <option value="🥟">🥟 餃子</option>
+                                <option value="🍛">🍛 咖哩</option>
+                                <option value="🍩">🍩 甜甜圈</option>
+                                <option value="🧁">🧁 杯子蛋糕</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="sr-only" for="customFoodName">店名</label>
+                            <input type="text" id="customFoodName" placeholder="店名（如：一蘭拉麵）" style="width:100%; padding:0.6rem; border:2px solid var(--border-color); border-radius:8px; font-size:0.95rem; background:var(--bg);">
+                        </div>
+                    </div>
+                    <div style="margin-bottom:0.8rem;">
+                        <label class="sr-only" for="customFoodMapLink">Google Maps 連結</label>
+                        <input type="url" id="customFoodMapLink" placeholder="📍 貼上 Google Maps 連結（可選）" style="width:100%; padding:0.6rem; border:2px solid var(--border-color); border-radius:8px; font-size:0.9rem; background:var(--bg);" oninput="parseMapLink(this.value)">
+                        <p style="font-size:0.75rem; color:var(--text-light); margin-top:0.3rem;">從 Google Maps 複製連結貼上，可自動帶入店名和地點</p>
+                    </div>
+                    <div style="margin-bottom:0.8rem;">
+                        <label class="sr-only" for="customFoodImage">圖片網址</label>
+                        <input type="url" id="customFoodImage" placeholder="🖼️ 圖片網址（可選，如 Instagram/Facebook 圖片連結）" style="width:100%; padding:0.6rem; border:2px solid var(--border-color); border-radius:8px; font-size:0.9rem; background:var(--bg);">
+                        <p style="font-size:0.75rem; color:var(--text-light); margin-top:0.3rem;">貼上美食照片的圖片網址，讓地圖更豐富</p>
+                    </div>
+                    <div id="imagePreview" style="display:none; margin-bottom:0.8rem; text-align:center;">
+                        <img id="previewImg" style="max-width:100%; max-height:150px; border-radius:8px; object-fit:cover;" alt="預覽">
+                        <button onclick="clearImagePreview()" style="margin-top:0.3rem; background:none; border:none; color:var(--primary); cursor:pointer; font-size:0.8rem;">移除圖片</button>
+                    </div>
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.8rem; margin-bottom:0.8rem;">
+                        <div>
+                            <label class="sr-only" for="customFoodLocation">地點</label>
+                            <input type="text" id="customFoodLocation" placeholder="地點（如：新宿）" style="width:100%; padding:0.6rem; border:2px solid var(--border-color); border-radius:8px; font-size:0.9rem; background:var(--bg);">
+                        </div>
+                        <div>
+                            <label class="sr-only" for="customFoodHours">營業時間</label>
+                            <input type="text" id="customFoodHours" placeholder="營業時間（如：11:00-22:00）" style="width:100%; padding:0.6rem; border:2px solid var(--border-color); border-radius:8px; font-size:0.9rem; background:var(--bg);">
+                        </div>
+                    </div>
+                    <div style="margin-bottom:0.8rem;">
+                        <label class="sr-only" for="customFoodDesc">描述</label>
+                        <input type="text" id="customFoodDesc" placeholder="簡短描述（如：必點豚骨拉麵）" style="width:100%; padding:0.6rem; border:2px solid var(--border-color); border-radius:8px; font-size:0.9rem; background:var(--bg);">
+                    </div>
+                    <button onclick="addCustomFood()" style="width:100%; padding:0.7rem; background:var(--gradient); color:white; border:none; border-radius:8px; font-size:0.95rem; font-weight:600; cursor:pointer;">➕ 加入美食地圖</button>
+                </div>
+
+                <!-- Custom Food List -->
+                <div id="customFoodList" class="food-grid"></div>
+                <div id="customFoodEmpty" style="text-align:center; padding:2rem; color:var(--text-light); font-size:0.9rem;">
+                    <div style="font-size:3rem; margin-bottom:0.5rem;">🍜</div>
+                    <p style="margin-bottom:0.3rem;">還沒有新增任何美食</p>
+                    <p style="font-size:0.8rem;">快來添加你想去的餐廳吧！</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Tips Section -->
+    <section class="tips-section" id="tips">
+        <div class="container">
+            <div class="section-title">
+                <h2>📝 旅遊小提醒</h2>
+                <p>這些事情你一定要知道</p>
+            </div>
+            <div class="tips-grid">
+                <div class="tip-card"><h4><i class="fas fa-yen-sign"></i> 現金很重要</h4><p>日本很多地方不接受信用卡，特別是小店和餐廳。建議多換一些日幣現金，便利商店ATM可提領。</p></div>
+                <div class="tip-card"><h4><i class="fas fa-wifi"></i> 網路</h4><p>建議租借WiFi分享器或購買SIM卡。車站、便利商店有免費WiFi可用。</p></div>
+                <div class="tip-card"><h4><i class="fas fa-shoe-prints"></i> 穿著</h4><p>9月東京仍炎熱，建議穿輕便透氣衣物。進寺廟需脫鞋，穿容易穿脫的鞋子。</p></div>
+                <div class="tip-card"><h4><i class="fas fa-trash"></i> 垃圾</h4><p>日本街上垃圾桶很少，建議隨身攜帶塑膠袋，或在便利商店丟棄。</p></div>
+                <div class="tip-card"><h4><i class="fas fa-ban"></i> 電車禮儀</h4><p>電車上請勿講電話、大聲交談。優先席（博愛座）附近請將手機調靜音。</p></div>
+                <div class="tip-card"><h4><i class="fas fa-store"></i> 便利商店</h4><p>7-11、全家、Lawson 是你的好朋友！可繳費、買票、寄包裹、領錢。</p></div>
+                <div class="tip-card"><h4><i class="fas fa-water"></i> 天氣</h4><p>9月可能遇到颱風季，出發前留意天氣預報。午後常有雷陣雨，記得帶傘。</p></div>
+                <div class="tip-card"><h4><i class="fas fa-pills"></i> 藥品</h4><p>日本藥妝店可買到很多常備藥，但建議還是帶一些台灣常用的藥品。</p></div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Share Section -->
+    <section class="share-section">
+        <div class="container">
+            <h2 style="color: var(--secondary);">📤 分享與匯出</h2>
+            <p style="color: var(--text-light);">將這個行程分享給旅伴或列印帶出國</p>
+            <div class="share-buttons">
+                <button class="share-btn" onclick="nativeShare()" id="nativeShareBtn" style="background:linear-gradient(135deg,#667eea,#764ba2);color:white;display:none;"><i class="fas fa-share-alt"></i> 分享</button>
+                <button class="share-btn facebook" onclick="shareToFacebook()"><i class="fab fa-facebook-f"></i> Facebook</button>
+                <button class="share-btn line" onclick="shareToLine()"><i class="fab fa-line"></i> LINE</button>
+                <button class="share-btn twitter" onclick="shareToTwitter()"><i class="fab fa-twitter"></i> Twitter</button>
+                <button class="share-btn copy" onclick="copyTripLink()"><i class="fas fa-link"></i> 複製連結</button>
+                <button class="share-btn" onclick="window.print()" style="background:#6c757d;"><i class="fas fa-print"></i> 列印行程</button>
+            </div>
+        </div>
+    </section>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <h3>🗼 東京自由行 9/1-9/6</h3>
+        <p>期待這趟難忘的東京之旅！</p>
+        <p style="margin-top: 1rem; font-size: 0.9rem;">星宇航空 JX800/JX805 | 東武黎凡特飯店</p>
+        <div class="social">
+            <a href="#"><i class="fab fa-instagram"></i></a>
+            <a href="#"><i class="fab fa-facebook"></i></a>
+            <a href="#"><i class="fab fa-twitter"></i></a>
+        </div>
+        <p style="margin-top: 2rem; font-size: 0.8rem; opacity: 0.6;">Made with ❤️ for your Tokyo adventure</p>
+    </footer>
+
+    <!-- Floating Action Button -->
+    <div class="fab-container" id="fabContainer">
+            <div class="fab-menu" id="fabMenu">
+                <div class="fab-item" onclick="goToToday(); toggleFab();" style="background:var(--primary); color:white;"><i class="fas fa-calendar-day"></i> 今日行程</div>
+                <div class="fab-item" onclick="scrollToSection('flights')"><i class="fas fa-plane"></i> 航班</div>
+                <div class="fab-item" onclick="scrollToSection('transfer')"><i class="fas fa-bus"></i> 交通</div>
+                <div class="fab-item" onclick="scrollToSection('hotel')"><i class="fas fa-hotel"></i> 住宿</div>
+                <div class="fab-item" onclick="scrollToSection('routemap')"><i class="fas fa-map-marked-alt"></i> 路線圖</div>
+                <div class="fab-item" onclick="scrollToSection('map')"><i class="fas fa-map-pin"></i> 景點地圖</div>
+                <div class="fab-item" onclick="scrollToSection('itinerary')"><i class="fas fa-list"></i> 行程</div>
+                <div class="fab-item" onclick="scrollToSection('tools')"><i class="fas fa-tools"></i> 工具</div>
+                <div class="fab-item" onclick="scrollToSection('food')"><i class="fas fa-utensils"></i> 美食</div>
+                <div class="fab-item" onclick="scrollToSection('tips')"><i class="fas fa-lightbulb"></i> 提醒</div>
+            </div>
+        <button class="fab-main" onclick="toggleFab()" aria-label="快速導航"><i class="fas fa-plus"></i></button>
+    </div>
+
+    <!-- Scroll Progress -->
+    <div class="scroll-progress" id="scrollProgress"></div>
+
+    <!-- Back to Top -->
+    <button class="back-to-top" id="backToTop" onclick="window.scrollTo({top:0,behavior:'smooth'})"><i class="fas fa-arrow-up"></i></button>
+
+    <!-- Toast Notification -->
+    <div class="toast" id="toast" role="status" aria-live="polite"><i class="fas fa-check-circle" aria-hidden="true"></i> <span id="toastMsg"></span></div>
+
+    <script src="app.js"></script>
+</body>
+</html>

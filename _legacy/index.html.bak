@@ -1,69 +1,13 @@
-<!DOCTYPE html>
+﻿﻿﻿﻿﻿﻿<!DOCTYPE html>
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="東京自由行 9/1-9/6 六天五夜行程規劃 - 航班、住宿、交通、景點、美食推薦">
-    <meta name="theme-color" content="#e74c3c">
-    <meta name="author" content="Tokyo Trip Planner">
-    <!-- Open Graph -->
-    <meta property="og:type" content="website">
-    <meta property="og:title" content="東京自由行 9/1-9/6 六天五夜行程規劃">
-    <meta property="og:description" content="東京自由行 9/1-9/6 六天五夜行程規劃 - 航班、住宿、交通、景點、美食推薦">
-    <meta property="og:locale" content="zh_TW">
-    <meta property="og:image" content="icon.svg">
-    <!-- Twitter Card -->
-    <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="東京自由行 9/1-9/6 六天五夜行程規劃">
-    <meta name="twitter:description" content="東京自由行 9/1-9/6 六天五夜行程規劃 - 航班、住宿、交通、景點、美食推薦">
-    <meta name="twitter:image" content="icon.svg">
-    <!-- Canonical -->
-    <link rel="canonical" href="./index.html">
-    <!-- Meta Keywords -->
-    <meta name="keywords" content="東京自由行,東京行程,六天五夜,東京景點,東京美食,日本旅遊,東京交通,東京住宿">
-    <!-- PWA Manifest -->
-    <link rel="manifest" href="manifest.json">
-    <link rel="apple-touch-icon" href="icon.svg">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="mobile-web-app-capable" content="yes">
-    <!-- JSON-LD -->
-    <script type="application/ld+json">
-    {
-      "@context": "https://schema.org",
-      "@type": "TouristTrip",
-      "name": "東京自由行 9/1-9/6",
-      "description": "東京六天五夜行程規劃",
-      "itinerary": {
-        "@type": "ItemList",
-        "numberOfItems": 6,
-        "itemListElement": [
-          {"@type":"ListItem","position":1,"name":"Day 1 - 抵達東京"},
-          {"@type":"ListItem","position":2,"name":"Day 2 - 澀谷・新宿"},
-          {"@type":"ListItem","position":3,"name":"Day 3 - 秋葉原・東京車站"},
-          {"@type":"ListItem","position":4,"name":"Day 4 - 台場・豐洲"},
-          {"@type":"ListItem","position":5,"name":"Day 5 - 下北澤・吉祥寺"},
-          {"@type":"ListItem","position":6,"name":"Day 6 - 回家"}
-        ]
-      }
-    }
-    </script>
-
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">`r`n    <meta name="description" content="東京自由行 9/1-9/6 六天五夜行程規劃 - 航班、住宿、交通、景點、美食推薦">`r`n    <meta name="theme-color" content="#e74c3c">
     <title>🗼 東京自由行 9/1-9/6</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link rel="preconnect" href="https://cdnjs.cloudflare.com">
-    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" media="print" onload="this.media='all'">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&family=Zen+Maru+Gothic:wght@400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-
-        /* Skip Link */
-        .skip-link { position:absolute; top:-100px; left:0; background:var(--primary); color:white; padding:0.8rem 1.5rem; z-index:100000; font-weight:700; border-radius:0 0 8px 0; text-decoration:none; transition:top 0.3s; }
-        .skip-link:focus { top:0; }
-
-        /* Screen Reader Only */
-        .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 
         /* Loading Screen */
         .loading-screen {
@@ -74,11 +18,10 @@
             flex-direction: column;
             justify-content: center;
             align-items: center;
-            z-index: 10020;
-            animation: autoHideLoading 3s ease forwards;
+            z-index: 99999;
+            transition: opacity 0.8s ease, visibility 0.8s ease;
         }
         .loading-screen.hidden { opacity: 0; visibility: hidden; pointer-events: none; }
-        @keyframes autoHideLoading { 0%,70% { opacity: 1; } 100% { opacity: 0; visibility: hidden; pointer-events: none; } }
         .loading-tower { font-size: 5rem; animation: loadingPulse 1.2s ease infinite; }
         .loading-text { color: white; font-size: 1.2rem; margin-top: 1.5rem; letter-spacing: 3px; }
         .loading-bar { width: 200px; height: 4px; background: rgba(255,255,255,0.3); border-radius: 2px; margin-top: 1rem; overflow: hidden; }
@@ -108,7 +51,9 @@
             --shadow: 0 10px 40px rgba(0,0,0,0.1);
             --shadow-hover: 0 20px 60px rgba(0,0,0,0.15);
             --gradient: linear-gradient(135deg, #e74c3c 0%, #f39c12 100%);
-            --gradient-secondary: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --gradient-blue: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --gradient-green: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+            --gradient-sunset: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
             --border-color: #eee;
             --nav-bg: rgba(255,255,255,0.95);
             --toast-bg: #333;
@@ -254,20 +199,6 @@
 
         .scroll-indicator i { color: white; font-size: 2rem; opacity: 0.7; }
 
-        .hero-btn {
-            background: rgba(255,255,255,0.2);
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255,255,255,0.3);
-            color: white;
-            padding: 0.8rem 1.5rem;
-            border-radius: 25px;
-            cursor: pointer;
-            font-size: 1rem;
-            font-weight: 600;
-            transition: all 0.3s;
-        }
-        .hero-btn:hover { background: rgba(255,255,255,0.35); transform: translateY(-2px); }
-
         @keyframes fadeInUp {
             from { opacity: 0; transform: translateY(30px); }
             to { opacity: 1; transform: translateY(0); }
@@ -407,8 +338,8 @@
             transition: width 0.3s;
         }
 
-        .nav-links a:hover::after, .nav-links a.active::after { width: 100%; }
-        .nav-links a:hover, .nav-links a.active { color: var(--primary); }
+        .nav-links a:hover::after { width: 100%; }
+        .nav-links a:hover { color: var(--primary); }
 
         .container { max-width: 1200px; margin: 0 auto; padding: 0 2rem; }
 
@@ -425,7 +356,7 @@
             padding: 5rem 0;
         }
 
-        .flight-cards { display: grid; grid-template-columns: 1fr; gap: 1.5rem; }
+        .flight-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 2rem; }
 
         .flight-card {
             background: var(--card-bg);
@@ -435,7 +366,7 @@
             position: relative;
             overflow: hidden;
             transition: transform 0.4s cubic-bezier(.25,.46,.45,.94), box-shadow 0.4s ease, background 0.3s;
-            animation: fadeInUp 0.6s ease both;
+            animation: flipIn 0.6s ease both;
             border: 1px solid rgba(255,255,255,0.2);
         }
 
@@ -608,7 +539,7 @@
         .transport-section .section-title h2 { color: var(--secondary); }
         .transport-section .section-title p { color: var(--text-light); }
 
-        .transport-cards { display: grid; grid-template-columns: 1fr; gap: 1rem; }
+        .transport-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.5rem; }
 
         .transport-card {
             background: var(--card-bg);
@@ -664,6 +595,7 @@
             border-radius: 10px;
             font-size: 1.1rem;
             font-weight: 600;
+            animation: pulse 2s infinite;
             word-break: break-word;
         }
 
@@ -687,11 +619,10 @@
 
         .weather-day {
             text-align: center;
-            padding: 0.8rem;
+            padding: 0.5rem;
             background: var(--bg);
             border-radius: 10px;
-            min-width: 60px;
-            min-height: 48px;
+            min-width: 50px;
             cursor: pointer;
             transition: all 0.3s;
         }
@@ -916,7 +847,7 @@
         .budget-list-item .item-cat { font-size: 0.8rem; min-width: 20px; }
         .budget-list-item .item-name { flex: 1; }
         .budget-list-item .item-amount { font-weight: 700; min-width: 70px; text-align: right; }
-        .budget-list-item .delete-btn { background: none; border: none; color: var(--primary); cursor: pointer; font-size: 1.1rem; padding: 0.5rem; min-width: 44px; min-height: 44px; display: flex; align-items: center; justify-content: center; }
+        .budget-list-item .delete-btn { background: none; border: none; color: var(--primary); cursor: pointer; font-size: 1.1rem; padding: 0 0.3rem; }
         .budget-list-item:hover .delete-btn { color: white; }
 
         .budget-empty {
@@ -1051,16 +982,6 @@
             border-radius: 20px;
             font-size: 0.9rem;
             color: var(--primary);
-        }
-
-        .food-card .hours {
-            display: inline-block;
-            margin-top: 0.3rem;
-            padding: 0.2rem 0.6rem;
-            background: var(--bg);
-            border-radius: 20px;
-            font-size: 0.8rem;
-            color: var(--text-light);
         }
 
         /* Tips Section */
@@ -1223,7 +1144,7 @@
             left: 0;
             height: 3px;
             background: var(--gradient);
-            z-index: 10010;
+            z-index: 10001;
             transition: width 0.1s linear;
             box-shadow: 0 0 8px rgba(231,76,60,0.5);
         }
@@ -1296,11 +1217,6 @@
         html.dark .badge-recommended { background: #1a3a2a; color: #6bff8e; }
         html.dark .badge-fast { background: #1a2a3a; color: #6eb5ff; }
         html.dark .badge-cheap { background: #3a3020; color: #ffdb6e; }
-        html.dark .tag-food { background: #4a3a1a; color: #ffd700; }
-        html.dark .tag-spot { background: #2a3040; color: #a0b0c0; }
-        html.dark .tag-train { background: #1a3a3a; color: #5ecdc6; }
-        html.dark .tag-shopping { background: #4a2040; color: #ff8fb4; }
-        html.dark .tag-temple { background: #3a3050; color: #b0a0e0; }
 
         .transfer-card h4 { font-size: 1.3rem; font-weight: 700; color: var(--secondary); margin-bottom: 0.8rem; }
         .transfer-card .route-visual {
@@ -1438,7 +1354,7 @@
         }
 
         .station-chip {
-            padding: 0.6rem 1rem;
+            padding: 0.4rem 0.9rem;
             border-radius: 20px;
             font-size: 0.95rem;
             font-weight: 500;
@@ -1447,7 +1363,6 @@
             border: 1px solid var(--border-color);
             transition: all 0.3s;
             cursor: default;
-            min-height: 44px;
         }
 
         .station-chip.key-station {
@@ -1463,236 +1378,37 @@
 
         /* Responsive */
         @media (max-width: 768px) {
-            * { -webkit-tap-highlight-color: transparent; }
-            
-            .container { padding: 0 12px; max-width: 100%; }
-            .section { padding: 2rem 0; }
-            .section-title { margin-bottom: 1.5rem; }
-            .section-title h2 { font-size: 1.6rem; letter-spacing: 0.5px; }
-            .section-title h2::after { width: 50px; height: 3px; bottom: -8px; }
-            .section-title p { font-size: 0.9rem; margin-top: 0.8rem; }
-            
-            /* Hero */
-            .hero { min-height: 100svh; padding: 1rem; }
-            .hero h1 { font-size: 2rem; margin-bottom: 0.6rem; }
-            .hero .subtitle { font-size: 0.95rem; margin-bottom: 1rem; }
-            .hero .dates { font-size: 1rem; padding: 0.6rem 1rem; border-radius: 25px; }
-            .countdown { gap: 0.5rem; margin-top: 1rem; flex-wrap: nowrap; }
-            .countdown-item { padding: 0.4rem 0.6rem; min-width: 0; flex: 1; border-radius: 10px; }
-            .countdown-item .number { font-size: 1.8rem; }
-            .countdown-item .label { font-size: 0.8rem; }
-            .scroll-indicator { bottom: 1rem; }
-            .scroll-indicator i { font-size: 1.5rem; }
-            
-            /* Nav - hidden on mobile, use FAB instead */
-            .nav { display: none !important; }
-            .hamburger { display: none !important; }
-            .mobile-nav { display: none !important; }
-            .scroll-progress { display: none !important; }
-            
-            /* Flight */
-            .flight-card { padding: 1rem; border-radius: 12px; }
-            .flight-card h3 { font-size: 1rem; margin-bottom: 0.6rem; }
-            .flight-card .airline { font-size: 0.85rem; margin-bottom: 0.5rem; }
-            .flight-route { margin: 0.8rem 0; gap: 0.5rem; }
-            .flight-point .code { font-size: 1.4rem; }
-            .flight-point .city { font-size: 0.8rem; }
-            .flight-point .time { font-size: 1.1rem; }
-            .flight-line { margin: 0 0.5rem; }
-            .flight-line::before { font-size: 1rem; }
-            .flight-duration { font-size: 0.85rem; margin-top: 0.3rem; }
-            
-            /* Hotel */
-            .hotel-card { padding: 1rem; gap: 1rem; border-radius: 12px; }
-            .hotel-info h3 { font-size: 1.2rem; margin-bottom: 0.5rem; }
-            .hotel-info p { font-size: 0.9rem; margin-bottom: 0.5rem; }
-            .hotel-features { gap: 0.3rem; margin-top: 0.8rem; }
-            .hotel-feature { padding: 0.3rem 0.7rem; font-size: 0.85rem; border-radius: 12px; }
-            .hotel-map iframe { height: 200px; }
-            
-            /* Tabs */
-            .tabs { gap: 0.3rem; margin-bottom: 1rem; }
-            .tab-btn { padding: 0.5rem 0.8rem; font-size: 0.8rem; border-radius: 15px; }
-            
-            /* Itinerary */
-            .day-header { padding: 0.8rem 1rem; border-radius: 10px 10px 0 0; }
-            .day-header h3 { font-size: 1rem; }
-            .day-header .date { font-size: 0.85rem; }
-            .day-content { padding: 0.8rem; }
-            .day-content.expanded { padding: 0.8rem; }
-            .activity { gap: 0.6rem; padding: 0.6rem 0; }
-            .activity-time { min-width: 55px; font-size: 0.85rem; }
-            .activity-info h4 { font-size: 0.95rem; margin-bottom: 0.2rem; }
-            .activity-info p { font-size: 0.85rem; line-height: 1.4; }
-            .activity-tag { padding: 0.15rem 0.5rem; font-size: 0.75rem; }
-            
-            /* Transport */
-            .transport-card { padding: 1rem; border-radius: 10px; }
-            .transport-card h4 { font-size: 1rem; margin-bottom: 0.5rem; }
-            .transport-card p { font-size: 0.85rem; line-height: 1.5; }
-            
-            /* Transfer */
-            .transfer-card { padding: 1rem; border-radius: 10px; }
-            .transfer-card h4 { font-size: 1rem; }
-            .transfer-card .route-visual { padding: 0.4rem; gap: 0.2rem; font-size: 0.8rem; border-radius: 8px; }
-            .transfer-card .route-visual .station { font-size: 0.7rem; padding: 0.2rem 0.4rem; border-radius: 5px; }
-            .transfer-card .route-visual .arrow { font-size: 0.75rem; }
-            .transfer-card .detail-row { padding: 0.4rem 0; font-size: 0.85rem; }
-            .transfer-steps { margin-top: 0.8rem; padding: 0.8rem; }
-            .transfer-steps h5 { font-size: 0.9rem; margin-bottom: 0.5rem; }
-            .step { font-size: 0.85rem; gap: 0.5rem; padding: 0.3rem 0; }
-            .step-num { width: 20px; height: 20px; font-size: 0.7rem; }
-            
-            /* Metro Route */
-            .metro-line { padding: 0.8rem 0 0.8rem 2rem; margin-left: 0.8rem; margin-bottom: 1rem; }
-            .metro-line-header { width: 36px; height: 36px; font-size: 0.8rem; left: -0.8rem; }
-            .metro-line-name { font-size: 1rem; margin-bottom: 0.3rem; }
-            .metro-line-desc { font-size: 0.85rem; margin-bottom: 0.5rem; }
-            .station-chip { padding: 0.3rem 0.6rem; font-size: 0.8rem; border-radius: 12px; }
-            .station-arrow { font-size: 0.7rem; }
-            
-            /* Map */
-            .map-container { border-radius: 12px; overflow: hidden; }
-            .map-container > div:first-child { height: 300px; }
-            .map-legend { padding: 0.8rem; gap: 0.4rem; }
-            .map-legend-item { font-size: 0.75rem; padding: 0.25rem 0.5rem; border-radius: 10px; }
-            
-            /* Tools */
-            .converter-box { padding: 1rem; border-radius: 12px; }
-            .converter-input input { padding: 0.6rem; font-size: 0.9rem; }
-            .converter-result { padding: 0.7rem; font-size: 0.9rem; }
-            .weather-widget { padding: 0.8rem; border-radius: 12px; }
-            .weather-temp { font-size: 2rem; }
-            .weather-day { min-width: 42px; padding: 0.3rem; }
-            .weather-day .day-icon { font-size: 1rem; }
-            .weather-day .day-temp { font-size: 0.8rem; }
-            .weather-day .day-label { font-size: 0.7rem; }
-            
-            /* Checklist */
-            .checklist { padding: 1rem; border-radius: 12px; }
-            .checklist h4 { font-size: 1rem; margin-bottom: 0.5rem; }
-            .checklist-item { padding: 0.4rem 0; }
-            .checklist-item input[type="checkbox"] { width: 18px; height: 18px; }
-            .checklist-item label { font-size: 0.85rem; }
-            
-            /* Budget */
-            .budget-tracker { padding: 1rem; border-radius: 12px; }
-            .budget-input-row { flex-direction: column; gap: 0.5rem; }
-            .budget-input-row input, .budget-input-row select { width: 100%; padding: 0.7rem; font-size: 0.9rem; }
-            .budget-btn { width: 100%; }
-            .budget-btn { padding: 0.6rem 1rem; font-size: 0.85rem; }
-            .budget-summary { gap: 0.5rem; margin: 0.8rem 0; }
-            .budget-item { padding: 0.6rem; }
-            .budget-item .amount { font-size: 1.2rem; }
-            .budget-list-item { padding: 0.5rem 0.6rem; font-size: 0.85rem; }
-            
-            /* Food */
-            .food-grid { grid-template-columns: 1fr 1fr; gap: 0.6rem; }
-            .food-card { padding: 0.8rem; border-radius: 10px; }
-            .food-card .emoji { font-size: 1.8rem; margin-bottom: 0.4rem; }
-            .food-card h4 { font-size: 0.9rem; margin-bottom: 0.2rem; }
-            .food-card p { font-size: 0.8rem; line-height: 1.3; }
-            .food-card .location { font-size: 0.7rem; padding: 0.2rem 0.5rem; margin-top: 0.3rem; }
-            .food-card .hours { font-size: 0.65rem; padding: 0.15rem 0.4rem; }
-            
-            /* Tips */
+            .hero h1 { font-size: 2.5rem; }
+            .hero .subtitle { font-size: 1.1rem; }
+            .hero .dates { font-size: 1.3rem; padding: 0.8rem 1.5rem; }
+            .countdown { flex-wrap: wrap; }
+            .hotel-card { grid-template-columns: 1fr; }
+            .nav-links { display: none; }
+            .nav { transform: translateY(0); background: var(--nav-bg); }
+            .hamburger { display: flex; }
+            .mobile-nav { display: flex; }
+            .flight-route { flex-direction: column; gap: 1rem; }
+            .flight-line { width: 2px; height: 30px; margin: 0; }
+            .flight-line::before { content: '↓'; }
+            .budget-summary { grid-template-columns: 1fr; }
+            .budget-input-row { flex-direction: column; }
+            .budget-input-row input, .budget-input-row select { min-width: 100%; }
+            .budget-chart-area { flex-direction: column; align-items: center; }
+            .section-title h2 { font-size: 2.2rem; }
+            .section-title p { font-size: 1rem; }
+            .transfer-card .route-visual { gap: 0.3rem; padding: 0.6rem; }
+            .transfer-card .route-visual .station { font-size: 0.75rem; padding: 0.3rem 0.5rem; }
+            .transfer-card .route-visual .arrow { font-size: 0.9rem; }
+            .map-container iframe { height: 350px; }
+            .food-grid { grid-template-columns: 1fr 1fr; }
             .tips-grid { grid-template-columns: 1fr; }
-            .tip-card { padding: 0.8rem; border-radius: 10px; border-left-width: 3px; }
-            .tip-card h4 { font-size: 0.9rem; margin-bottom: 0.3rem; }
-            .tip-card p { font-size: 0.85rem; line-height: 1.4; }
-            
-            /* Emergency */
-            .emergency-grid { grid-template-columns: 1fr; gap: 0.5rem; }
-            .emergency-card { padding: 0.7rem 0.8rem; border-radius: 8px; }
-            .emergency-card i { font-size: 1.2rem; }
-            .emergency-card .info h5 { font-size: 0.85rem; }
-            .emergency-card .info p { font-size: 1rem; }
-            
-            /* Share */
-            .share-section { padding: 1.5rem 0; }
-            .share-section h2 { font-size: 1.3rem; }
-            .share-buttons { gap: 0.4rem; }
-            .share-btn { padding: 0.5rem 0.8rem; font-size: 0.8rem; border-radius: 15px; }
-            
-            /* Footer */
-            .footer { padding: 1.5rem 1rem; }
-            .footer h3 { font-size: 1.1rem; }
-            .footer p { font-size: 0.85rem; }
-            
-            /* FAB */
-            .fab-container { bottom: 0.8rem; right: 0.8rem; }
-            .fab-main { width: 44px; height: 44px; font-size: 1rem; }
-            .fab-menu { bottom: 55px; }
-            .fab-item { padding: 0.35rem 0.6rem; font-size: 0.75rem; border-radius: 15px; }
-            
-            /* Back to top */
-            .back-to-top { bottom: 0.8rem; left: 0.8rem; width: 36px; height: 36px; font-size: 1rem; }
-            
-            /* Toast */
-            .toast { padding: 0.6rem 1rem; font-size: 0.85rem; bottom: 1rem; border-radius: 8px; }
-            
-            /* Quick links */
-            .quick-links { gap: 0.4rem; }
-            .quick-link { padding: 0.5rem 0.8rem; font-size: 0.8rem; border-radius: 15px; }
-            
-            /* Tools row */
-            .tools-row { grid-template-columns: 1fr !important; gap: 0.8rem !important; }
-            .tools-row h3 { font-size: 1rem; }
-        }
-
-        @media (max-width: 380px) {
-            .hero h1 { font-size: 1.6rem; }
-            .hero .dates { font-size: 0.9rem; padding: 0.5rem 0.8rem; }
-            .countdown-item { padding: 0.3rem 0.4rem; flex: 1; }
-            .countdown-item .number { font-size: 1.5rem; }
-            .food-grid { grid-template-columns: 1fr; }
-            .share-btn { font-size: 0.75rem; padding: 0.4rem 0.6rem; }
-            .tab-btn { padding: 0.4rem 0.6rem; font-size: 0.75rem; }
-        }
-    
-        /* Reduced Motion */
-        @media (prefers-reduced-motion: reduce) {
-            *, *::before, *::after {
-                animation-duration: 0.01ms !important;
-                animation-iteration-count: 1 !important;
-                transition-duration: 0.01ms !important;
-                scroll-behavior: auto !important;
-            }
-            .reveal, .reveal-left, .reveal-right, .reveal-scale {
-                opacity: 1 !important;
-                transform: none !important;
-            }
-            #particles { display: none; }
-            .loading-screen { display: none; }
-        }
-
-        /* Print Styles */
-        @media print {
-            body { background: white !important; color: black !important; }
-            .loading-screen, #particles, .nav, .mobile-nav, .fab-container, 
-            .back-to-top, .scroll-progress, .toast, .share-section, .footer,
-            .dark-toggle, .scroll-indicator, .hero .dates, .countdown { display: none !important; }
-            .hero { min-height: auto !important; padding: 2rem !important; background: none !important; }
-            .hero h1 { color: black !important; -webkit-text-fill-color: black !important; font-size: 2rem !important; }
-            .hero .subtitle { color: #333 !important; }
-            .section { padding: 2rem 0 !important; }
-            .section-title h2 { color: black !important; }
-            .section-title h2::after { background: black !important; }
-            .card, .flight-card, .hotel-card, .transfer-card, .transport-card,
-            .food-card, .tip-card, .emergency-card { box-shadow: none !important; border: 1px solid #ddd !important; }
-            .day-content { max-height: none !important; opacity: 1 !important; padding: 1rem !important; }
-            .tab-content { display: block !important; page-break-inside: avoid; }
-            .tab-btn { display: none !important; }
-            a { color: black !important; text-decoration: underline !important; }
-            .reveal, .reveal-left, .reveal-right, .reveal-scale { opacity: 1 !important; transform: none !important; }
-            .map-container { page-break-inside: avoid; }
-            .converter-box, .weather-widget, .checklist, .budget-tracker { page-break-inside: avoid; }
+            .transfer-options { grid-template-columns: 1fr; }
+            .fab-container { display: none; }
+            .back-to-top { bottom: 1.5rem; left: 1.5rem; width: 40px; height: 40px; }
         }
     </style>
 </head>
 <body>
-    <a href="#main-content" class="skip-link">Skip to main content / 跳到主要內容</a>
-    <main id="main-content" role="main">
     <!-- Loading Screen -->
     <div class="loading-screen" id="loadingScreen">
         <div class="loading-tower">🗼</div>
@@ -1705,39 +1421,36 @@
     <!-- Navigation -->
     <nav class="nav" id="navbar">
         <a class="nav-logo" href="#hero">🗼 東京自由行</a>
-        <button class="hamburger" id="hamburger" onclick="toggleMobileNav()" aria-label="開啟選單" aria-expanded="false" aria-controls="mobileNav">
+        <div class="hamburger" id="hamburger" onclick="toggleMobileNav()">
             <span></span><span></span><span></span>
-        </button>
+        </div>
         <div class="nav-links">
-            <a href="#flights" data-section="flights">航班資訊</a>
-            <a href="#transfer" data-section="transfer">機場交通</a>
-            <a href="#hotel" data-section="hotel">住宿</a>
-            <a href="#routemap" data-section="routemap">路線圖</a>
-            <a href="#map" data-section="map">景點地圖</a>
-            <a href="#itinerary" data-section="itinerary">行程</a>
-            <a href="#tools" data-section="tools">實用工具</a>
-            <a href="#food" data-section="food">美食</a>
-            <a href="#tips" data-section="tips">小提醒</a>
+            <a href="#flights">航班資訊</a>
+            <a href="#transfer">機場交通</a>
+            <a href="#hotel">住宿</a>
+            <a href="#routemap">路線圖</a>
+            <a href="#map">景點地圖</a>
+            <a href="#itinerary">行程</a>
+            <a href="#tools">實用工具</a>
+            <a href="#food">美食</a>
+            <a href="#tips">小提醒</a>
             <button class="dark-toggle" onclick="toggleDarkMode()" title="切換深色/淺色模式" aria-label="切換深色/淺色模式">
                 <span id="themeIcon">🌙</span>
-            </button>
-            <button class="dark-toggle" onclick="toggleLanguage()" title="切換語言" aria-label="切換語言" style="font-size:1rem;">
-                <span id="langIcon">🇹🇼</span>
             </button>
         </div>
     </nav>
 
     <!-- Mobile Nav Overlay -->
     <div class="mobile-nav" id="mobileNav">
-        <a href="#flights" data-section="flights" onclick="closeMobileNav()">✈️ 航班資訊</a>
-        <a href="#transfer" data-section="transfer" onclick="closeMobileNav()">🚌 機場交通</a>
-        <a href="#hotel" data-section="hotel" onclick="closeMobileNav()">🏨 住宿</a>
-        <a href="#routemap" data-section="routemap" onclick="closeMobileNav()">🗺️ 路線圖</a>
-        <a href="#map" data-section="map" onclick="closeMobileNav()">📍 景點地圖</a>
-        <a href="#itinerary" data-section="itinerary" onclick="closeMobileNav()">📋 行程</a>
-        <a href="#tools" data-section="tools" onclick="closeMobileNav()">🛠️ 實用工具</a>
-        <a href="#food" data-section="food" onclick="closeMobileNav()">🍜 美食</a>
-        <a href="#tips" data-section="tips" onclick="closeMobileNav()">📝 小提醒</a>
+        <a href="#flights" onclick="closeMobileNav()">✈️ 航班資訊</a>
+        <a href="#transfer" onclick="closeMobileNav()">🚌 機場交通</a>
+        <a href="#hotel" onclick="closeMobileNav()">🏨 住宿</a>
+        <a href="#routemap" onclick="closeMobileNav()">🗺️ 路線圖</a>
+        <a href="#map" onclick="closeMobileNav()">📍 景點地圖</a>
+        <a href="#itinerary" onclick="closeMobileNav()">📋 行程</a>
+        <a href="#tools" onclick="closeMobileNav()">🛠️ 實用工具</a>
+        <a href="#food" onclick="closeMobileNav()">🍜 美食</a>
+        <a href="#tips" onclick="closeMobileNav()">📝 小提醒</a>
         <button class="mobile-dark-toggle" onclick="toggleDarkMode(); closeMobileNav();">
             <span id="mobileThemeIcon">🌙</span>
         </button>
@@ -1747,7 +1460,7 @@
     <section class="hero">
         <div class="hero-content">
             <h1>🗼 東京自由行</h1>
-            <p class="subtitle">與毓寧的第一次愛的旅行</p>
+            <p class="subtitle">探索日本首都的魅力與風情</p>
             <div class="dates">📅 2026年9月1日 - 9月6日</div>
             <div class="countdown" id="countdown">
                 <div class="countdown-item">
@@ -1766,11 +1479,6 @@
                     <div class="number" id="seconds">--</div>
                     <div class="label">秒</div>
                 </div>
-            </div>
-            <div style="margin-top:2rem;">
-                <button class="hero-btn" onclick="goToToday()">
-                    📋 查看今日行程
-                </button>
             </div>
         </div>
         <div class="scroll-indicator">
@@ -1828,12 +1536,12 @@
         </div>
     </section>
 
-    <!-- Transportation Guide -->
+    <!-- Airport Transfer Guide -->
     <section class="transfer-section" id="transfer">
         <div class="container">
             <div class="section-title">
-                <h2>🚃 交通攻略</h2>
-                <p>機場往返 + 市內交通完整指南</p>
+                <h2>🚌 機場到飯店交通指南</h2>
+                <p>成田機場 → 東武黎凡特飯店（錦系町）</p>
             </div>
             <div class="transfer-options">
                 <!-- Option A: JR Direct -->
@@ -1929,25 +1637,6 @@
                     </div>
                 </div>
             </div>
-
-            <!-- City Transport -->
-            <div style="margin-top: 3rem;">
-                <h3 style="text-align: center; color: var(--secondary); margin-bottom: 1.5rem;">🏙️ 市內交通</h3>
-                <div class="transport-cards">
-                    <div class="transport-card">
-                        <h4><i class="fas fa-subway"></i> 地鐵一日券</h4>
-                        <p>Tokyo Subway Ticket（觀光客專用）24小時 ¥1,000、48小時 ¥1,500、72小時 ¥2,000，可搭乘 Metro + 都營全部路線。建議購買 Suica 或 Pasmo 卡，方便搭乘所有交通工具。</p>
-                    </div>
-                    <div class="transport-card">
-                        <h4><i class="fas fa-walking"></i> 飯店周邊</h4>
-                        <p>飯店在錦系町站附近，步行 5 分鐘。JR 總武線可到東京站、新宿、澀谷。東武線可到淺草、晴空塔。</p>
-                    </div>
-                    <div class="transport-card">
-                        <h4><i class="fas fa-ticket-alt"></i> Suica/Pasmo</h4>
-                        <p>可搭乘JR、地鐵、公車，也可在便利商店消費。建議在機場購買或使用手機版。</p>
-                    </div>
-                </div>
-            </div>
         </div>
     </section>
 
@@ -1973,7 +1662,7 @@
                         <span class="hotel-feature">🧺 洗衣服務</span>
                     </div>
                     <div style="margin-top: 1.5rem;">
-                        <a href="https://tc.tobuhotel.co.jp/levant/" target="_blank" rel="noopener noreferrer" class="quick-link" style="display: inline-flex;">
+                        <a href="https://tc.tobuhotel.co.jp/levant/" target="_blank" class="quick-link" style="display: inline-flex;">
                             <i class="fas fa-globe"></i> 官方網站
                         </a>
                     </div>
@@ -2139,13 +1828,7 @@
                 <p>所有景點位置一覽，點擊查看簡介</p>
             </div>
             <div class="map-container">
-                <div style="position:relative; width:100%; height:500px; background:linear-gradient(180deg, #e8f4f8 0%, #d4eaf0 100%); overflow:hidden; touch-action: pan-x pan-y pinch-zoom;" id="mapSvg">
-                    <!-- Zoom Controls -->
-                    <div style="position:absolute; top:10px; right:10px; z-index:10; display:flex; flex-direction:column; gap:5px;">
-                        <button onclick="zoomMap(1.2)" style="width:36px; height:36px; border-radius:50%; border:none; background:var(--card-bg); box-shadow:0 2px 8px rgba(0,0,0,0.2); cursor:pointer; font-size:1.2rem; display:flex; align-items:center; justify-content:center;">+</button>
-                        <button onclick="zoomMap(0.8)" style="width:36px; height:36px; border-radius:50%; border:none; background:var(--card-bg); box-shadow:0 2px 8px rgba(0,0,0,0.2); cursor:pointer; font-size:1.2rem; display:flex; align-items:center; justify-content:center;">−</button>
-                        <button onclick="resetMapZoom()" style="width:36px; height:36px; border-radius:50%; border:none; background:var(--card-bg); box-shadow:0 2px 8px rgba(0,0,0,0.2); cursor:pointer; font-size:0.8rem; display:flex; align-items:center; justify-content:center;">↺</button>
-                    </div>
+                <div style="position:relative; width:100%; height:500px; background:linear-gradient(180deg, #e8f4f8 0%, #d4eaf0 100%); overflow:hidden;" id="mapSvg">
                     <!-- Simplified Tokyo Map -->
                     <svg viewBox="0 0 800 500" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
                         <!-- Water bodies -->
@@ -2300,7 +1983,7 @@
         <div class="container">
             <div class="section-title">
                 <h2>📋 行程規劃</h2>
-                <p>自訂你的東京之旅（點擊展開/收合）</p>
+                <p>6 天 5 夜精彩東京之旅（點擊展開/收合）</p>
             </div>
 
             <div class="tabs">
@@ -2310,49 +1993,139 @@
                 <button class="tab-btn" onclick="showTab('day4', this)">Day 4</button>
                 <button class="tab-btn" onclick="showTab('day5', this)">Day 5</button>
                 <button class="tab-btn" onclick="showTab('day6', this)">Day 6</button>
-                <button class="tab-btn" onclick="toggleAllDays()" style="background:var(--secondary); color:white;">📖 全部展開</button>
-                <button class="tab-btn" onclick="resetItinerary()" style="background:#e74c3c; color:white;">↺ 重置</button>
             </div>
 
-            <div id="itineraryContainer"></div>
+            <div class="tab-content active" id="day1">
+                <div class="day-header" onclick="toggleDay(this)">
+                    <h3>🛬 Day 1 - 抵達東京</h3>
+                    <span class="date">9/1 (二) <i class="fas fa-chevron-down"></i></span>
+                </div>
+                <div class="day-content">
+                    <div class="activity"><div class="activity-time">12:55</div><div class="activity-info"><h4>抵達成田機場</h4><p>辦理入境手續、領取行李</p><span class="activity-tag tag-train">交通</span></div></div>
+                    <div class="activity"><div class="activity-time">14:30</div><div class="activity-info"><h4>前往飯店</h4><p>搭建成田特快 N'EX 或 Skyliner → 錦系町站</p><span class="activity-tag tag-train">交通</span></div></div>
+                    <div class="activity"><div class="activity-time">16:00</div><div class="activity-info"><h4>飯店 Check-in / 寄放行李</h4><p>東武黎凡特飯店，先寄放行李</p></div></div>
+                    <div class="activity"><div class="activity-time">16:30</div><div class="activity-info"><h4>淺草寺・雷門</h4><p>東京最古老的寺廟，仲見世通商店街買零食</p><span class="activity-tag tag-temple">景點</span></div></div>
+                    <div class="activity"><div class="activity-time">18:30</div><div class="activity-info"><h4>晴空塔 Sky Tree</h4><p>東京最高建築物，350m 或 450m 展望台欣赏夜景</p><span class="activity-tag tag-spot">景點</span></div></div>
+                    <div class="activity"><div class="activity-time">20:00</div><div class="activity-info"><h4>晚餐：淺草老字號天婦羅</h4><p>大黑家天婦羅 或 木村家人形燒</p><span class="activity-tag tag-food">美食</span></div></div>
+                    <div class="activity"><div class="activity-time">21:30</div><div class="activity-info"><h4>回飯店休息</h4><p>享受大浴場，為明天養精蓄銳</p></div></div>
+                </div>
+            </div>
+
+            <div class="tab-content" id="day2">
+                <div class="day-header" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);" onclick="toggleDay(this)">
+                    <h3>⛩️ Day 2 - 澀谷・新宿</h3>
+                    <span class="date">9/2 (三) <i class="fas fa-chevron-down"></i></span>
+                </div>
+                <div class="day-content">
+                    <div class="activity"><div class="activity-time">08:00</div><div class="activity-info"><h4>飯店早餐</h4><p>享用豐富的日式早餐</p><span class="activity-tag tag-food">美食</span></div></div>
+                    <div class="activity"><div class="activity-time">09:30</div><div class="activity-info"><h4>明治神宮</h4><p>東京最大的神社，散步於森林參道</p><span class="activity-tag tag-temple">景點</span></div></div>
+                    <div class="activity"><div class="activity-time">11:30</div><div class="activity-info"><h4>原宿竹下通</h4><p>年輕人潮流聖地，個性小店與甜點</p><span class="activity-tag tag-shopping">購物</span></div></div>
+                    <div class="activity"><div class="activity-time">13:00</div><div class="activity-info"><h4>午餐：澀谷拉麵</h4><p>一蘭拉麵 或 麺屋一蘭</p><span class="activity-tag tag-food">美食</span></div></div>
+                    <div class="activity"><div class="activity-time">14:30</div><div class="activity-info"><h4>澀谷 Scramble Square</h4><p>Sky 展望台，俯瞰澀谷十字路口</p><span class="activity-tag tag-spot">景點</span></div></div>
+                    <div class="activity"><div class="activity-time">16:00</div><div class="activity-info"><h4>忠犬八公像</h4><p>澀谷地標，拍照留念</p><span class="activity-tag tag-spot">景點</span></div></div>
+                    <div class="activity"><div class="activity-time">17:00</div><div class="activity-info"><h4>新宿御苑</h4><p>都市中的綠洲，欣賞日式庭園</p><span class="activity-tag tag-spot">景點</span></div></div>
+                    <div class="activity"><div class="activity-time">19:00</div><div class="activity-info"><h4>晚餐：新宿思出橫丁</h4><p>懷舊小巷，各式串燒與關東煮</p><span class="activity-tag tag-food">美食</span></div></div>
+                    <div class="activity"><div class="activity-time">21:00</div><div class="activity-info"><h4>歌舞伎町散步</h4><p>東京不夜城，體驗夜生活氛圍</p><span class="activity-tag tag-spot">景點</span></div></div>
+                </div>
+            </div>
+
+            <div class="tab-content" id="day3">
+                <div class="day-header" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);" onclick="toggleDay(this)">
+                    <h3>🏰 Day 3 - 秋葉原・東京車站</h3>
+                    <span class="date">9/3 (四) <i class="fas fa-chevron-down"></i></span>
+                </div>
+                <div class="day-content">
+                    <div class="activity"><div class="activity-time">08:00</div><div class="activity-info"><h4>飯店早餐</h4><p>享用豐富的日式早餐</p><span class="activity-tag tag-food">美食</span></div></div>
+                    <div class="activity"><div class="activity-time">09:30</div><div class="activity-info"><h4>秋葉原電氣街</h4><p>動漫、電器、女僕咖啡廳</p><span class="activity-tag tag-shopping">購物</span></div></div>
+                    <div class="activity"><div class="activity-time">12:00</div><div class="activity-info"><h4>午餐：秋葉原女僕咖啡廳</h4><p>體驗道地日本女僕文化</p><span class="activity-tag tag-food">美食</span></div></div>
+                    <div class="activity"><div class="activity-time">14:00</div><div class="activity-info"><h4>東京車站一番街</h4><p>地下街購物、動漫人物街</p><span class="activity-tag tag-shopping">購物</span></div></div>
+                    <div class="activity"><div class="activity-time">15:30</div><div class="activity-info"><h4>皇居外苑</h4><p>二重橋、江戶城遺跡散步</p><span class="activity-tag tag-spot">景點</span></div></div>
+                    <div class="activity"><div class="activity-time">17:00</div><div class="activity-info"><h4>銀座逛街</h4><p>東京最高級的商店街</p><span class="activity-tag tag-shopping">購物</span></div></div>
+                    <div class="activity"><div class="activity-time">19:00</div><div class="activity-info"><h4>晚餐：銀座壽司</h4><p>筑地外市場或銀座壽司名店</p><span class="activity-tag tag-food">美食</span></div></div>
+                    <div class="activity"><div class="activity-time">21:00</div><div class="activity-info"><h4>東京車站夜景</h4><p>紅磚車站的夜間照明非常美麗</p><span class="activity-tag tag-spot">景點</span></div></div>
+                </div>
+            </div>
+
+            <div class="tab-content" id="day4">
+                <div class="day-header" style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);" onclick="toggleDay(this)">
+                    <h3>🌊 Day 4 - 台場・豐洲</h3>
+                    <span class="date">9/4 (五) <i class="fas fa-chevron-down"></i></span>
+                </div>
+                <div class="day-content">
+                    <div class="activity"><div class="activity-time">08:00</div><div class="activity-info"><h4>飯店早餐</h4><p>享用豐富的日式早餐</p><span class="activity-tag tag-food">美食</span></div></div>
+                    <div class="activity"><div class="activity-time">09:30</div><div class="activity-info"><h4>豐洲市場</h4><p>新鮮海鮮早餐，體驗築地遷移後的市場</p><span class="activity-tag tag-food">美食</span></div></div>
+                    <div class="activity"><div class="activity-time">11:30</div><div class="activity-info"><h4>台場海濱公園</h4><p>自由女神、彩虹大橋、海邊散步</p><span class="activity-tag tag-spot">景點</span></div></div>
+                    <div class="activity"><div class="activity-time">13:00</div><div class="activity-info"><h4>午餐：台場海鮮</h4><p>Aqua City 或 Decks 的海鮮餐廳</p><span class="activity-tag tag-food">美食</span></div></div>
+                    <div class="activity"><div class="activity-time">14:30</div><div class="activity-info"><h4>DiverCity Tokyo Plaza</h4><p>1:1 鋼彈模型、購物中心</p><span class="activity-tag tag-spot">景點</span></div></div>
+                    <div class="activity"><div class="activity-time">16:30</div><div class="activity-info"><h4>teamLab Borderless</h4><p>沉浸式數位藝術體驗（需預約）</p><span class="activity-tag tag-spot">景點</span></div></div>
+                    <div class="activity"><div class="activity-time">19:00</div><div class="activity-info"><h4>晚餐：台場燒肉</h4><p>欣賞彩虹大橋夜景的燒肉店</p><span class="activity-tag tag-food">美食</span></div></div>
+                    <div class="activity"><div class="activity-time">21:00</div><div class="activity-info"><h4>台場夜景</h4><p>摩天輪、自由女神夜間燈光</p><span class="activity-tag tag-spot">景點</span></div></div>
+                </div>
+            </div>
+
+            <div class="tab-content" id="day5">
+                <div class="day-header" style="background: linear-gradient(135deg, #a18cd1 0%, #fbc2eb 100%);" onclick="toggleDay(this)">
+                    <h3>🌸 Day 5 - 下北澤・吉祥寺</h3>
+                    <span class="date">9/5 (六) <i class="fas fa-chevron-down"></i></span>
+                </div>
+                <div class="day-content">
+                    <div class="activity"><div class="activity-time">08:00</div><div class="activity-info"><h4>飯店早餐</h4><p>享用豐富的日式早餐</p><span class="activity-tag tag-food">美食</span></div></div>
+                    <div class="activity"><div class="activity-time">09:30</div><div class="activity-info"><h4>下北澤古著街</h4><p>二手服飾、獨立書店、個性小店</p><span class="activity-tag tag-shopping">購物</span></div></div>
+                    <div class="activity"><div class="activity-time">12:00</div><div class="activity-info"><h4>午餐：下北澤咖哩</h4><p>印度咖哩或日式咖哩名店</p><span class="activity-tag tag-food">美食</span></div></div>
+                    <div class="activity"><div class="activity-time">13:30</div><div class="activity-info"><h4>吉祥寺井之頭公園</h4><p>划船、散步、享受自然</p><span class="activity-tag tag-spot">景點</span></div></div>
+                    <div class="activity"><div class="activity-time">15:00</div><div class="activity-info"><h4>口琴橫丁</h4><p>懷舊商店街，小吃與雜貨</p><span class="activity-tag tag-shopping">購物</span></div></div>
+                    <div class="activity"><div class="activity-time">16:30</div><div class="activity-info"><h4>三鷹之森吉卜力美術館</h4><p>宮崎駿動畫迷必訪（需預約）</p><span class="activity-tag tag-spot">景點</span></div></div>
+                    <div class="activity"><div class="activity-time">19:00</div><div class="activity-info"><h4>晚餐：迴轉壽司</h4><p>最後一晚的壽司饗宴</p><span class="activity-tag tag-food">美食</span></div></div>
+                    <div class="activity"><div class="activity-time">21:00</div><div class="activity-info"><h4>飯店收拾行李</h4><p>整理戰利品，準備明天回程</p></div></div>
+                </div>
+            </div>
+
+            <div class="tab-content" id="day6">
+                <div class="day-header" style="background: linear-gradient(135deg, #89f7fe 0%, #66a6ff 100%);" onclick="toggleDay(this)">
+                    <h3>🛫 Day 6 - 回家</h3>
+                    <span class="date">9/6 (日) <i class="fas fa-chevron-down"></i></span>
+                </div>
+                <div class="day-content">
+                    <div class="activity"><div class="activity-time">08:00</div><div class="activity-info"><h4>飯店早餐</h4><p>享用最後一頓日式早餐</p><span class="activity-tag tag-food">美食</span></div></div>
+                    <div class="activity"><div class="activity-time">09:30</div><div class="activity-info"><h4>上野阿美橫丁</h4><p>最後採購伴手禮</p><span class="activity-tag tag-shopping">購物</span></div></div>
+                    <div class="activity"><div class="activity-time">12:00</div><div class="activity-info"><h4>午餐</h4><p>上野或淺草周邊用餐</p><span class="activity-tag tag-food">美食</span></div></div>
+                    <div class="activity"><div class="activity-time">14:00</div><div class="activity-info"><h4>飯店 Check-out</h4><p>寄放行李或帶往機場</p></div></div>
+                    <div class="activity"><div class="activity-time">16:00</div><div class="activity-info"><h4>前往成田機場</h4><p>錦系町站 → JR總武線 → 成田機場</p><span class="activity-tag tag-train">交通</span></div></div>
+                    <div class="activity"><div class="activity-time">18:00</div><div class="activity-info"><h4>成田機場免稅店</h4><p>最後的購物機會，伴手禮補貨</p><span class="activity-tag tag-shopping">購物</span></div></div>
+                    <div class="activity"><div class="activity-time">20:40</div><div class="activity-info"><h4>登機 JX805</h4><p>返回溫暖的家～台北桃園機場</p><span class="activity-tag tag-train">交通</span></div></div>
+                    <div class="activity"><div class="activity-time">23:20</div><div class="activity-info"><h4>抵達桃園機場</h4><p>期待下次再見，東京！</p></div></div>
+                </div>
+            </div>
         </div>
     </section>
 
-    <!-- Activity Modal -->
-    <div id="activityModal" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); z-index:10000; align-items:center; justify-content:center; padding:1rem;">
-        <div style="background:var(--card-bg); border-radius:16px; padding:1.5rem; max-width:400px; width:100%; max-height:90vh; overflow-y:auto;">
-            <h3 id="modalTitle" style="margin-bottom:1rem; color:var(--secondary); font-size:1.2rem;">新增活動</h3>
-            <input type="hidden" id="modalDay">
-            <input type="hidden" id="modalIndex" value="-1">
-            <div style="margin-bottom:0.8rem;">
-                <label style="font-size:0.85rem; color:var(--text-light); margin-bottom:0.3rem; display:block;">時間</label>
-                <input type="time" id="modalTime" style="width:100%; padding:0.6rem; border:2px solid var(--border-color); border-radius:8px; font-size:0.95rem; background:var(--bg);">
+    <!-- Transportation Guide -->
+    <section class="transport-section" id="transport">
+        <div class="container">
+            <div class="section-title">
+                <h2>🚃 交通指南</h2>
+                <p>東京公共交通完全攻略</p>
             </div>
-            <div style="margin-bottom:0.8rem;">
-                <label style="font-size:0.85rem; color:var(--text-light); margin-bottom:0.3rem; display:block;">活動名稱</label>
-                <input type="text" id="modalName" placeholder="如：淺草寺" style="width:100%; padding:0.6rem; border:2px solid var(--border-color); border-radius:8px; font-size:0.95rem; background:var(--bg);">
-            </div>
-            <div style="margin-bottom:0.8rem;">
-                <label style="font-size:0.85rem; color:var(--text-light); margin-bottom:0.3rem; display:block;">描述</label>
-                <input type="text" id="modalDesc" placeholder="如：東京最古老寺廟" style="width:100%; padding:0.6rem; border:2px solid var(--border-color); border-radius:8px; font-size:0.95rem; background:var(--bg);">
-            </div>
-            <div style="margin-bottom:1rem;">
-                <label style="font-size:0.85rem; color:var(--text-light); margin-bottom:0.3rem; display:block;">標籤</label>
-                <div style="display:flex; gap:0.4rem; flex-wrap:wrap;">
-                    <button type="button" onclick="selectTag(this,'')" class="tag-btn-selected" style="padding:0.4rem 0.8rem; border-radius:15px; border:2px solid var(--border-color); background:var(--bg); cursor:pointer; font-size:0.85rem;">無</button>
-                    <button type="button" onclick="selectTag(this,'美食')" style="padding:0.4rem 0.8rem; border-radius:15px; border:2px solid var(--border-color); background:var(--bg); cursor:pointer; font-size:0.85rem;">🍽️ 美食</button>
-                    <button type="button" onclick="selectTag(this,'景點')" style="padding:0.4rem 0.8rem; border-radius:15px; border:2px solid var(--border-color); background:var(--bg); cursor:pointer; font-size:0.85rem;">📍 景點</button>
-                    <button type="button" onclick="selectTag(this,'交通')" style="padding:0.4rem 0.8rem; border-radius:15px; border:2px solid var(--border-color); background:var(--bg); cursor:pointer; font-size:0.85rem;">🚃 交通</button>
-                    <button type="button" onclick="selectTag(this,'購物')" style="padding:0.4rem 0.8rem; border-radius:15px; border:2px solid var(--border-color); background:var(--bg); cursor:pointer; font-size:0.85rem;">🛍️ 購物</button>
+            <div class="transport-cards">
+                <div class="transport-card">
+                    <h4><i class="fas fa-subway"></i> 地鐵一日券</h4>
+                    <p>Tokyo Subway Ticket（觀光客專用）24小時 ¥1,000、48小時 ¥1,500、72小時 ¥2,000，可搭乘 Metro + 都營全部路線。建議購買 Suica 或 Pasmo 卡，方便搭乘所有交通工具。</p>
                 </div>
-                <input type="hidden" id="modalTag" value="">
-            </div>
-            <div style="display:flex; gap:0.8rem;">
-                <button onclick="closeModal()" style="flex:1; padding:0.7rem; border:2px solid var(--border-color); background:var(--bg); border-radius:8px; font-size:0.95rem; cursor:pointer; color:var(--text);">取消</button>
-                <button onclick="saveActivity()" style="flex:1; padding:0.7rem; background:var(--gradient); color:white; border:none; border-radius:8px; font-size:0.95rem; font-weight:600; cursor:pointer;">儲存</button>
+                <div class="transport-card">
+                    <h4><i class="fas fa-train"></i> 成田到市區</h4>
+                    <p>Skyliner 到上野 41分鐘 ¥2,520。N'EX 成田特快到東京站 60分鐘 ¥3,070。建議購買 N'EX 來回票更划算。</p>
+                </div>
+                <div class="transport-card">
+                    <h4><i class="fas fa-walking"></i> 飯店周邊</h4>
+                    <p>飯店在錦系町站附近，步行 5 分鐘。JR 總武線可到東京站、新宿、澀谷。東武線可到淺草、晴空塔。</p>
+                </div>
+                <div class="transport-card">
+                    <h4><i class="fas fa-ticket-alt"></i> Suica/Pasmo</h4>
+                    <p>可搭乘JR、地鐵、公車，也可在便利商店消費。建議在機場購買或使用手機版。</p>
+                </div>
             </div>
         </div>
-    </div>
+    </section>
 
     <!-- Tools Section -->
     <section class="tools-section" id="tools">
@@ -2362,46 +2135,36 @@
                 <p>讓你的旅程更加便利</p>
             </div>
 
-            <!-- Currency Converter & Weather -->
-            <div class="tools-row" style="display:grid; grid-template-columns:1fr 1fr; gap:2rem; margin-bottom:3rem;">
-                <!-- Currency Converter -->
-                <div>
-                    <h3 style="text-align: center; margin-bottom: 1rem; color: var(--secondary);">💰 匯率換算</h3>
-                    <div class="converter-box" style="max-width:100%; margin:0;">
-                        <div style="display:flex; align-items:center; justify-content:center; gap:0.5rem; margin-bottom:1rem;">
-                            <span style="font-size:1rem; font-weight:600;">🇹🇼 TWD</span>
-                            <button onclick="swapCurrency()" style="background:none; border:none; cursor:pointer; font-size:1.2rem; color:var(--primary); padding:0.3rem; transition:transform 0.3s;" onmouseover="this.style.transform='rotate(180deg)'" onmouseout="this.style.transform='rotate(0)'">⇄</button>
-                            <span style="font-size:1rem; font-weight:600;">🇯🇵 JPY</span>
-                        </div>
-                        <div class="converter-input">
-                            <label for="twdAmount" class="sr-only">台幣金額</label>
-                            <input type="number" id="twdAmount" placeholder="台幣金額" oninput="convertCurrency('twd')">
-                        </div>
-                        <div style="text-align: center; margin: 0.5rem 0;">
-                            <i class="fas fa-exchange-alt" style="color: var(--primary); font-size: 1.5rem;"></i>
-                        </div>
-                        <div class="converter-input">
-                            <label for="jpyAmount" class="sr-only">日圓金額</label>
-                            <input type="number" id="jpyAmount" placeholder="日圓金額" oninput="convertCurrency('jpy')">
-                        </div>
-                        <div class="converter-result" id="converterResult">請輸入金額換算</div>
-                        <p style="text-align:center;font-size:0.8rem;color:var(--text-light);margin-top:0.5rem;">* 匯率僅供參考，實際匯率請以銀行為準</p>
+            <!-- Currency Converter -->
+            <div style="margin-bottom: 3rem;">
+                <h3 style="text-align: center; margin-bottom: 1rem; color: var(--secondary);">💰 匯率換算</h3>
+                <div class="converter-box">
+                    <div class="converter-input">
+                        <input type="number" id="twdAmount" placeholder="台幣金額" oninput="convertCurrency('twd')">
+                        <select id="twdSelect"><option value="twd">🇹🇼 TWD</option></select>
                     </div>
+                    <div style="text-align: center; margin: 0.5rem 0;">
+                        <i class="fas fa-exchange-alt" style="color: var(--primary); font-size: 1.5rem;"></i>
+                    </div>
+                    <div class="converter-input">
+                        <input type="number" id="jpyAmount" placeholder="日圓金額" oninput="convertCurrency('jpy')">
+                        <select id="jpySelect"><option value="jpy">🇯🇵 JPY</option></select>
+                    </div>
+                    <div class="converter-result" id="converterResult">請輸入金額換算</div>
                 </div>
+            </div>
 
-                <!-- Weather Widget -->
-                <div>
-                    <h3 style="text-align: center; margin-bottom: 1rem; color: var(--secondary);">🌤️ 東京天氣預報</h3>
-                    <div class="weather-widget" style="max-width:100%; margin:0;">
-                        <div class="weather-header">
-                            <h4>東京 9月</h4>
-                            <span>🌸 初秋</span>
-                        </div>
-                        <div class="weather-temp" id="weatherTemp">28°C</div>
-                        <div class="weather-desc" id="weatherDesc">晴時多雲，偶有午後雷陣雨</div>
-                        <div class="weather-forecast" id="weatherForecast"></div>
-                        <p style="text-align:center;font-size:0.75rem;color:var(--text-light);margin-top:0.8rem;">* 此為預估資料，實際天氣請以出發前查詢為準</p>
+            <!-- Weather Widget -->
+            <div style="margin-bottom: 3rem;">
+                <h3 style="text-align: center; margin-bottom: 1rem; color: var(--secondary);">🌤️ 東京天氣預報</h3>
+                <div class="weather-widget">
+                    <div class="weather-header">
+                        <h4>東京 9月</h4>
+                        <span>🌸 初秋</span>
                     </div>
+                    <div class="weather-temp" id="weatherTemp">28°C</div>
+                    <div class="weather-desc" id="weatherDesc">晴時多雲，偶有午後雷陣雨</div>
+                    <div class="weather-forecast" id="weatherForecast"></div>
                 </div>
             </div>
 
@@ -2424,12 +2187,6 @@
                     <div class="checklist-item"><input type="checkbox" id="item10" onchange="saveChecklist()"><label for="item10">防曬乳 / 帽子</label></div>
                     <div class="checklist-item"><input type="checkbox" id="item11" onchange="saveChecklist()"><label for="item11">舒適的走路鞋</label></div>
                     <div class="checklist-item"><input type="checkbox" id="item12" onchange="saveChecklist()"><label for="item12">常用藥品</label></div>
-                    <div class="checklist-item"><input type="checkbox" id="item13" onchange="saveChecklist()"><label for="item13">旅行平安險單據</label></div>
-                    <div class="checklist-item"><input type="checkbox" id="item14" onchange="saveChecklist()"><label for="item14">護照影本（另存放）</label></div>
-                    <div class="checklist-item"><input type="checkbox" id="item15" onchange="saveChecklist()"><label for="item15">室內拖鞋（大浴場用）</label></div>
-                    <div class="checklist-item"><input type="checkbox" id="item16" onchange="saveChecklist()"><label for="item16">小鎖（大浴場置物櫃）</label></div>
-                    <div class="checklist-item"><input type="checkbox" id="item17" onchange="saveChecklist()"><label for="item17">環保袋（購物用）</label></div>
-                    <div class="checklist-item"><input type="checkbox" id="item18" onchange="saveChecklist()"><label for="item18">隨身小背包</label></div>
                 </div>
             </div>
 
@@ -2438,13 +2195,9 @@
                 <h3 style="text-align: center; margin-bottom: 1rem; color: var(--secondary); font-size: 1.6rem; font-weight: 800;">💸 旅遊預算追蹤</h3>
                 <div class="budget-tracker">
                     <div class="budget-input-row">
-                        <label for="budgetDate" class="sr-only">日期</label>
                         <input type="date" id="budgetDate" title="日期">
-                        <label for="budgetName" class="sr-only">項目名稱</label>
                         <input type="text" id="budgetName" placeholder="項目名稱（如：午餐）">
-                        <label for="budgetAmount" class="sr-only">金額（日圓）</label>
                         <input type="number" id="budgetAmount" placeholder="金額（日圓）">
-                        <label for="budgetCategory" class="sr-only">分類</label>
                         <select id="budgetCategory">
                             <option value="food">🍽️ 餐飲</option>
                             <option value="transport">🚃 交通</option>
@@ -2453,7 +2206,7 @@
                             <option value="hotel">🏨 住宿</option>
                             <option value="other">📦 其他</option>
                         </select>
-                        <button class="budget-btn" onclick="addBudgetItem()" aria-label="新增預算項目"><i class="fas fa-plus"></i> 新增</button>
+                        <button class="budget-btn" onclick="addBudgetItem()"><i class="fas fa-plus"></i> 新增</button>
                     </div>
                     <div class="budget-progress-label" id="budgetProgressLabel">已使用 ¥0 / ¥100,000</div>
                     <div class="budget-progress"><div class="budget-progress-bar" id="budgetProgressBar"></div></div>
@@ -2489,31 +2242,31 @@
             <div>
                 <h3 style="text-align: center; margin-bottom: 1rem; color: var(--secondary);">🔗 實用連結</h3>
                 <div class="quick-links">
-                    <a href="https://www.jreast.co.jp/multi/en/" target="_blank" rel="noopener noreferrer" class="quick-link"><i class="fas fa-train"></i> JR官網</a>
-                    <a href="https://www.tokyometro.jp/en/" target="_blank" rel="noopener noreferrer" class="quick-link"><i class="fas fa-subway"></i> 東京metro</a>
-                    <a href="https://www.tobu.co.jp/en/" target="_blank" rel="noopener noreferrer" class="quick-link"><i class="fas fa-train"></i> 東武鐵道</a>
-                    <a href="https://www.japan-guide.com/e/e3070.html" target="_blank" rel="noopener noreferrer" class="quick-link"><i class="fas fa-info-circle"></i> 日本旅遊指南</a>
-                    <a href="https://www.google.com/maps" target="_blank" rel="noopener noreferrer" class="quick-link"><i class="fas fa-map"></i> Google地圖</a>
-                    <a href="https://translate.google.com/" target="_blank" rel="noopener noreferrer" class="quick-link"><i class="fas fa-language"></i> Google翻譯</a>
+                    <a href="https://www.jreast.co.jp/multi/en/" target="_blank" class="quick-link"><i class="fas fa-train"></i> JR官網</a>
+                    <a href="https://www.tokyometro.jp/en/" target="_blank" class="quick-link"><i class="fas fa-subway"></i> 東京metro</a>
+                    <a href="https://www.tobu.co.jp/en/" target="_blank" class="quick-link"><i class="fas fa-train"></i> 東武鐵道</a>
+                    <a href="https://www.japan-guide.com/e/e3070.html" target="_blank" class="quick-link"><i class="fas fa-info-circle"></i> 日本旅遊指南</a>
+                    <a href="https://www.google.com/maps" target="_blank" class="quick-link"><i class="fas fa-map"></i> Google地圖</a>
+                    <a href="https://translate.google.com/" target="_blank" class="quick-link"><i class="fas fa-language"></i> Google翻譯</a>
                 </div>
             </div>
         </div>
     </section>
 
     <!-- Emergency Contacts -->
-    <section class="emergency-section" id="emergency">
+    <section class="emergency-section">
         <div class="container">
             <div class="section-title">
                 <h2>🆘 緊急聯絡資訊</h2>
                 <p>請牢記這些重要電話</p>
             </div>
             <div class="emergency-grid">
-                <a href="tel:110" class="emergency-card" onclick="event.preventDefault(); copyToClipboard('110')"><i class="fas fa-phone-alt"></i><div class="info"><h5>日本報警</h5><p>110</p></div></a>
-                <a href="tel:119" class="emergency-card" onclick="event.preventDefault(); copyToClipboard('119')"><i class="fas fa-ambulance"></i><div class="info"><h5>日本救護車/消防</h5><p>119</p></div></a>
-                <a href="tel:03-3212-2323" class="emergency-card" onclick="event.preventDefault(); copyToClipboard('03-3212-2323')"><i class="fas fa-hospital"></i><div class="info"><h5>救護車英文服務</h5><p>03-3212-2323</p></div></a>
-                <a href="tel:03-3280-7811" class="emergency-card" onclick="event.preventDefault(); copyToClipboard('03-3280-7811')"><i class="fas fa-passport"></i><div class="info"><h5>駐日台北經濟文化代表處</h5><p>03-3280-7811</p></div></a>
-                <a href="tel:03-5285-8181" class="emergency-card" onclick="event.preventDefault(); copyToClipboard('03-5285-8181')"><i class="fas fa-hospital"></i><div class="info"><h5>國際救急醫療諮詢</h5><p>03-5285-8181</p></div></a>
-                <a href="tel:0476-34-8000" class="emergency-card" onclick="event.preventDefault(); copyToClipboard('0476-34-8000')"><i class="fas fa-suitcase"></i><div class="info"><h5>成田機場服務台</h5><p>0476-34-8000</p></div></a>
+                <div class="emergency-card" onclick="copyToClipboard('110')"><i class="fas fa-phone-alt"></i><div class="info"><h5>日本報警</h5><p>110</p></div></div>
+                <div class="emergency-card" onclick="copyToClipboard('119')"><i class="fas fa-ambulance"></i><div class="info"><h5>日本救護車/消防</h5><p>119</p></div></div>
+                <div class="emergency-card" onclick="copyToClipboard('03-3212-2323')"><i class="fas fa-hospital"></i><div class="info"><h5>救護車英文服務</h5><p>03-3212-2323</p></div></div>
+                <div class="emergency-card" onclick="copyToClipboard('03-3280-7811')"><i class="fas fa-passport"></i><div class="info"><h5>駐日台北經濟文化代表處</h5><p>03-3280-7811</p></div></div>
+                <div class="emergency-card" onclick="copyToClipboard('03-5285-8181')"><i class="fas fa-hospital"></i><div class="info"><h5>國際救急醫療諮詢</h5><p>03-5285-8181</p></div></div>
+                <div class="emergency-card" onclick="copyToClipboard('0476-34-8000')"><i class="fas fa-suitcase"></i><div class="info"><h5>成田機場服務台</h5><p>0476-34-8000</p></div></div>
             </div>
         </div>
     </section>
@@ -2526,82 +2279,12 @@
                 <p>東京必吃美食清單</p>
             </div>
             <div class="food-grid">
-                <div class="food-card"><div class="emoji">🍣</div><h4>壽司</h4><p>新鮮美味的握壽司，推薦「壽司大」或「大和壽司」</p><span class="location">📍 豐洲市場</span><span class="hours">⏰ 05:00-14:00（售完為止）</span></div>
-                <div class="food-card"><div class="emoji">🍜</div><h4>拉麵</h4><p>濃郁豚骨或清爽醬油，一蘭拉麵是觀光客最愛</p><span class="location">📍 澀谷/新宿</span><span class="hours">⏰ 11:00-翌日02:00</span></div>
-                <div class="food-card"><div class="emoji">🥩</div><h4>和牛燒肉</h4><p>A5等級和牛入口即化，搭配台場夜景更棒</p><span class="location">📍 台場</span><span class="hours">⏰ 17:00-23:00</span></div>
-                <div class="food-card"><div class="emoji">🍡</div><h4>甜點和菓子</h4><p>人形燒、銅鑼燒、抹茶冰淇淋</p><span class="location">📍 淺草仲見世通</span><span class="hours">⏰ 10:00-18:00</span></div>
-                <div class="food-card"><div class="emoji">🍱</div><h4>便當</h4><p>車站便當「駅弁」是日本特色，種類豐富</p><span class="location">📍 各大車站</span><span class="hours">⏰ 隨車站營業時間</span></div>
-                <div class="food-card"><div class="emoji">🍺</div><h4>居酒屋</h4><p>串燒、關東煮配啤酒，體驗道地日本夜生活</p><span class="location">📍 上野/新宿</span><span class="hours">⏰ 17:00-翌日01:00</span></div>
-            </div>
-
-            <!-- Custom Food Map -->
-            <div style="margin-top:3rem;">
-                <h3 style="text-align:center; color:var(--secondary); margin-bottom:1rem;">📌 我的美食地圖</h3>
-                <p style="text-align:center; color:var(--text-light); font-size:0.9rem; margin-bottom:1.5rem;">加入你想去的餐廳，打造專屬美食地圖</p>
-                
-                <!-- Add Form -->
-                <div id="customFoodForm" class="custom-food-form" style="max-width:500px; margin:0 auto 1.5rem; background:var(--card-bg); padding:1.2rem; border-radius:12px; box-shadow:var(--shadow);">
-                    <div style="display:grid; grid-template-columns:60px 1fr; gap:0.8rem; margin-bottom:0.8rem;">
-                        <div>
-                            <label class="sr-only" for="customFoodEmoji">圖示</label>
-                            <select id="customFoodEmoji" style="width:100%; padding:0.6rem; border:2px solid var(--border-color); border-radius:8px; font-size:1.2rem; background:var(--bg);">
-                                <option value="🍣">🍣 壽司</option>
-                                <option value="🍜">🍜 拉麵</option>
-                                <option value="🥩">🥩 燒肉</option>
-                                <option value="🍱">🍱 便當</option>
-                                <option value="🍡">🍡 甜點</option>
-                                <option value="🍺">🍺 居酒屋</option>
-                                <option value="☕">☕ 咖啡</option>
-                                <option value="🍰">🍰 蛋糕</option>
-                                <option value="🥟">🥟 餃子</option>
-                                <option value="🍛">🍛 咖哩</option>
-                                <option value="🍩">🍩 甜甜圈</option>
-                                <option value="🧁">🧁 杯子蛋糕</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label class="sr-only" for="customFoodName">店名</label>
-                            <input type="text" id="customFoodName" placeholder="店名（如：一蘭拉麵）" style="width:100%; padding:0.6rem; border:2px solid var(--border-color); border-radius:8px; font-size:0.95rem; background:var(--bg);">
-                        </div>
-                    </div>
-                    <div style="margin-bottom:0.8rem;">
-                        <label class="sr-only" for="customFoodMapLink">Google Maps 連結</label>
-                        <input type="url" id="customFoodMapLink" placeholder="📍 貼上 Google Maps 連結（可選）" style="width:100%; padding:0.6rem; border:2px solid var(--border-color); border-radius:8px; font-size:0.9rem; background:var(--bg);" oninput="parseMapLink(this.value)">
-                        <p style="font-size:0.75rem; color:var(--text-light); margin-top:0.3rem;">從 Google Maps 複製連結貼上，可自動帶入店名和地點</p>
-                    </div>
-                    <div style="margin-bottom:0.8rem;">
-                        <label class="sr-only" for="customFoodImage">圖片網址</label>
-                        <input type="url" id="customFoodImage" placeholder="🖼️ 圖片網址（可選，如 Instagram/Facebook 圖片連結）" style="width:100%; padding:0.6rem; border:2px solid var(--border-color); border-radius:8px; font-size:0.9rem; background:var(--bg);">
-                        <p style="font-size:0.75rem; color:var(--text-light); margin-top:0.3rem;">貼上美食照片的圖片網址，讓地圖更豐富</p>
-                    </div>
-                    <div id="imagePreview" style="display:none; margin-bottom:0.8rem; text-align:center;">
-                        <img id="previewImg" style="max-width:100%; max-height:150px; border-radius:8px; object-fit:cover;" alt="預覽">
-                        <button onclick="clearImagePreview()" style="margin-top:0.3rem; background:none; border:none; color:var(--primary); cursor:pointer; font-size:0.8rem;">移除圖片</button>
-                    </div>
-                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.8rem; margin-bottom:0.8rem;">
-                        <div>
-                            <label class="sr-only" for="customFoodLocation">地點</label>
-                            <input type="text" id="customFoodLocation" placeholder="地點（如：新宿）" style="width:100%; padding:0.6rem; border:2px solid var(--border-color); border-radius:8px; font-size:0.9rem; background:var(--bg);">
-                        </div>
-                        <div>
-                            <label class="sr-only" for="customFoodHours">營業時間</label>
-                            <input type="text" id="customFoodHours" placeholder="營業時間（如：11:00-22:00）" style="width:100%; padding:0.6rem; border:2px solid var(--border-color); border-radius:8px; font-size:0.9rem; background:var(--bg);">
-                        </div>
-                    </div>
-                    <div style="margin-bottom:0.8rem;">
-                        <label class="sr-only" for="customFoodDesc">描述</label>
-                        <input type="text" id="customFoodDesc" placeholder="簡短描述（如：必點豚骨拉麵）" style="width:100%; padding:0.6rem; border:2px solid var(--border-color); border-radius:8px; font-size:0.9rem; background:var(--bg);">
-                    </div>
-                    <button onclick="addCustomFood()" style="width:100%; padding:0.7rem; background:var(--gradient); color:white; border:none; border-radius:8px; font-size:0.95rem; font-weight:600; cursor:pointer;">➕ 加入美食地圖</button>
-                </div>
-
-                <!-- Custom Food List -->
-                <div id="customFoodList" class="food-grid"></div>
-                <div id="customFoodEmpty" style="text-align:center; padding:2rem; color:var(--text-light); font-size:0.9rem;">
-                    <div style="font-size:3rem; margin-bottom:0.5rem;">🍜</div>
-                    <p style="margin-bottom:0.3rem;">還沒有新增任何美食</p>
-                    <p style="font-size:0.8rem;">快來添加你想去的餐廳吧！</p>
-                </div>
+                <div class="food-card"><div class="emoji">🍣</div><h4>壽司</h4><p>新鮮美味的握壽司，推薦「壽司大」或「大和壽司」</p><span class="location">📍 豐洲市場</span></div>
+                <div class="food-card"><div class="emoji">🍜</div><h4>拉麵</h4><p>濃郁豚骨或清爽醬油，一蘭拉麵是觀光客最愛</p><span class="location">📍 澀谷/新宿</span></div>
+                <div class="food-card"><div class="emoji">🥩</div><h4>和牛燒肉</h4><p>A5等級和牛入口即化，搭配台場夜景更棒</p><span class="location">📍 台場</span></div>
+                <div class="food-card"><div class="emoji">🍡</div><h4>甜點和菓子</h4><p>人形燒、銅鑼燒、抹茶冰淇淋</p><span class="location">📍 淺草仲見世通</span></div>
+                <div class="food-card"><div class="emoji">🍱</div><h4>便當</h4><p>車站便當「駅弁」是日本特色，種類豐富</p><span class="location">📍 各大車站</span></div>
+                <div class="food-card"><div class="emoji">🍺</div><h4>居酒屋</h4><p>串燒、關東煮配啤酒，體驗道地日本夜生活</p><span class="location">📍 上野/新宿</span></div>
             </div>
         </div>
     </section>
@@ -2629,20 +2312,16 @@
     <!-- Share Section -->
     <section class="share-section">
         <div class="container">
-            <h2 style="color: var(--secondary);">📤 分享與匯出</h2>
-            <p style="color: var(--text-light);">將這個行程分享給旅伴或列印帶出國</p>
+            <h2 style="color: var(--secondary);">📤 分享行程</h2>
+            <p style="color: var(--text-light);">將這個行程分享給旅伴</p>
             <div class="share-buttons">
-                <button class="share-btn" onclick="nativeShare()" id="nativeShareBtn" style="background:linear-gradient(135deg,#667eea,#764ba2);color:white;display:none;"><i class="fas fa-share-alt"></i> 分享</button>
                 <button class="share-btn facebook" onclick="shareToFacebook()"><i class="fab fa-facebook-f"></i> Facebook</button>
                 <button class="share-btn line" onclick="shareToLine()"><i class="fab fa-line"></i> LINE</button>
                 <button class="share-btn twitter" onclick="shareToTwitter()"><i class="fab fa-twitter"></i> Twitter</button>
                 <button class="share-btn copy" onclick="copyTripLink()"><i class="fas fa-link"></i> 複製連結</button>
-                <button class="share-btn" onclick="window.print()" style="background:#6c757d;"><i class="fas fa-print"></i> 列印行程</button>
             </div>
         </div>
     </section>
-
-    </main>
 
     <!-- Footer -->
     <footer class="footer">
@@ -2659,18 +2338,17 @@
 
     <!-- Floating Action Button -->
     <div class="fab-container" id="fabContainer">
-            <div class="fab-menu" id="fabMenu">
-                <div class="fab-item" onclick="goToToday(); toggleFab();" style="background:var(--primary); color:white;"><i class="fas fa-calendar-day"></i> 今日行程</div>
-                <div class="fab-item" onclick="scrollToSection('flights')"><i class="fas fa-plane"></i> 航班</div>
-                <div class="fab-item" onclick="scrollToSection('transfer')"><i class="fas fa-bus"></i> 交通</div>
-                <div class="fab-item" onclick="scrollToSection('hotel')"><i class="fas fa-hotel"></i> 住宿</div>
-                <div class="fab-item" onclick="scrollToSection('routemap')"><i class="fas fa-map-marked-alt"></i> 路線圖</div>
-                <div class="fab-item" onclick="scrollToSection('map')"><i class="fas fa-map-pin"></i> 景點地圖</div>
-                <div class="fab-item" onclick="scrollToSection('itinerary')"><i class="fas fa-list"></i> 行程</div>
-                <div class="fab-item" onclick="scrollToSection('tools')"><i class="fas fa-tools"></i> 工具</div>
-                <div class="fab-item" onclick="scrollToSection('food')"><i class="fas fa-utensils"></i> 美食</div>
-                <div class="fab-item" onclick="scrollToSection('tips')"><i class="fas fa-lightbulb"></i> 提醒</div>
-            </div>
+        <div class="fab-menu" id="fabMenu">
+            <div class="fab-item" onclick="scrollToSection('flights')"><i class="fas fa-plane"></i> 航班</div>
+            <div class="fab-item" onclick="scrollToSection('transfer')"><i class="fas fa-bus"></i> 機場交通</div>
+            <div class="fab-item" onclick="scrollToSection('hotel')"><i class="fas fa-hotel"></i> 住宿</div>
+            <div class="fab-item" onclick="scrollToSection('routemap')"><i class="fas fa-map-marked-alt"></i> 路線圖</div>
+            <div class="fab-item" onclick="scrollToSection('map')"><i class="fas fa-map-pin"></i> 景點地圖</div>
+            <div class="fab-item" onclick="scrollToSection('itinerary')"><i class="fas fa-list"></i> 行程</div>
+            <div class="fab-item" onclick="scrollToSection('tools')"><i class="fas fa-tools"></i> 工具</div>
+            <div class="fab-item" onclick="scrollToSection('food')"><i class="fas fa-utensils"></i> 美食</div>
+            <div class="fab-item" onclick="scrollToSection('tips')"><i class="fas fa-lightbulb"></i> 提醒</div>
+        </div>
         <button class="fab-main" onclick="toggleFab()" aria-label="快速導航"><i class="fas fa-plus"></i></button>
     </div>
 
@@ -2681,7 +2359,7 @@
     <button class="back-to-top" id="backToTop" onclick="window.scrollTo({top:0,behavior:'smooth'})"><i class="fas fa-arrow-up"></i></button>
 
     <!-- Toast Notification -->
-    <div class="toast" id="toast" role="status" aria-live="polite"><i class="fas fa-check-circle" aria-hidden="true"></i> <span id="toastMsg"></span></div>
+    <div class="toast" id="toast"><i class="fas fa-check-circle"></i> <span id="toastMsg"></span></div>
 
     <script>
         // ========== Particle Background ==========
@@ -2707,9 +2385,7 @@
 
         function initParticles() {
             particles = [];
-            const isMobile = window.innerWidth < 768;
-            const particleCount = isMobile ? 20 : 50;
-            for (let i = 0; i < particleCount; i++) particles.push(createParticle());
+            for (let i = 0; i < 50; i++) particles.push(createParticle());
         }
 
         function animateParticles() {
@@ -2752,79 +2428,6 @@
             document.getElementById('mobileThemeIcon').textContent = '☀️';
         }
 
-        // ========== Language Toggle ==========
-        let currentLang = localStorage.getItem('tokyoLang') || 'zh-TW';
-        
-        const translations = {
-            'zh-TW': {
-                flights: '航班資訊',
-                transfer: '交通',
-                hotel: '住宿',
-                routemap: '路線圖',
-                map: '景點地圖',
-                itinerary: '行程',
-                tools: '實用工具',
-                food: '美食',
-                tips: '小提醒',
-                heroTitle: '🗼 東京自由行',
-                heroSubtitle: '與毓寧的第一次愛的旅行',
-                todayItinerary: '📋 查看今日行程'
-            },
-            'ja': {
-                flights: 'フライト',
-                transfer: '交通',
-                hotel: '宿泊',
-                routemap: '路線図',
-                map: 'スポット',
-                itinerary: '旅程',
-                tools: 'ツール',
-                food: 'グルメ',
-                tips: 'ヒント',
-                heroTitle: '🗼 東京自由旅行',
-                heroSubtitle: '日本の首都の魅力を探索',
-                todayItinerary: '📋 今日の旅程を見る'
-            }
-        };
-
-        function toggleLanguage() {
-            currentLang = currentLang === 'zh-TW' ? 'ja' : 'zh-TW';
-            localStorage.setItem('tokyoLang', currentLang);
-            document.getElementById('langIcon').textContent = currentLang === 'zh-TW' ? '🇹🇼' : '🇯🇵';
-            applyLanguage();
-            showToast(currentLang === 'zh-TW' ? '已切換至中文' : '日本語に切替しました');
-        }
-
-        function applyLanguage() {
-            const t = translations[currentLang];
-            if (!t) return;
-            
-            // Update nav links
-            document.querySelectorAll('.nav-links a[data-section]').forEach(link => {
-                const section = link.dataset.section;
-                if (t[section]) link.textContent = t[section];
-            });
-            
-            // Update mobile nav
-            document.querySelectorAll('.mobile-nav a[data-section]').forEach(link => {
-                const section = link.dataset.section;
-                if (t[section]) link.textContent = link.textContent.replace(/^.+\s/, t[section] + ' ');
-            });
-            
-            // Update hero
-            const heroH1 = document.querySelector('.hero h1');
-            if (heroH1) heroH1.textContent = t.heroTitle;
-            const heroSubtitle = document.querySelector('.hero .subtitle');
-            if (heroSubtitle) heroSubtitle.textContent = t.heroSubtitle;
-            const todayBtn = document.querySelector('.hero button');
-            if (todayBtn) todayBtn.innerHTML = t.todayItinerary;
-        }
-
-        // Load saved language
-        if (localStorage.getItem('tokyoLang')) {
-            document.getElementById('langIcon').textContent = currentLang === 'zh-TW' ? '🇹🇼' : '🇯🇵';
-            applyLanguage();
-        }
-
         // ========== Mobile Nav ==========
         function toggleMobileNav() {
             document.getElementById('hamburger').classList.toggle('active');
@@ -2859,31 +2462,6 @@
             });
         });
 
-        // ========== Navigation Active State ==========
-        const sections = document.querySelectorAll('section[id]');
-        const navLinks = document.querySelectorAll('.nav-links a[data-section]');
-        
-        function updateActiveNav() {
-            let current = '';
-            sections.forEach(section => {
-                const sectionTop = section.offsetTop;
-                const sectionHeight = section.clientHeight;
-                if (window.pageYOffset >= sectionTop - 200) {
-                    current = section.getAttribute('id');
-                }
-            });
-            
-            navLinks.forEach(link => {
-                link.classList.remove('active');
-                if (link.getAttribute('data-section') === current) {
-                    link.classList.add('active');
-                }
-            });
-        }
-
-        window.addEventListener('scroll', updateActiveNav);
-        updateActiveNav();
-
         // ========== Countdown ==========
         function updateCountdown() {
             const tripDate = new Date('2026-09-01T08:30:00+09:00');
@@ -2914,6 +2492,9 @@
             if (icon) icon.style.transform = content.classList.contains('expanded') ? 'rotate(180deg)' : 'rotate(0)';
         }
 
+        // Auto-expand first day
+        document.querySelector('#day1 .day-content').classList.add('expanded');
+
         // ========== Currency Converter ==========
         const exchangeRate = 5;
         function convertCurrency(source) {
@@ -2931,33 +2512,18 @@
             }
         }
 
-        function swapCurrency() {
-            const twdInput = document.getElementById('twdAmount');
-            const jpyInput = document.getElementById('jpyAmount');
-            const temp = twdInput.value;
-            twdInput.value = jpyInput.value;
-            jpyInput.value = temp;
-            if (twdInput.value) convertCurrency('twd');
-            else if (jpyInput.value) convertCurrency('jpy');
-            else document.getElementById('converterResult').textContent = '請輸入金額換算';
-        }
-
         // ========== Checklist ==========
-        const CHECKLIST_ITEMS = 18;
-        
         function saveChecklist() {
             const checklist = {};
             let checked = 0;
-            for (let i = 1; i <= CHECKLIST_ITEMS; i++) {
+            for (let i = 1; i <= 12; i++) {
                 const cb = document.getElementById(`item${i}`);
-                if (cb) {
-                    checklist[`item${i}`] = cb.checked;
-                    if (cb.checked) checked++;
-                    cb.closest('.checklist-item').classList.toggle('checked', cb.checked);
-                }
+                checklist[`item${i}`] = cb.checked;
+                if (cb.checked) checked++;
+                cb.closest('.checklist-item').classList.toggle('checked', cb.checked);
             }
             localStorage.setItem('tokyoChecklist', JSON.stringify(checklist));
-            const percent = Math.round((checked / CHECKLIST_ITEMS) * 100);
+            const percent = Math.round((checked / 12) * 100);
             document.getElementById('checklistProgress').style.width = percent + '%';
             document.getElementById('checklistPercent').textContent = `完成 ${percent}%`;
         }
@@ -2967,12 +2533,12 @@
             if (saved) {
                 const checklist = JSON.parse(saved);
                 let checked = 0;
-                for (let i = 1; i <= CHECKLIST_ITEMS; i++) {
+                for (let i = 1; i <= 12; i++) {
                     const cb = document.getElementById(`item${i}`);
-                    if (cb && checklist[`item${i}`]) { cb.checked = true; checked++; }
-                    if (cb) cb.closest('.checklist-item').classList.toggle('checked', cb.checked);
+                    if (checklist[`item${i}`]) { cb.checked = true; checked++; }
+                    cb.closest('.checklist-item').classList.toggle('checked', cb.checked);
                 }
-                const percent = Math.round((checked / CHECKLIST_ITEMS) * 100);
+                const percent = Math.round((checked / 12) * 100);
                 document.getElementById('checklistProgress').style.width = percent + '%';
                 document.getElementById('checklistPercent').textContent = `完成 ${percent}%`;
             }
@@ -3213,604 +2779,22 @@
             shimokita:  { title: '🎸 下北澤', desc: '古著街、獨立書店、咖哩名店。小田急線或井之頭線。' }
         };
 
-        // ========== Favorites ==========
-        let favorites = JSON.parse(localStorage.getItem('tokyoFavorites') || '[]');
-        
-        function toggleFavorite(key) {
-            const idx = favorites.indexOf(key);
-            if (idx > -1) {
-                favorites.splice(idx, 1);
-                showToast('已移除收藏');
-            } else {
-                favorites.push(key);
-                showToast('已加入收藏 ❤️');
-            }
-            localStorage.setItem('tokyoFavorites', JSON.stringify(favorites));
-            updateFavoriteButtons();
-        }
-        
-        function updateFavoriteButtons() {
-            document.querySelectorAll('.favorite-btn').forEach(btn => {
-                const key = btn.dataset.key;
-                const isFav = favorites.includes(key);
-                btn.innerHTML = isFav ? '❤️' : '🤍';
-                btn.title = isFav ? '取消收藏' : '加入收藏';
-            });
-        }
-
         function showMapInfo(key) {
             const info = mapInfo[key];
             if (!info) return;
             const popup = document.getElementById('mapPopup');
-            const isFav = favorites.includes(key);
-            document.getElementById('mapPopupContent').innerHTML = `
-                <div style="display:flex; justify-content:space-between; align-items:start; margin-bottom:0.4rem;">
-                    <div style="font-size:1.1rem;font-weight:700;color:var(--secondary);">${info.title}</div>
-                    <button class="favorite-btn" data-key="${key}" onclick="toggleFavorite('${key}')" style="background:none; border:none; cursor:pointer; font-size:1.2rem; padding:0;">${isFav ? '❤️' : '🤍'}</button>
-                </div>
-                <div style="font-size:0.95rem;color:var(--text-light);line-height:1.6;">${info.desc}</div>
-            `;
+            document.getElementById('mapPopupContent').innerHTML = `<div style="font-size:1.1rem;font-weight:700;color:var(--secondary);margin-bottom:0.4rem;">${info.title}</div><div style="font-size:0.95rem;color:var(--text-light);line-height:1.6;">${info.desc}</div>`;
             popup.style.display = 'block';
-            // Position popup safely within viewport
-            const isMobile = window.innerWidth < 768;
-            if (isMobile) {
-                popup.style.top = '50%';
-                popup.style.left = '10px';
-                popup.style.right = '10px';
-                popup.style.maxWidth = 'none';
-                popup.style.transform = 'translateY(-50%)';
-            } else {
-                popup.style.top = '50%';
-                popup.style.left = '50%';
-                popup.style.right = 'auto';
-                popup.style.maxWidth = '250px';
-                popup.style.transform = 'translate(-50%, -50%)';
-            }
-        }
-
-        // ========== Map Zoom ==========
-        let mapScale = 1;
-        let mapTranslateX = 0;
-        let mapTranslateY = 0;
-        const mapSvg = document.querySelector('#mapSvg svg');
-        
-        function updateMapTransform() {
-            if (mapSvg) {
-                mapSvg.style.transform = `translate(${mapTranslateX}px, ${mapTranslateY}px) scale(${mapScale})`;
-                mapSvg.style.transformOrigin = 'center center';
-            }
-        }
-        
-        function zoomMap(factor) {
-            mapScale *= factor;
-            mapScale = Math.max(0.5, Math.min(3, mapScale));
-            updateMapTransform();
-        }
-        
-        function resetMapZoom() {
-            mapScale = 1;
-            mapTranslateX = 0;
-            mapTranslateY = 0;
-            updateMapTransform();
-        }
-        
-        // Touch zoom support
-        let lastTouchDistance = 0;
-        const mapContainer = document.getElementById('mapSvg');
-        
-        if (mapContainer) {
-            mapContainer.addEventListener('touchstart', (e) => {
-                if (e.touches.length === 2) {
-                    lastTouchDistance = Math.hypot(
-                        e.touches[0].clientX - e.touches[1].clientX,
-                        e.touches[0].clientY - e.touches[1].clientY
-                    );
-                }
-            });
-            
-            mapContainer.addEventListener('touchmove', (e) => {
-                if (e.touches.length === 2) {
-                    e.preventDefault();
-                    const distance = Math.hypot(
-                        e.touches[0].clientX - e.touches[1].clientX,
-                        e.touches[0].clientY - e.touches[1].clientY
-                    );
-                    const factor = distance / lastTouchDistance;
-                    zoomMap(factor);
-                    lastTouchDistance = distance;
-                }
-            }, { passive: false });
-        }
-
-        // ========== Custom Food Map ==========
-        let customFoods = JSON.parse(localStorage.getItem('tokyoCustomFoods') || '[]');
-        
-        function parseMapLink(url) {
-            if (!url) return;
-            try {
-                const urlObj = new URL(url);
-                if (urlObj.hostname.includes('google.com') || urlObj.hostname.includes('maps.app.goo.gl')) {
-                    const nameInput = document.getElementById('customFoodName');
-                    const locInput = document.getElementById('customFoodLocation');
-                    
-                    const placeMatch = url.match(/\/maps\/place\/([^/@]+)/);
-                    if (placeMatch && !nameInput.value) {
-                        nameInput.value = decodeURIComponent(placeMatch[1].replace(/\+/g, ' '));
-                    }
-                    
-                    const qMatch = url.match(/[?&]q=([^&]+)/);
-                    if (qMatch && !nameInput.value) {
-                        nameInput.value = decodeURIComponent(qMatch[1].replace(/\+/g, ' '));
-                    }
-                    
-                    if (!nameInput.value && url.includes('maps.app.goo.gl')) {
-                        showToast('已偵測到 Google Maps 連結，請手動輸入店名');
-                    }
-                }
-            } catch(e) {}
-        }
-        
-        // Image preview
-        document.getElementById('customFoodImage').addEventListener('input', function(e) {
-            const url = e.target.value.trim();
-            const preview = document.getElementById('imagePreview');
-            const img = document.getElementById('previewImg');
-            if (url) {
-                img.src = url;
-                img.onerror = function() { preview.style.display = 'none'; };
-                img.onload = function() { preview.style.display = 'block'; };
-            } else {
-                preview.style.display = 'none';
-            }
-        });
-        
-        function clearImagePreview() {
-            document.getElementById('customFoodImage').value = '';
-            document.getElementById('imagePreview').style.display = 'none';
-        }
-        
-        function addCustomFood() {
-            const emoji = document.getElementById('customFoodEmoji').value;
-            const name = document.getElementById('customFoodName').value.trim();
-            const location = document.getElementById('customFoodLocation').value.trim();
-            const hours = document.getElementById('customFoodHours').value.trim();
-            const desc = document.getElementById('customFoodDesc').value.trim();
-            const mapLink = document.getElementById('customFoodMapLink').value.trim();
-            const image = document.getElementById('customFoodImage').value.trim();
-            
-            if (!name) {
-                showToast('請輸入店名');
-                return;
-            }
-            
-            customFoods.push({
-                id: Date.now(),
-                emoji,
-                name,
-                location: location || '未設定',
-                hours: hours || '未設定',
-                desc: desc || '美味推薦',
-                mapLink: mapLink || '',
-                image: image || ''
-            });
-            
-            localStorage.setItem('tokyoCustomFoods', JSON.stringify(customFoods));
-            renderCustomFoods();
-            clearFoodForm();
-            showToast('已加入美食地圖！');
-        }
-        
-        function deleteCustomFood(id) {
-            customFoods = customFoods.filter(f => f.id !== id);
-            localStorage.setItem('tokyoCustomFoods', JSON.stringify(customFoods));
-            renderCustomFoods();
-            showToast('已移除美食');
-        }
-        
-        function renderCustomFoods() {
-            const list = document.getElementById('customFoodList');
-            const empty = document.getElementById('customFoodEmpty');
-            
-            if (customFoods.length === 0) {
-                list.innerHTML = '';
-                empty.style.display = 'block';
-                return;
-            }
-            
-            empty.style.display = 'none';
-            list.innerHTML = customFoods.map(food => `
-                <div class="food-card" style="position:relative; padding:0; overflow:hidden;">
-                    <button onclick="deleteCustomFood(${food.id})" style="position:absolute; top:8px; right:8px; background:rgba(0,0,0,0.5); border:none; cursor:pointer; font-size:0.9rem; color:white; padding:4px 8px; border-radius:50%; z-index:2;" title="刪除">✕</button>
-                    ${food.image ? `<div style="width:100%; height:140px; overflow:hidden;"><img src="${food.image}" style="width:100%; height:100%; object-fit:cover;" alt="${food.name}" onerror="this.parentElement.style.display='none'"></div>` : `<div style="width:100%; height:100px; background:var(--gradient); display:flex; align-items:center; justify-content:center; font-size:3rem;">${food.emoji}</div>`}
-                    <div style="padding:0.8rem;">
-                        <div style="display:flex; align-items:center; gap:0.3rem; margin-bottom:0.3rem;">
-                            <span style="font-size:1.2rem;">${food.emoji}</span>
-                            <h4 style="font-size:0.95rem; margin:0;">${food.name}</h4>
-                        </div>
-                        <p style="font-size:0.8rem; color:var(--text-light); margin-bottom:0.3rem; line-height:1.3;">${food.desc}</p>
-                        <span class="location" style="font-size:0.7rem;">📍 ${food.location}</span>
-                        <span class="hours" style="font-size:0.65rem;">⏰ ${food.hours}</span>
-                        ${food.mapLink ? `<a href="${food.mapLink}" target="_blank" rel="noopener noreferrer" style="display:inline-block; margin-top:0.4rem; padding:0.2rem 0.6rem; background:var(--primary); color:white; border-radius:10px; font-size:0.7rem; text-decoration:none;">🗺️ 導航</a>` : ''}
-                    </div>
-                </div>
-            `).join('');
-        }
-        
-        function clearFoodForm() {
-            document.getElementById('customFoodName').value = '';
-            document.getElementById('customFoodLocation').value = '';
-            document.getElementById('customFoodHours').value = '';
-            document.getElementById('customFoodDesc').value = '';
-            document.getElementById('customFoodMapLink').value = '';
-            document.getElementById('customFoodImage').value = '';
-            document.getElementById('imagePreview').style.display = 'none';
-        }
-        
-        renderCustomFoods();
-
-        // ========== Geolocation ==========
-        const landmarks = {
-            hotel: { lat: 35.6966, lng: 139.8126, name: '東武黎凡特飯店' },
-            asakusa: { lat: 35.7148, lng: 139.7967, name: '淺草寺' },
-            skytree: { lat: 35.7101, lng: 139.8107, name: '晴空塔' },
-            ueno: { lat: 35.7141, lng: 139.7774, name: '上野' },
-            akiba: { lat: 35.6984, lng: 139.7731, name: '秋葉原' },
-            tokyo: { lat: 35.6812, lng: 139.7671, name: '東京車站' },
-            ginza: { lat: 35.6717, lng: 139.7649, name: '銀座' },
-            shibuya: { lat: 35.6580, lng: 139.7016, name: '澀谷' },
-            shinjuku: { lat: 35.6896, lng: 139.7006, name: '新宿' }
-        };
-
-        function getDistance(lat1, lng1, lat2, lng2) {
-            const R = 6371;
-            const dLat = (lat2 - lat1) * Math.PI / 180;
-            const dLng = (lng2 - lng1) * Math.PI / 180;
-            const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-                      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-                      Math.sin(dLng/2) * Math.sin(dLng/2);
-            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-            return R * c;
-        }
-
-        function showNearbyLandmarks() {
-            if (!navigator.geolocation) {
-                showToast('您的瀏覽器不支援地理位置功能');
-                return;
-            }
-
-            navigator.geolocation.getCurrentPosition(
-                (position) => {
-                    const { latitude, longitude } = position.coords;
-                    const distances = Object.entries(landmarks).map(([key, lm]) => ({
-                        key,
-                        ...lm,
-                        distance: getDistance(latitude, longitude, lm.lat, lm.lng)
-                    })).sort((a, b) => a.distance - b.distance);
-
-                    const nearest = distances.slice(0, 3);
-                    const msg = `📍 您附近：${nearest.map(d => `${d.name} (${d.distance.toFixed(1)}km)`).join('、')}`;
-                    showToast(msg);
-                },
-                (error) => {
-                    showToast('無法取得您的位置，請檢查定位權限');
-                },
-                { enableHighAccuracy: true, timeout: 10000 }
-            );
-        }
-
-        // ========== Customizable Itinerary ==========
-        const defaultItinerary = {
-            day1: {
-                title: '🛬 Day 1 - 抵達東京',
-                date: '9/1 (二)',
-                activities: [
-                    { time: '12:55', name: '抵達成田機場', desc: '辦理入境手續、領取行李', tag: '交通' },
-                    { time: '14:30', name: '前往飯店', desc: '搭建成田特快 → 錦系町站', tag: '交通' },
-                    { time: '16:00', name: '飯店 Check-in', desc: '東武黎凡特飯店', tag: '' },
-                    { time: '16:30', name: '淺草寺・雷門', desc: '東京最古老的寺廟', tag: '景點' },
-                    { time: '18:30', name: '晴空塔', desc: '欣賞夜景', tag: '景點' },
-                    { time: '20:00', name: '晚餐', desc: '淺草老字號天婦羅', tag: '美食' },
-                    { time: '21:30', name: '回飯店休息', desc: '享受大浴場', tag: '' }
-                ]
-            },
-            day2: {
-                title: '⛩️ Day 2 - 澀谷・新宿',
-                date: '9/2 (三)',
-                activities: [
-                    { time: '08:00', name: '飯店早餐', desc: '享用日式早餐', tag: '美食' },
-                    { time: '09:30', name: '明治神宮', desc: '東京最大的神社', tag: '景點' },
-                    { time: '11:30', name: '原宿竹下通', desc: '年輕人潮流聖地', tag: '購物' },
-                    { time: '13:00', name: '午餐：拉麵', desc: '一蘭拉麵', tag: '美食' },
-                    { time: '14:30', name: '澀谷 Scramble Square', desc: 'Sky 展望台', tag: '景點' },
-                    { time: '17:00', name: '新宿御苑', desc: '欣賞日式庭園', tag: '景點' },
-                    { time: '19:00', name: '晚餐：思出橫丁', desc: '串燒與關東煮', tag: '美食' }
-                ]
-            },
-            day3: {
-                title: '🏰 Day 3 - 秋葉原・東京車站',
-                date: '9/3 (四)',
-                activities: [
-                    { time: '08:00', name: '飯店早餐', desc: '享用日式早餐', tag: '美食' },
-                    { time: '09:30', name: '秋葉原電氣街', desc: '動漫、電器', tag: '購物' },
-                    { time: '12:00', name: '午餐', desc: '秋葉原女僕咖啡廳', tag: '美食' },
-                    { time: '14:00', name: '東京車站一番街', desc: '地下街購物', tag: '購物' },
-                    { time: '15:30', name: '皇居外苑', desc: '二重橋散步', tag: '景點' },
-                    { time: '17:00', name: '銀座逛街', desc: '東京最高級商店街', tag: '購物' },
-                    { time: '19:00', name: '晚餐：銀座壽司', desc: '新鮮握壽司', tag: '美食' }
-                ]
-            },
-            day4: {
-                title: '🌊 Day 4 - 台場・豐洲',
-                date: '9/4 (五)',
-                activities: [
-                    { time: '08:00', name: '飯店早餐', desc: '享用日式早餐', tag: '美食' },
-                    { time: '09:30', name: '豐洲市場', desc: '新鮮海鮮早餐', tag: '美食' },
-                    { time: '11:30', name: '台場海濱公園', desc: '自由女神、彩虹大橋', tag: '景點' },
-                    { time: '14:30', name: 'DiverCity', desc: '1:1 鋼彈模型', tag: '景點' },
-                    { time: '16:30', name: 'teamLab Borderless', desc: '沉浸式數位藝術', tag: '景點' },
-                    { time: '19:00', name: '晚餐：燒肉', desc: '欣賞夜景', tag: '美食' },
-                    { time: '21:00', name: '台場夜景', desc: '摩天輪', tag: '景點' }
-                ]
-            },
-            day5: {
-                title: '🌸 Day 5 - 下北澤・吉祥寺',
-                date: '9/5 (六)',
-                activities: [
-                    { time: '08:00', name: '飯店早餐', desc: '享用日式早餐', tag: '美食' },
-                    { time: '09:30', name: '下北澤古著街', desc: '二手服飾', tag: '購物' },
-                    { time: '12:00', name: '午餐：咖哩', desc: '日式咖哩名店', tag: '美食' },
-                    { time: '13:30', name: '吉祥寺井之頭公園', desc: '划船、散步', tag: '景點' },
-                    { time: '16:30', name: '吉卜力美術館', desc: '宮崎駿動畫迷必訪', tag: '景點' },
-                    { time: '19:00', name: '晚餐：迴轉壽司', desc: '最後一晚的壽司', tag: '美食' },
-                    { time: '21:00', name: '飯店收拾行李', desc: '準備明天回程', tag: '' }
-                ]
-            },
-            day6: {
-                title: '🛫 Day 6 - 回家',
-                date: '9/6 (日)',
-                activities: [
-                    { time: '08:00', name: '飯店早餐', desc: '最後一頓日式早餐', tag: '美食' },
-                    { time: '09:30', name: '上野阿美橫丁', desc: '採購伴手禮', tag: '購物' },
-                    { time: '12:00', name: '午餐', desc: '上野周邊用餐', tag: '美食' },
-                    { time: '14:00', name: '飯店 Check-out', desc: '寄放行李', tag: '' },
-                    { time: '16:00', name: '前往成田機場', desc: 'JR總武線', tag: '交通' },
-                    { time: '20:40', name: '登機 JX805', desc: '返回台北', tag: '交通' }
-                ]
-            }
-        };
-
-        let itinerary;
-        try {
-            const saved = localStorage.getItem('tokyoItinerary');
-            itinerary = saved ? JSON.parse(saved) : null;
-        } catch(e) {
-            itinerary = null;
-        }
-        if (!itinerary || !itinerary.day1) itinerary = JSON.parse(JSON.stringify(defaultItinerary));
-
-        function getTagClass(tag) {
-            const map = { '美食': 'tag-food', '景點': 'tag-spot', '交通': 'tag-train', '購物': 'tag-shopping', '寺廟': 'tag-temple' };
-            return map[tag] || '';
-        }
-
-        function renderItinerary() {
-            const container = document.getElementById('itineraryContainer');
-            if (!container) { console.error('itineraryContainer not found'); return; }
-            const gradients = ['var(--gradient)', 'var(--gradient-secondary)', 'var(--gradient)', 'var(--gradient-secondary)', 'var(--gradient)', 'var(--gradient-secondary)'];
-            
-            try {
-            container.innerHTML = Object.entries(itinerary).map(([day, data], i) => `
-                <div class="tab-content ${i === 0 ? 'active' : ''}" id="${day}">
-                    <div class="day-header" style="background: ${gradients[i]};" role="button" tabindex="0" onclick="toggleDay(this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleDay(this);}" aria-expanded="false">
-                        <h3>${data.title}</h3>
-                        <span class="date">${data.date} <i class="fas fa-chevron-down"></i></span>
-                    </div>
-                    <div class="day-content">
-                        ${(data.activities || []).map((act, j) => `
-                            <div class="activity" style="position:relative;">
-                                <div class="activity-time">${act.time}</div>
-                                <div class="activity-info" style="flex:1;">
-                                    <h4>${act.name}</h4>
-                                    <p>${act.desc || ''}</p>
-                                    ${act.tag ? `<span class="activity-tag ${getTagClass(act.tag)}">${act.tag}</span>` : ''}
-                                </div>
-                                <div style="display:flex; gap:4px; position:absolute; top:8px; right:0;">
-                                    <button onclick="editActivity('${day}', ${j})" style="background:none; border:none; cursor:pointer; font-size:0.8rem; color:var(--text-light); padding:4px;" title="編輯">✏️</button>
-                                    <button onclick="deleteActivity('${day}', ${j})" style="background:none; border:none; cursor:pointer; font-size:0.8rem; color:var(--text-light); padding:4px;" title="刪除">✕</button>
-                                </div>
-                            </div>
-                        `).join('')}
-                        <button onclick="addActivity('${day}')" style="width:100%; padding:0.8rem; margin-top:0.5rem; background:var(--bg); border:2px dashed var(--border-color); border-radius:10px; cursor:pointer; font-size:0.9rem; color:var(--text-light); transition:all 0.3s;">
-                            ➕ 新增活動
-                        </button>
-                    </div>
-                </div>
-            `).join('');
-            } catch(e) { console.error('renderItinerary inner error:', e); }
-            
-            // Auto-expand first day
-            setTimeout(() => {
-                const firstContent = document.querySelector('#day1 .day-content');
-                if (firstContent) firstContent.classList.add('expanded');
-            }, 100);
-        }
-
-        // ========== Activity Modal ==========
-        let selectedTag = '';
-
-        function selectTag(btn, tag) {
-            selectedTag = tag;
-            document.getElementById('modalTag').value = tag;
-            document.querySelectorAll('#activityModal .tag-btn-selected, #activityModal [style*="border-radius:15px"]').forEach(b => {
-                b.style.borderColor = 'var(--border-color)';
-                b.style.background = 'var(--bg)';
-                b.classList.remove('tag-btn-selected');
-            });
-            btn.style.borderColor = 'var(--primary)';
-            btn.style.background = 'var(--primary)';
-            btn.style.color = 'white';
-            btn.classList.add('tag-btn-selected');
-        }
-
-        function openModal(day, index) {
-            const modal = document.getElementById('activityModal');
-            const title = document.getElementById('modalTitle');
-            document.getElementById('modalDay').value = day;
-            document.getElementById('modalIndex').value = index;
-            
-            if (index >= 0) {
-                const act = itinerary[day].activities[index];
-                title.textContent = '編輯活動';
-                document.getElementById('modalTime').value = act.time;
-                document.getElementById('modalName').value = act.name;
-                document.getElementById('modalDesc').value = act.desc;
-                selectTagByValue(act.tag);
-            } else {
-                title.textContent = '新增活動';
-                document.getElementById('modalTime').value = '';
-                document.getElementById('modalName').value = '';
-                document.getElementById('modalDesc').value = '';
-                selectTagByValue('');
-            }
-            
-            modal.style.display = 'flex';
-        }
-
-        function closeModal() {
-            document.getElementById('activityModal').style.display = 'none';
-        }
-
-        function selectTagByValue(tag) {
-            selectedTag = tag;
-            document.getElementById('modalTag').value = tag;
-            const buttons = document.querySelectorAll('#activityModal [onclick^="selectTag"]');
-            buttons.forEach(btn => {
-                const btnTag = btn.getAttribute('onclick').match(/'([^']*)'/)[1];
-                if (btnTag === tag) {
-                    btn.style.borderColor = 'var(--primary)';
-                    btn.style.background = 'var(--primary)';
-                    btn.style.color = 'white';
-                } else {
-                    btn.style.borderColor = 'var(--border-color)';
-                    btn.style.background = 'var(--bg)';
-                    btn.style.color = 'var(--text)';
-                }
-            });
-        }
-
-        function saveActivity() {
-            const day = document.getElementById('modalDay').value;
-            const index = parseInt(document.getElementById('modalIndex').value);
-            const time = document.getElementById('modalTime').value;
-            const name = document.getElementById('modalName').value.trim();
-            const desc = document.getElementById('modalDesc').value.trim();
-            const tag = document.getElementById('modalTag').value;
-
-            if (!time || !name) {
-                showToast('請填寫時間和活動名稱');
-                return;
-            }
-
-            if (index >= 0) {
-                itinerary[day].activities[index] = { time, name, desc, tag };
-            } else {
-                itinerary[day].activities.push({ time, name, desc, tag });
-            }
-
-            itinerary[day].activities.sort((a, b) => a.time.localeCompare(b.time));
-            localStorage.setItem('tokyoItinerary', JSON.stringify(itinerary));
-            renderItinerary();
-            closeModal();
-            showToast(index >= 0 ? '已更新活動' : '已新增活動');
-        }
-
-        function addActivity(day) {
-            openModal(day, -1);
-        }
-
-        function editActivity(day, index) {
-            openModal(day, index);
-        }
-
-        function deleteActivity(day, index) {
-            if (!confirm('確定要刪除此活動嗎？')) return;
-            itinerary[day].activities.splice(index, 1);
-            localStorage.setItem('tokyoItinerary', JSON.stringify(itinerary));
-            renderItinerary();
-            showToast('已刪除活動');
-        }
-
-        let allExpanded = false;
-        function toggleAllDays() {
-            allExpanded = !allExpanded;
-            document.querySelectorAll('.day-content').forEach(el => {
-                if (allExpanded) {
-                    el.classList.add('expanded');
-                } else {
-                    el.classList.remove('expanded');
-                }
-            });
-            document.querySelectorAll('.day-header .fa-chevron-down').forEach(icon => {
-                icon.style.transform = allExpanded ? 'rotate(180deg)' : 'rotate(0)';
-            });
-            const btn = document.querySelector('[onclick="toggleAllDays()"]');
-            if (btn) btn.textContent = allExpanded ? '📖 全部收合' : '📖 全部展開';
-        }
-
-        function resetItinerary() {
-            if (!confirm('確定要重置行程嗎？所有自訂內容將被清除。')) return;
-            itinerary = JSON.parse(JSON.stringify(defaultItinerary));
-            localStorage.setItem('tokyoItinerary', JSON.stringify(itinerary));
-            renderItinerary();
-            showToast('行程已重置');
-        }
-
-        // Render itinerary on load
-        try {
-            if (document.readyState === 'loading') {
-                document.addEventListener('DOMContentLoaded', renderItinerary);
-            } else {
-                renderItinerary();
-            }
-        } catch(e) { console.error('renderItinerary call error:', e); }
-
-        // ========== Today's Itinerary ==========
-        function goToToday() {
-            const tripStart = new Date('2026-09-01');
-            const today = new Date();
-            const diffDays = Math.floor((today - tripStart) / (1000 * 60 * 60 * 24));
-            
-            let dayNum = 1;
-            if (diffDays >= 0 && diffDays < 6) {
-                dayNum = diffDays + 1;
-            } else if (diffDays >= 6) {
-                dayNum = 6;
-            }
-            
-            const tabId = 'day' + dayNum;
-            const tabBtn = document.querySelector(`.tab-btn:nth-child(${dayNum})`);
-            if (tabBtn) showTab(tabId, tabBtn);
-            
-            document.getElementById('itinerary').scrollIntoView({ behavior: 'smooth' });
-            
-            setTimeout(() => {
-                const dayContent = document.querySelector(`#${tabId} .day-content`);
-                if (dayContent && !dayContent.classList.contains('expanded')) {
-                    toggleDay(document.querySelector(`#${tabId} .day-header`));
-                }
-            }, 500);
+            popup.style.top = '50%';
+            popup.style.left = '50%';
+            popup.style.transform = 'translate(-50%, -50%)';
         }
 
         // ========== Initialize ==========
-        try { loadChecklist(); } catch(e) { console.error('loadChecklist error:', e); }
+        loadChecklist();
 
-        // Loading screen - ALWAYS hide after 2 seconds
-        function hideLoading() {
-            const ls = document.getElementById('loadingScreen');
-            if (ls) ls.classList.add('hidden');
-        }
-        setTimeout(hideLoading, 2000);
-        window.addEventListener('load', () => { setTimeout(hideLoading, 500); });
+        // Loading screen
+        window.addEventListener('load', () => { setTimeout(() => document.getElementById('loadingScreen').classList.add('hidden'), 800); });
 
         // Scroll Reveal with IntersectionObserver
         function initScrollReveal() {
@@ -3862,68 +2846,14 @@
         document.querySelectorAll('.routemap-container > div:last-child').forEach(el => el.classList.add('reveal'));
         document.querySelectorAll('.map-container').forEach(el => el.classList.add('reveal'));
 
-        try { initScrollReveal(); } catch(e) { console.error('scrollReveal error:', e); }
+        initScrollReveal();
 
-        try { document.querySelectorAll('.marker[role="button"]').forEach(m => { m.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); m.dispatchEvent(new Event('click')); } }); }); } catch(e) {}
+        document.querySelectorAll('.marker[role="button"]').forEach(m => { m.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); m.dispatchEvent(new Event('click')); } }); });
 
-        // === Web Share API ===
-        function nativeShare() {
-            if (navigator.share) {
-                navigator.share({
-                    title: document.title,
-                    text: '跟我一起看看東京六天五夜行程規劃！🗼',
-                    url: window.location.href
-                }).catch(() => {});
-            }
-        }
-        if (navigator.share) {
-            const nsBtn = document.getElementById('nativeShareBtn');
-            if (nsBtn) nsBtn.style.display = 'inline-flex';
-        }
-        function safeGetItem(key, fallback) {
-            try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; }
-            catch(e) { return fallback; }
-        }
-        function safeSetItem(key, value) {
-            try { localStorage.setItem(key, JSON.stringify(value)); }
-            catch(e) { console.warn('localStorage save failed:', e); }
-        }
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('sw.js').catch(() => {});
-            });
-        }
-        
+        document.querySelectorAll('.marker[role="button"]').forEach(m => { m.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); m.dispatchEvent(new Event('click')); } }); });
+
         // Show welcome toast
         setTimeout(() => showToast('歡迎使用東京自由行網站！'), 2500);
-
-        // ========== Offline Detection ==========
-        function updateOnlineStatus() {
-            if (!navigator.onLine) {
-                showToast('📡 目前處於離線模式，部分功能受限');
-            }
-        }
-        window.addEventListener('online', () => showToast('✅ 已恢復網路連線'));
-        window.addEventListener('offline', updateOnlineStatus);
-        if (!navigator.onLine) updateOnlineStatus();
-
-        // ========== PWA Install Prompt ==========
-        let deferredPrompt;
-        window.addEventListener('beforeinstallprompt', (e) => {
-            e.preventDefault();
-            deferredPrompt = e;
-            // Show install prompt after 5 seconds
-            setTimeout(() => {
-                if (deferredPrompt) {
-                    showToast('📱 點擊選單可安裝此應用到主螢幕');
-                }
-            }, 5000);
-        });
-
-        window.addEventListener('appinstalled', () => {
-            deferredPrompt = null;
-            showToast('✅ 已成功安裝到主螢幕！');
-        });
     </script>
 </body>
 </html>

@@ -1,0 +1,61 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --color-primary: #e74c3c;
+  --color-primary-dark: #c0392b;
+  --color-secondary: #2c3e50;
+  --color-accent: #f39c12;
+  
+  --font-sans: var(--font-noto-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-serif: var(--font-noto-serif), ui-serif, Georgia, serif;
+}
+
+@layer base {
+  :root {
+    /* Handle Safe Areas for iPhone 15 Pro Max */
+    --sab: env(safe-area-inset-bottom);
+    --sat: env(safe-area-inset-top);
+  }
+
+  html {
+    /* Use svh to prevent jumping on mobile browsers */
+    height: -webkit-fill-available;
+  }
+
+  body {
+    min-height: 100vh;
+    min-height: 100svh;
+    /* Smooth elastic scrolling for iOS */
+    -webkit-overflow-scrolling: touch;
+    padding-top: var(--sat);
+    padding-bottom: var(--sab);
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  /* Reachability focus for large screens like S26 Ultra */
+  .thumb-zone {
+    padding-bottom: calc(1rem + var(--sab));
+  }
+}
+
+/* Custom Scrollbar for high-end displays */
+::-webkit-scrollbar {
+  width: 5px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(231, 76, 60, 0.2);
+  border-radius: 10px;
+}
+.dark ::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+}
