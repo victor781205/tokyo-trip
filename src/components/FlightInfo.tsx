@@ -125,10 +125,18 @@ export function FlightInfo() {
                 <span className="font-black text-gray-700 dark:text-gray-200">JX 800</span>
              </div>
              {outbound && !outbound.error && (
+                <>
                 <div className="flex justify-between items-center text-sm">
                     <span className="text-gray-400 font-bold flex items-center gap-2"><Info className="w-3.5 h-3.5" /> 航班狀態</span>
                     <span className={`font-black ${outbound.status.includes('延遲') ? 'text-red-500' : 'text-green-500'}`}>{outbound.status}</span>
                 </div>
+                {outbound.terminal && (
+                <div className="flex justify-between items-center text-sm">
+                    <span className="text-gray-400 font-bold flex items-center gap-2"><Info className="w-3.5 h-3.5" /> 航廈</span>
+                    <span className="font-black text-gray-700 dark:text-gray-200">第 {outbound.terminal} 航廈</span>
+                </div>
+                )}
+                </>
              )}
           </div>
         </div>
