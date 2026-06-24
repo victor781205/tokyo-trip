@@ -244,136 +244,139 @@ export function Itinerary() {
       {/* ── 匯出模式：顯示全展開 ── */}
       {isExporting ? renderExportView() : (
         <>
-          {/* ── Day Tabs ── */}
-          <div className="flex items-center gap-2 mb-6">
-            {/* Left Arrow (desktop) */}
-            <button
-              onClick={() => goToDay(activeDayIndex - 1)}
-              disabled={activeDayIndex === 0}
-              className="hidden md:flex shrink-0 w-10 h-10 items-center justify-center rounded-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-gray-400 hover:text-primary disabled:opacity-30 transition-all shadow-sm"
-            >
-              <ChevronLeft className="w-5 h-5" />
-            </button>
-
-            {/* Scrollable Tabs */}
-            <div ref={tabScrollRef} className="flex-1 flex gap-2 overflow-x-auto scrollbar-hide pb-1 snap-x snap-mandatory scroll-smooth">
-              {dayKeys.map((dayKey, i) => {
-                const dayData = currentItin[dayKey];
-                const isActive = i === activeDayIndex;
-                // 從 title 取 emoji
-                const emoji = dayData.title.split(" ")[0];
-                const label = dayData.title.replace(/^[^\s]+\s/, "");
-                return (
-                  <button
-                    key={dayKey}
-                    onClick={() => goToDay(i)}
-                    className={`snap-center shrink-0 px-4 py-3 rounded-2xl font-black text-sm transition-all duration-300 flex items-center gap-2 min-w-[7rem] whitespace-nowrap ${
-                      isActive
-                        ? "bg-gradient-to-r from-primary to-accent text-white shadow-lg shadow-primary/30 scale-105"
-                        : "bg-white dark:bg-slate-800 text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-slate-700 hover:border-primary/30 hover:text-primary"
-                    }`}
-                  >
-                    <span className="text-lg">{emoji}</span>
-                    <div className="text-left leading-tight">
-                      <div className="text-[10px] uppercase tracking-widest opacity-70">Day {i + 1}</div>
-                      <div className="text-xs font-black truncate max-w-[6rem]">{label}</div>
-                    </div>
-                  </button>
-                );
-              })}
+          {/* ══════ Mobile：水平滑動切換天數 ══════ */}
+          <div className="md:hidden">
+            {/* ── Day Tabs ── */}
+            <div className="flex items-center gap-2 mb-6">
+              <div ref={tabScrollRef} className="flex-1 flex gap-2 overflow-x-auto scrollbar-hide pb-1 snap-x snap-mandatory scroll-smooth">
+                {dayKeys.map((dayKey, i) => {
+                  const dayData = currentItin[dayKey];
+                  const isActive = i === activeDayIndex;
+                  const emoji = dayData.title.split(" ")[0];
+                  const label = dayData.title.replace(/^[^\s]+\s/, "");
+                  return (
+                    <button
+                      key={dayKey}
+                      onClick={() => goToDay(i)}
+                      className={`snap-center shrink-0 px-4 py-3 rounded-2xl font-black text-sm transition-all duration-300 flex items-center gap-2 min-w-[7rem] whitespace-nowrap ${
+                        isActive
+                          ? "bg-gradient-to-r from-primary to-accent text-white shadow-lg shadow-primary/30 scale-105"
+                          : "bg-white dark:bg-slate-800 text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-slate-700 hover:border-primary/30 hover:text-primary"
+                      }`}
+                    >
+                      <span className="text-lg">{emoji}</span>
+                      <div className="text-left leading-tight">
+                        <div className="text-[10px] uppercase tracking-widest opacity-70">Day {i + 1}</div>
+                        <div className="text-xs font-black truncate max-w-[6rem]">{label}</div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
-            {/* Right Arrow (desktop) */}
-            <button
-              onClick={() => goToDay(activeDayIndex + 1)}
-              disabled={activeDayIndex === dayKeys.length - 1}
-              className="hidden md:flex shrink-0 w-10 h-10 items-center justify-center rounded-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-gray-400 hover:text-primary disabled:opacity-30 transition-all shadow-sm"
-            >
-              <ChevronRight className="w-5 h-5" />
-            </button>
-          </div>
-
-          {/* ── Active Day Header ── */}
-          <div className="bg-gradient-to-r from-primary to-accent text-white p-5 md:p-6 rounded-[2rem] shadow-xl mb-6 flex items-center gap-4">
-            <div className="bg-white/20 p-3 rounded-2xl backdrop-blur-sm">
-              <Calendar className="w-6 h-6" />
+            {/* ── Active Day Header ── */}
+            <div className="bg-gradient-to-r from-primary to-accent text-white p-5 rounded-[2rem] shadow-xl mb-6 flex items-center gap-4">
+              <div className="bg-white/20 p-3 rounded-2xl backdrop-blur-sm">
+                <Calendar className="w-6 h-6" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-xl font-black leading-tight">{activeDayData.title}</h3>
+                <p className="text-sm font-bold text-white/70 mt-0.5">{activeDayData.date}・{activeDayData.activities.length} 項行程</p>
+              </div>
+              <div className="flex items-center gap-1">
+                <button onClick={() => goToDay(activeDayIndex - 1)} disabled={activeDayIndex === 0} className="p-2 rounded-xl bg-white/20 disabled:opacity-30 transition-all">
+                  <ChevronLeft className="w-5 h-5" />
+                </button>
+                <button onClick={() => goToDay(activeDayIndex + 1)} disabled={activeDayIndex === dayKeys.length - 1} className="p-2 rounded-xl bg-white/20 disabled:opacity-30 transition-all">
+                  <ChevronRight className="w-5 h-5" />
+                </button>
+              </div>
             </div>
-            <div className="flex-1">
-              <h3 className="text-xl md:text-2xl font-black leading-tight">{activeDayData.title}</h3>
-              <p className="text-sm font-bold text-white/70 mt-0.5">{activeDayData.date}・{activeDayData.activities.length} 項行程</p>
-            </div>
-            {/* Mobile nav arrows */}
-            <div className="flex md:hidden items-center gap-1">
-              <button onClick={() => goToDay(activeDayIndex - 1)} disabled={activeDayIndex === 0} className="p-2 rounded-xl bg-white/20 disabled:opacity-30 transition-all">
-                <ChevronLeft className="w-5 h-5" />
-              </button>
-              <button onClick={() => goToDay(activeDayIndex + 1)} disabled={activeDayIndex === dayKeys.length - 1} className="p-2 rounded-xl bg-white/20 disabled:opacity-30 transition-all">
-                <ChevronRight className="w-5 h-5" />
-              </button>
-            </div>
-          </div>
 
-          {/* ── Activities Timeline ── */}
-          <div className="relative space-y-6 before:absolute before:inset-0 before:ml-[4.5rem] md:before:ml-[5.5rem] before:-translate-x-px before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-gray-200 dark:before:via-slate-700 before:to-transparent animate-in fade-in slide-in-from-right-4 duration-400" key={activeDayKey}>
-            {activeDayData.activities.map((act, idx) => (
-              <div key={idx} className="relative flex items-start gap-6 md:gap-10 group">
-                {/* Dot */}
-                <div className="flex items-center justify-center w-6 h-6 rounded-full border-4 border-white dark:border-slate-900 bg-primary absolute left-[4.5rem] md:left-[5.5rem] -translate-x-1/2 z-10 shadow-lg group-hover:scale-125 transition-transform"></div>
-
-                {/* Time */}
-                <div className="w-[4.5rem] md:w-[5.5rem] pr-2 md:pr-3 text-right text-primary font-black text-xl md:text-2xl pt-0.5 shrink-0 tabular-nums">
-                  {act.time}
-                </div>
-
-                {/* Content Card */}
-                <div className="flex-1 pb-2">
-                  <div className="bg-white dark:bg-slate-800 p-5 md:p-6 rounded-[1.5rem] shadow-sm border border-gray-100 dark:border-slate-700 hover:shadow-xl hover:-translate-y-1 transition-all relative group/card overflow-hidden">
-                    <div className="absolute top-0 right-0 w-2 h-full bg-primary opacity-0 group-hover/card:opacity-100 transition-opacity"></div>
-
-                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-3">
-                      <h4 className="font-black text-xl md:text-2xl text-gray-900 dark:text-white leading-tight">{act.name}</h4>
-                      {act.tag && (
-                        <span className={`self-start text-[10px] sm:text-xs font-black px-3 py-1 rounded-lg uppercase tracking-widest ${getTagColor(act.tag)}`}>
-                          {act.tag}
-                        </span>
-                      )}
-                    </div>
-
-                    {act.desc && <p className="text-base text-gray-500 dark:text-gray-400 leading-relaxed mb-4">{act.desc}</p>}
-
-                    <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-all duration-300">
-                      <button onClick={() => openModal(activeDayKey, idx)} className="text-primary hover:bg-primary/10 p-2 rounded-xl transition-colors">
-                        <Pencil className="w-4 h-4" />
-                      </button>
-                      <button onClick={() => deleteActivity(activeDayKey, idx)} className="text-red-500 hover:bg-red-50 p-2 rounded-xl transition-colors">
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+            {/* ── Activities Timeline (mobile) ── */}
+            <div className="relative space-y-6 before:absolute before:inset-0 before:ml-[4.5rem] before:-translate-x-px before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-gray-200 dark:before:via-slate-700 before:to-transparent animate-in fade-in slide-in-from-right-4 duration-400" key={activeDayKey}>
+              {activeDayData.activities.map((act, idx) => (
+                <div key={idx} className="relative flex items-start gap-6 group">
+                  <div className="flex items-center justify-center w-6 h-6 rounded-full border-4 border-white dark:border-slate-900 bg-primary absolute left-[4.5rem] -translate-x-1/2 z-10 shadow-lg group-hover:scale-125 transition-transform"></div>
+                  <div className="w-[4.5rem] pr-2 text-right text-primary font-black text-xl pt-0.5 shrink-0 tabular-nums">{act.time}</div>
+                  <div className="flex-1 pb-2">
+                    <div className="bg-white dark:bg-slate-800 p-5 rounded-[1.5rem] shadow-sm border border-gray-100 dark:border-slate-700 hover:shadow-xl transition-all relative group/card overflow-hidden">
+                      <div className="absolute top-0 right-0 w-2 h-full bg-primary opacity-0 group-hover/card:opacity-100 transition-opacity"></div>
+                      <div className="flex flex-col justify-between gap-3 mb-3">
+                        <h4 className="font-black text-xl text-gray-900 dark:text-white leading-tight">{act.name}</h4>
+                        {act.tag && <span className={`self-start text-[10px] font-black px-3 py-1 rounded-lg uppercase tracking-widest ${getTagColor(act.tag)}`}>{act.tag}</span>}
+                      </div>
+                      {act.desc && <p className="text-base text-gray-500 dark:text-gray-400 leading-relaxed mb-4">{act.desc}</p>}
+                      <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-all duration-300">
+                        <button onClick={() => openModal(activeDayKey, idx)} className="text-primary hover:bg-primary/10 p-2 rounded-xl transition-colors"><Pencil className="w-4 h-4" /></button>
+                        <button onClick={() => deleteActivity(activeDayKey, idx)} className="text-red-500 hover:bg-red-50 p-2 rounded-xl transition-colors"><Trash2 className="w-4 h-4" /></button>
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              ))}
+              <button onClick={() => openModal(activeDayKey)} className="w-full mt-6 p-5 border-2 border-dashed border-gray-200 dark:border-slate-700 rounded-3xl text-gray-400 hover:text-primary hover:border-primary hover:bg-primary/5 transition-all flex items-center justify-center gap-3 font-black uppercase tracking-widest">
+                <Plus className="w-6 h-6" /> 新增行程活動
+              </button>
+            </div>
 
-            {/* Add Button */}
-            <button
-              onClick={() => openModal(activeDayKey)}
-              className="w-full mt-6 p-5 border-2 border-dashed border-gray-200 dark:border-slate-700 rounded-3xl text-gray-400 hover:text-primary hover:border-primary hover:bg-primary/5 transition-all flex items-center justify-center gap-3 font-black uppercase tracking-widest"
-            >
-              <Plus className="w-6 h-6" /> 新增行程活動
-            </button>
+            {/* ── Progress Dots ── */}
+            <div className="flex justify-center gap-2 mt-8">
+              {dayKeys.map((_, i) => (
+                <button key={i} onClick={() => goToDay(i)} className={`rounded-full transition-all duration-300 ${i === activeDayIndex ? "w-8 h-2.5 bg-primary" : "w-2.5 h-2.5 bg-gray-300 dark:bg-slate-600"}`} />
+              ))}
+            </div>
           </div>
 
-          {/* ── Day Progress Dots (mobile) ── */}
-          <div className="flex md:hidden justify-center gap-2 mt-8">
-            {dayKeys.map((_, i) => (
-              <button
-                key={i}
-                onClick={() => goToDay(i)}
-                className={`rounded-full transition-all duration-300 ${
-                  i === activeDayIndex ? "w-8 h-2.5 bg-primary" : "w-2.5 h-2.5 bg-gray-300 dark:bg-slate-600"
-                }`}
-              />
-            ))}
+          {/* ══════ Desktop：一次展開所有天數 ══════ */}
+          <div className="hidden md:block space-y-10">
+            {dayKeys.map((dayKey, dayIdx) => {
+              const dayData = currentItin[dayKey];
+              return (
+                <div key={dayKey} className="animate-in fade-in slide-in-from-bottom-4 duration-500" style={{ animationDelay: `${dayIdx * 80}ms` }}>
+                  {/* ── Day Header ── */}
+                  <div className="bg-gradient-to-r from-primary to-accent text-white p-6 rounded-[2rem] shadow-xl mb-6 flex items-center gap-4">
+                    <div className="bg-white/20 p-3 rounded-2xl backdrop-blur-sm">
+                      <Calendar className="w-6 h-6" />
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="text-2xl font-black leading-tight">{dayData.title}</h3>
+                      <p className="text-sm font-bold text-white/70 mt-0.5">{dayData.date}・{dayData.activities.length} 項行程</p>
+                    </div>
+                  </div>
+
+                  {/* ── Activities Timeline ── */}
+                  <div className="relative space-y-6 before:absolute before:inset-0 before:ml-[5.5rem] before:-translate-x-px before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-gray-200 dark:before:via-slate-700 before:to-transparent">
+                    {dayData.activities.map((act, idx) => (
+                      <div key={idx} className="relative flex items-start gap-10 group">
+                        <div className="flex items-center justify-center w-6 h-6 rounded-full border-4 border-white dark:border-slate-900 bg-primary absolute left-[5.5rem] -translate-x-1/2 z-10 shadow-lg group-hover:scale-125 transition-transform"></div>
+                        <div className="w-[5.5rem] pr-3 text-right text-primary font-black text-2xl pt-0.5 shrink-0 tabular-nums">{act.time}</div>
+                        <div className="flex-1 pb-2">
+                          <div className="bg-white dark:bg-slate-800 p-6 rounded-[1.5rem] shadow-sm border border-gray-100 dark:border-slate-700 hover:shadow-xl hover:-translate-y-1 transition-all relative group/card overflow-hidden">
+                            <div className="absolute top-0 right-0 w-2 h-full bg-primary opacity-0 group-hover/card:opacity-100 transition-opacity"></div>
+                            <div className="flex items-center justify-between gap-3 mb-3">
+                              <h4 className="font-black text-2xl text-gray-900 dark:text-white leading-tight">{act.name}</h4>
+                              {act.tag && <span className={`text-xs font-black px-3 py-1 rounded-lg uppercase tracking-widest ${getTagColor(act.tag)}`}>{act.tag}</span>}
+                            </div>
+                            {act.desc && <p className="text-base text-gray-500 dark:text-gray-400 leading-relaxed mb-4">{act.desc}</p>}
+                            <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-all duration-300">
+                              <button onClick={() => openModal(dayKey, idx)} className="text-primary hover:bg-primary/10 p-2 rounded-xl transition-colors"><Pencil className="w-4 h-4" /></button>
+                              <button onClick={() => deleteActivity(dayKey, idx)} className="text-red-500 hover:bg-red-50 p-2 rounded-xl transition-colors"><Trash2 className="w-4 h-4" /></button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+
+                    {/* Add Button per day */}
+                    <button onClick={() => openModal(dayKey)} className="w-full mt-4 p-4 border-2 border-dashed border-gray-200 dark:border-slate-700 rounded-3xl text-gray-400 hover:text-primary hover:border-primary hover:bg-primary/5 transition-all flex items-center justify-center gap-2 font-black text-sm uppercase tracking-widest">
+                      <Plus className="w-5 h-5" /> 新增行程活動
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </>
       )}
