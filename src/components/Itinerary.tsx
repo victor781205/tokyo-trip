@@ -350,14 +350,15 @@ export function Itinerary() {
                   <button
                     key={dayKey}
                     onClick={() => goToDay(i)}
-                    className={`relative px-4 py-4 rounded-2xl transition-all duration-300 text-left group overflow-hidden ${
+                    className={`relative px-4 py-4 rounded-2xl transition-all duration-300 text-center group overflow-hidden ${
                       isActive
                         ? "bg-gradient-to-r from-primary to-accent text-white shadow-xl shadow-primary/30 scale-[1.03]"
                         : "bg-white dark:bg-slate-800 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-slate-700 hover:border-primary/40 hover:shadow-lg"
                     }`}
                   >
-                    <div className="font-black text-sm leading-tight line-clamp-1" title={dayData.title}>{dayData.title}</div>
-                    <div className={`text-xs font-extrabold mt-0.5 ${isActive ? "text-white/70" : "text-gray-500"}`}>{dayData.date}・{dayData.activities.length} 項</div>
+                    <div className={`text-xs font-black uppercase tracking-widest ${isActive ? "text-white/60" : "text-gray-400"}`}>Day {i + 1}</div>
+                    <div className="font-black text-sm leading-tight line-clamp-1 mt-1" title={dayData.title}>{dayData.title.replace(/^[^\s]+\s+Day\s+\d+\s*[-–—:：]?\s*/, "")}</div>
+                    <div className={`text-xs font-extrabold mt-1 ${isActive ? "text-white/70" : "text-gray-500"}`}>{dayData.date}・{dayData.activities.length} 項</div>
                     {isActive && (
                       <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 w-6 h-6 bg-gradient-to-r from-primary to-accent rotate-45 rounded-sm shadow-lg"></div>
                     )}
