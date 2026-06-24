@@ -1,36 +1,89 @@
 import { NextResponse } from "next/server";
 
-export async function GET() {
-  try {
-    const res = await fetch("https://tdx.transportdata.tw/api/basic/v2/Air/FIDS/Airport/Departure/TPE?%24format=JSON", {
-      headers: {
-        "User-Agent": "Mozilla/5.0",
-        "Accept": "application/json",
-      },
-      next: { revalidate: 300 } 
-    });
+const AVIATION_STACK_KEY = process.env.AVIATION_STACK_KEY?.trim() ?? "";
 
-    if (!res.ok) throw new Error("TDX API response not ok");
-    
-    const data = await res.json();
-    
-    const flight = data.find((f: Record<string, string | number>) => 
-        (f.AirlineID === "SJX" || f.AirlineID === "JX") && f.FlightNumber === "800"
+export async function GET() {
+  // ── 去程 JX800（TPE 出發）— 使用 TDX 機場 FIDS ──
+  let outbound: Record<string, string> | null = null;
+  try {
+    const res = await fetch(
+      "https://tdx.transportdata.tw/api/basic/v2/Air/FIDS/Airport/Departure/TPE?%24format=JSON",
+      {
+        headers: {
+          "User-Agent": "Mozilla/5.0",
+          Accept: "application/json",
+        },
+        next: { revalidate: 300 },
+      }
     );
 
-    if (!flight) {
-        return NextResponse.json({ error: "Flight not found in current FIDS" });
-    }
+    if (res.ok) {
+      const data = await res.json();
+      const flight = data.find(
+        (f: Record<string, string | number>) =>
+          (f.AirlineID === "SJX" || f.AirlineID === "JX") &&
+          f.FlightNumber === "800"
+      );
 
-    return NextResponse.json({
-        gate: flight.Gate || "尚未公佈",
-        status: flight.ArrivalStatus || flight.DepartureStatus || "準時",
-        terminal: flight.Terminal || "1",
-        time: flight.ScheduleDepartureTime || flight.ScheduleArrivalTime,
-        actualTime: flight.ActualDepartureTime || flight.ActualArrivalTime
-    });
+      if (flight) {
+        outbound = {
+          gate: String(flight.Gate || "尚未公佈"),
+          status: String(
+            flight.ArrivalStatus || flight.DepartureStatus || "準時"
+          ),
+          terminal: String(flight.Terminal || "1"),
+          time: String(
+            flight.ScheduleDepartureTime || flight.ScheduleArrivalTime || ""
+          ),
+          actualTime: String(
+            flight.ActualDepartureTime || flight.ActualArrivalTime || ""
+          ),
+        };
+      }
+    }
   } catch (error) {
-    console.error("Flight API Error:", error);
-    return NextResponse.json({ error: "Failed to fetch live flight data" }, { status: 500 });
+    console.error("TDX Flight API Error:", error);
   }
+
+  // ── 回程 JX805（NRT 出發）— 使用 AviationStack ──
+  let inbound: Record<string, string> | null = null;
+  if (AVIATION_STACK_KEY) {
+    try {
+      const url =
+        `http://api.aviationstack.com/v1/flights` +
+        `?access_key=${AVIATION_STACK_KEY}&dep_iata=NRT&flight_number=JX805`;
+      const res = await fetch(url, { next: { revalidate: 300 } });
+
+      if (res.ok) {
+        const json = await res.json();
+        const flight = json?.data?.[0];
+        if (flight) {
+          inbound = {
+            gate: String(flight.departure?.gate || "尚未公佈"),
+            status: String(flight.flight_status || "未知"),
+            terminal: String(flight.departure?.terminal || "—"),
+            scheduled: String(
+              flight.departure?.scheduled || ""
+            ),
+            estimated: String(
+              flight.departure?.estimated || ""
+            ),
+            actual: String(flight.departure?.actual || ""),
+            delay: String(flight.departure?.delay ?? ""),
+          };
+        }
+      }
+    } catch (error) {
+      console.error("AviationStack API Error:", error);
+    }
+  }
+
+  return NextResponse.json({
+    outbound: outbound ?? { error: "Flight not found in TDX FIDS" },
+    inbound: inbound ?? {
+      error: AVIATION_STACK_KEY
+        ? "Return flight data not yet available (AviationStack)"
+        : "AVIATION_STACK_KEY not configured",
+    },
+  });
 }
