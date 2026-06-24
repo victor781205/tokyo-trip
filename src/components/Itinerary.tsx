@@ -348,12 +348,12 @@ export function Itinerary() {
                         : "bg-white dark:bg-slate-800 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-slate-700 hover:border-primary/40 hover:shadow-lg"
                     }`}
                   >
-                    <div className="text-3xl mb-2">{emoji}</div>
-                    <div className="flex items-baseline gap-1.5 mb-1">
-                      <span className={`text-[10px] font-black uppercase tracking-widest ${isActive ? "text-white/70" : "text-gray-400"}`}>Day {i + 1}</span>
-                      <span className="font-black text-base leading-tight">{label}</span>
+                    <div className="flex items-center gap-1.5 whitespace-nowrap">
+                      <span className="text-xl shrink-0">{emoji}</span>
+                      <span className={`text-[10px] font-black uppercase tracking-widest shrink-0 ${isActive ? "text-white/70" : "text-gray-400"}`}>Day {i + 1}</span>
+                      <span className="font-black text-sm leading-tight truncate">{label}</span>
                     </div>
-                    <div className={`text-xs font-bold ${isActive ? "text-white/60" : "text-gray-400"}`}>{dayData.date}・{dayData.activities.length} 項</div>
+                    <div className={`text-[10px] font-bold mt-1 ${isActive ? "text-white/60" : "text-gray-400"}`}>{dayData.date}・{dayData.activities.length} 項</div>
                     {isActive && (
                       <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 w-6 h-6 bg-gradient-to-r from-primary to-accent rotate-45 rounded-sm shadow-lg"></div>
                     )}
