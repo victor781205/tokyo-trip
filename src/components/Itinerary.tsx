@@ -91,6 +91,8 @@ export function Itinerary() {
   const [editingModal, setEditingModal] = useState<{ day: string; index: number } | null>(null);
   const [formData, setFormData] = useState<Activity>({ time: "", name: "", desc: "", tag: "" });
   const [isExporting, setIsExporting] = useState(false);
+  const [editingTitleDay, setEditingTitleDay] = useState<string | null>(null);
+  const [titleInput, setTitleInput] = useState("");
   const tabScrollRef = useRef<HTMLDivElement>(null);
   const itineraryRef = useRef<HTMLDivElement>(null);
 
@@ -167,6 +169,14 @@ export function Itinerary() {
     newItin[day].activities.sort((a, b) => a.time.localeCompare(b.time));
     updateItinerary(newItin);
     setEditingModal(null);
+  };
+
+  const handleTitleSave = (dayKey: string) => {
+    if (!titleInput.trim()) return;
+    const newItin = { ...currentItin };
+    newItin[dayKey] = { ...newItin[dayKey], title: titleInput.trim() };
+    updateItinerary(newItin);
+    setEditingTitleDay(null);
   };
 
   const deleteActivity = (day: string, idx: number) => {
@@ -336,24 +346,18 @@ export function Itinerary() {
               {dayKeys.map((dayKey, i) => {
                 const dayData = currentItin[dayKey];
                 const isActive = i === activeDayIndex;
-                const emoji = dayData.title.split(" ")[0];
-                const label = dayData.title.replace(/^[^\s]+\s+Day\s+\d+\s*[-–—:：]?\s*/, "");
                 return (
                   <button
                     key={dayKey}
                     onClick={() => goToDay(i)}
-                    className={`relative p-5 rounded-[1.5rem] transition-all duration-300 text-left group ${
+                    className={`relative px-4 py-4 rounded-2xl transition-all duration-300 text-left group overflow-hidden ${
                       isActive
                         ? "bg-gradient-to-r from-primary to-accent text-white shadow-xl shadow-primary/30 scale-[1.03]"
                         : "bg-white dark:bg-slate-800 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-slate-700 hover:border-primary/40 hover:shadow-lg"
                     }`}
                   >
-                    <div className="flex items-center gap-1.5 whitespace-nowrap">
-                      <span className="text-xl shrink-0">{emoji}</span>
-                      <span className={`text-[10px] font-black uppercase tracking-widest shrink-0 ${isActive ? "text-white/70" : "text-gray-400"}`}>Day {i + 1}</span>
-                      <span className="font-black text-sm leading-tight truncate">{label}</span>
-                    </div>
-                    <div className={`text-[10px] font-bold mt-1 ${isActive ? "text-white/60" : "text-gray-400"}`}>{dayData.date}・{dayData.activities.length} 項</div>
+                    <div className="font-black text-base whitespace-nowrap truncate" title={dayData.title}>{dayData.title}</div>
+                    <div className={`text-xs font-extrabold mt-1 ${isActive ? "text-white/70" : "text-gray-500"}`}>{dayData.date}・{dayData.activities.length} 項</div>
                     {isActive && (
                       <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 w-6 h-6 bg-gradient-to-r from-primary to-accent rotate-45 rounded-sm shadow-lg"></div>
                     )}
@@ -365,10 +369,29 @@ export function Itinerary() {
             {/* ── Expanded Activities ── */}
             <div className="bg-white dark:bg-slate-800 rounded-[2rem] p-8 shadow-xl border border-gray-100 dark:border-slate-700 animate-in fade-in slide-in-from-bottom-4 duration-400" key={activeDayKey}>
               <div className="flex items-center justify-between mb-6">
-                <h3 className="text-2xl font-black text-gray-900 dark:text-white flex items-center gap-3">
-                  <Calendar className="w-6 h-6 text-primary" />
-                  {activeDayData.title}
-                </h3>
+                {editingTitleDay === activeDayKey ? (
+                  <div className="flex items-center gap-2 flex-1">
+                    <input
+                      autoFocus
+                      value={titleInput}
+                      onChange={e => setTitleInput(e.target.value)}
+                      onKeyDown={e => { if (e.key === "Enter") handleTitleSave(activeDayKey); if (e.key === "Escape") setEditingTitleDay(null); }}
+                      className="flex-1 text-2xl font-black bg-transparent border-b-2 border-primary outline-none py-1 text-gray-900 dark:text-white"
+                    />
+                    <button onClick={() => handleTitleSave(activeDayKey)} className="p-2 bg-primary text-white rounded-xl hover:bg-primary-dark transition-colors"><Check className="w-4 h-4" /></button>
+                    <button onClick={() => setEditingTitleDay(null)} className="p-2 bg-gray-200 dark:bg-slate-700 rounded-xl hover:bg-gray-300 dark:hover:bg-slate-600 transition-colors"><X className="w-4 h-4" /></button>
+                  </div>
+                ) : (
+                  <h3
+                    className="text-2xl font-black text-gray-900 dark:text-white flex items-center gap-3 cursor-pointer hover:text-primary transition-colors group/title"
+                    onClick={() => { setEditingTitleDay(activeDayKey); setTitleInput(activeDayData.title); }}
+                    title="點擊編輯標題"
+                  >
+                    <Calendar className="w-6 h-6 text-primary" />
+                    {activeDayData.title}
+                    <Pencil className="w-4 h-4 opacity-0 group-hover/title:opacity-100 transition-opacity" />
+                  </h3>
+                )}
                 <span className="text-sm font-bold text-gray-400">{activeDayData.date}・{activeDayData.activities.length} 項行程</span>
               </div>
 
