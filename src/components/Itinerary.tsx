@@ -356,8 +356,8 @@ export function Itinerary() {
                         : "bg-white dark:bg-slate-800 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-slate-700 hover:border-primary/40 hover:shadow-lg"
                     }`}
                   >
-                    <div className="font-black text-base whitespace-nowrap truncate" title={dayData.title}>{dayData.title}</div>
-                    <div className={`text-xs font-extrabold mt-1 ${isActive ? "text-white/70" : "text-gray-500"}`}>{dayData.date}・{dayData.activities.length} 項</div>
+                    <div className="font-black text-sm leading-tight line-clamp-1" title={dayData.title}>{dayData.title}</div>
+                    <div className={`text-xs font-extrabold mt-0.5 ${isActive ? "text-white/70" : "text-gray-500"}`}>{dayData.date}・{dayData.activities.length} 項</div>
                     {isActive && (
                       <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 w-6 h-6 bg-gradient-to-r from-primary to-accent rotate-45 rounded-sm shadow-lg"></div>
                     )}
@@ -416,7 +416,7 @@ export function Itinerary() {
                     </div>
                   </div>
                 ))}
-                <button onClick={() => openModal(activeDayKey)} className="w-full p-4 border-2 border-dashed border-gray-200 dark:border-slate-700 rounded-2xl text-gray-400 hover:text-primary hover:border-primary hover:bg-primary/5 transition-all flex items-center justify-center gap-2 font-black text-sm uppercase tracking-widest ml-[5rem]">
+                <button onClick={() => openModal(activeDayKey)} className="w-full p-4 border-2 border-dashed border-gray-200 dark:border-slate-700 rounded-2xl text-gray-400 hover:text-primary hover:border-primary hover:bg-primary/5 transition-all flex items-center justify-center gap-2 font-black text-sm uppercase tracking-widest">
                   <Plus className="w-5 h-5" /> 新增行程活動
                 </button>
               </div>
