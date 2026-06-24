@@ -1,9 +1,9 @@
 "use client";
 
 import { useState, useRef } from "react";
-import { Calendar, Check, ChevronLeft, ChevronRight, Pencil, Plus, Trash2, X, Download, Loader2 } from "lucide-react";
+import { Calendar, Check, ChevronLeft, ChevronRight, Pencil, Plus, Trash2, X, Download, Loader2, CalendarPlus } from "lucide-react";
 import { useTripState, Itinerary as ItineraryType, Activity } from "@/hooks/useTripState";
-import html2canvas from "html2canvas";
+import { downloadICS } from "@/lib/ics-export";
 
 const DEFAULT_ITINERARY: ItineraryType = {
   day1: {
@@ -123,6 +123,7 @@ export function Itinerary() {
     // 給 DOM 時間渲染全展開內容
     setTimeout(async () => {
       try {
+        const { default: html2canvas } = await import("html2canvas");
         const canvas = await html2canvas(itineraryRef.current!, {
           scale: 2,
           useCORS: true,
@@ -241,14 +242,23 @@ export function Itinerary() {
         <div className="inline-block bg-primary/10 text-primary px-4 py-1 rounded-full text-xs font-black uppercase tracking-widest mb-4">Travel Timeline</div>
         <h2 className="text-3xl md:text-5xl font-black mb-4">📅 行程詳情</h2>
         <p className="text-gray-600 dark:text-gray-400 mb-6">桌面版可一次瀏覽所有天數，手機版左右滑動切換</p>
-        <button
-          onClick={handleExport}
-          disabled={isExporting}
-          className="mx-auto flex items-center justify-center gap-2 bg-gray-900 dark:bg-white text-white dark:text-gray-900 px-6 py-3 rounded-full font-black text-sm shadow-xl hover:scale-105 transition-all disabled:opacity-50"
-        >
-          {isExporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-          {isExporting ? "正在產生圖片..." : "將行程表匯出為長圖"}
-        </button>
+        <div className="flex flex-wrap justify-center gap-3">
+          <button
+            onClick={handleExport}
+            disabled={isExporting}
+            className="flex items-center justify-center gap-2 bg-gray-900 dark:bg-white text-white dark:text-gray-900 px-6 py-3 rounded-full font-black text-sm shadow-xl hover:scale-105 transition-all disabled:opacity-50"
+          >
+            {isExporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+            {isExporting ? "正在產生圖片..." : "匯出為長圖"}
+          </button>
+          <button
+            onClick={() => downloadICS(currentItin)}
+            className="flex items-center justify-center gap-2 bg-primary text-white px-6 py-3 rounded-full font-black text-sm shadow-xl hover:scale-105 transition-all"
+          >
+            <CalendarPlus className="w-4 h-4" />
+            匯出至行事曆
+          </button>
+        </div>
       </div>
 
       {/* ── 匯出模式：顯示全展開 ── */}
@@ -268,11 +278,10 @@ export function Itinerary() {
                     <button
                       key={dayKey}
                       onClick={() => goToDay(i)}
-                      className={`snap-center shrink-0 px-4 py-3 rounded-2xl font-black text-sm transition-all duration-300 flex items-center gap-2 min-w-[7rem] whitespace-nowrap ${
-                        isActive
-                          ? "bg-gradient-to-r from-primary to-accent text-white shadow-lg shadow-primary/30 scale-105"
-                          : "bg-white dark:bg-slate-800 text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-slate-700 hover:border-primary/30 hover:text-primary"
-                      }`}
+                      className={`snap-center shrink-0 px-4 py-3 rounded-2xl font-black text-sm transition-all duration-300 flex items-center gap-2 min-w-[7rem] whitespace-nowrap ${isActive
+                        ? "bg-gradient-to-r from-primary to-accent text-white shadow-lg shadow-primary/30 scale-105"
+                        : "bg-white dark:bg-slate-800 text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-slate-700 hover:border-primary/30 hover:text-primary"
+                        }`}
                     >
                       <span className="text-lg">{emoji}</span>
                       <div className="text-left leading-tight">
@@ -318,9 +327,9 @@ export function Itinerary() {
                         {act.tag && <span className={`self-start text-[10px] font-black px-3 py-1 rounded-lg uppercase tracking-widest ${getTagColor(act.tag)}`}>{act.tag}</span>}
                       </div>
                       {act.desc && <p className="text-base text-gray-500 dark:text-gray-400 leading-relaxed mb-4">{act.desc}</p>}
-                      <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-all duration-300">
-                        <button onClick={() => openModal(activeDayKey, idx)} className="text-primary hover:bg-primary/10 p-2 rounded-xl transition-colors"><Pencil className="w-4 h-4" /></button>
-                        <button onClick={() => deleteActivity(activeDayKey, idx)} className="text-red-500 hover:bg-red-50 p-2 rounded-xl transition-colors"><Trash2 className="w-4 h-4" /></button>
+                      <div className="flex gap-2 transition-all duration-300">
+                        <button onClick={() => openModal(activeDayKey, idx)} className="text-primary hover:bg-primary/10 p-2 rounded-xl transition-colors active:scale-90"><Pencil className="w-4 h-4" /></button>
+                        <button onClick={() => deleteActivity(activeDayKey, idx)} className="text-red-500 hover:bg-red-50 p-2 rounded-xl transition-colors active:scale-90"><Trash2 className="w-4 h-4" /></button>
                       </div>
                     </div>
                   </div>
@@ -350,11 +359,10 @@ export function Itinerary() {
                   <button
                     key={dayKey}
                     onClick={() => goToDay(i)}
-                    className={`relative px-4 py-4 rounded-2xl transition-all duration-300 text-center group overflow-hidden ${
-                      isActive
-                        ? "bg-gradient-to-r from-primary to-accent text-white shadow-xl shadow-primary/30 scale-[1.03]"
-                        : "bg-white dark:bg-slate-800 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-slate-700 hover:border-primary/40 hover:shadow-lg"
-                    }`}
+                    className={`relative px-4 py-4 rounded-2xl transition-all duration-300 text-center group overflow-hidden ${isActive
+                      ? "bg-gradient-to-r from-primary to-accent text-white shadow-xl shadow-primary/30 scale-[1.03]"
+                      : "bg-white dark:bg-slate-800 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-slate-700 hover:border-primary/40 hover:shadow-lg"
+                      }`}
                   >
                     <div className={`text-xs font-black uppercase tracking-widest ${isActive ? "text-white/60" : "text-gray-400"}`}>Day {i + 1}</div>
                     <div className="font-black text-sm leading-tight line-clamp-1 mt-1" title={dayData.title}>{dayData.title.replace(/^[^\s]+\s+Day\s+\d+\s*[-–—:：]?\s*/, "")}</div>
@@ -390,7 +398,7 @@ export function Itinerary() {
                   >
                     <Calendar className="w-6 h-6 text-primary" />
                     {activeDayData.title}
-                    <Pencil className="w-4 h-4 opacity-0 group-hover/title:opacity-100 transition-opacity" />
+                    <Pencil className="w-4 h-4 opacity-0 group-hover/title:opacity-100 transition-opacity hidden md:inline" />
                   </h3>
                 )}
                 <span className="text-sm font-bold text-gray-400">{activeDayData.date}・{activeDayData.activities.length} 項行程</span>
@@ -409,9 +417,9 @@ export function Itinerary() {
                           {act.tag && <span className={`text-xs font-black px-2.5 py-0.5 rounded-lg uppercase tracking-widest ${getTagColor(act.tag)}`}>{act.tag}</span>}
                         </div>
                         {act.desc && <p className="text-sm text-gray-500 dark:text-gray-400 leading-relaxed">{act.desc}</p>}
-                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-all duration-300 mt-2">
-                          <button onClick={() => openModal(activeDayKey, idx)} className="text-primary hover:bg-primary/10 p-1.5 rounded-lg transition-colors"><Pencil className="w-3.5 h-3.5" /></button>
-                          <button onClick={() => deleteActivity(activeDayKey, idx)} className="text-red-500 hover:bg-red-50 p-1.5 rounded-lg transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
+                        <div className="flex gap-1 md:opacity-0 md:group-hover:opacity-100 transition-all duration-300 mt-2">
+                          <button onClick={() => openModal(activeDayKey, idx)} className="text-primary hover:bg-primary/10 p-1.5 rounded-lg transition-colors active:scale-90"><Pencil className="w-3.5 h-3.5" /></button>
+                          <button onClick={() => deleteActivity(activeDayKey, idx)} className="text-red-500 hover:bg-red-50 p-1.5 rounded-lg transition-colors active:scale-90"><Trash2 className="w-3.5 h-3.5" /></button>
                         </div>
                       </div>
                     </div>

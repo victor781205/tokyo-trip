@@ -1,20 +1,44 @@
 import { NextResponse } from "next/server";
 
 const AVIATION_STACK_KEY = process.env.AVIATION_STACK_KEY?.trim() ?? "";
+const TDX_CLIENT_ID = process.env.TDX_CLIENT_ID?.trim() ?? "";
+const TDX_CLIENT_SECRET = process.env.TDX_CLIENT_SECRET?.trim() ?? "";
+
+async function getTdxToken(): Promise<string | null> {
+  if (!TDX_CLIENT_ID || !TDX_CLIENT_SECRET) return null;
+  try {
+    const res = await fetch(
+      "https://tdx.transportdata.tw/auth/realms/TDXConnect/protocol/openid-connect/token",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: `grant_type=client_credentials&client_id=${TDX_CLIENT_ID}&client_secret=${TDX_CLIENT_SECRET}`,
+      }
+    );
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.access_token ?? null;
+  } catch {
+    return null;
+  }
+}
 
 export async function GET() {
   // ── 去程 JX800（TPE 出發）— 使用 TDX 機場 FIDS ──
   let outbound: Record<string, string> | null = null;
   try {
+    const tdxToken = await getTdxToken();
+    const headers: Record<string, string> = {
+      "User-Agent": "Mozilla/5.0",
+      Accept: "application/json",
+    };
+    if (tdxToken) {
+      headers["Authorization"] = `Bearer ${tdxToken}`;
+    }
+
     const res = await fetch(
       "https://tdx.transportdata.tw/api/basic/v2/Air/FIDS/Airport/Departure/TPE?%24format=JSON",
-      {
-        headers: {
-          "User-Agent": "Mozilla/5.0",
-          Accept: "application/json",
-        },
-        next: { revalidate: 300 },
-      }
+      { headers, next: { revalidate: 300 } }
     );
 
     if (res.ok) {

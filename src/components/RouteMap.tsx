@@ -1,16 +1,25 @@
 "use client";
 
 import { useState } from "react";
-import { Search, MapPin, ArrowRightLeft, Train, Navigation, Info, Map as MapIcon, X, Wallet, Tag } from "lucide-react";
+import { Search, MapPin, ArrowRightLeft, Train, Navigation, Info, Map as MapIcon, X, Wallet, Tag, Calendar } from "lucide-react";
+import { useTripState } from "@/hooks/useTripState";
 
 export function RouteMap() {
   const [origin, setOrigin] = useState("東京東武黎凡特飯店");
   const [destination, setDestination] = useState("");
   const [isSearched, setIsSearched] = useState(false);
+  const [showItineraryRoutes, setShowItineraryRoutes] = useState(false);
+
+  const { itinerary } = useTripState();
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     if (!destination) return;
+    setIsSearched(true);
+  };
+
+  const handleQuickSpot = (name: string) => {
+    setDestination(name);
     setIsSearched(true);
   };
 
@@ -21,15 +30,25 @@ export function RouteMap() {
   };
 
   const quickSpots = [
-    { name: "澀谷", fare: "230" },
-    { name: "新宿", fare: "230" },
-    { name: "東京車站", fare: "170" },
-    { name: "淺草雷門", fare: "180" },
-    { name: "秋葉原", fare: "170" },
-    { name: "成田機場", fare: "1,350~" },
+    { name: "澀谷", fare: "約 ¥230" },
+    { name: "新宿", fare: "約 ¥230" },
+    { name: "東京車站", fare: "約 ¥170" },
+    { name: "淺草雷門", fare: "約 ¥180" },
+    { name: "秋葉原", fare: "約 ¥170" },
+    { name: "成田機場", fare: "約 ¥1,350" },
   ];
 
+  // Google Maps Directions embed URL
+  const directionsEmbedUrl = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}&travelmode=transit&output=embed`;
   const googleMapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}&travelmode=transit`;
+
+  // 從行程中取得所有地點，按天分組
+  const itineraryPlaces = Object.entries(itinerary).map(([dayKey, dayPlan]) => {
+    const places = dayPlan.activities
+      .map(a => a.name)
+      .filter(name => name && !name.includes("飯店") && !name.includes("回") && !name.includes("休息") && !name.includes("收拾"));
+    return { dayKey, title: dayPlan.title, date: dayPlan.date, places };
+  }).filter(d => d.places.length > 0);
 
   return (
     <section id="routemap" className="py-20 px-4 md:px-12 max-w-6xl mx-auto transition-colors duration-300">
@@ -90,11 +109,11 @@ export function RouteMap() {
                             <button 
                                 key={spot.name}
                                 type="button"
-                                onClick={() => { setDestination(spot.name); setIsSearched(false); }}
+                                onClick={() => handleQuickSpot(spot.name)}
                                 className="flex flex-col items-center p-2 rounded-xl bg-gray-50 dark:bg-slate-900 hover:bg-primary/10 hover:text-primary transition-all border border-gray-100 dark:border-slate-800"
                             >
                                 <span className="text-sm font-black">{spot.name}</span>
-                                <span className="text-xs text-gray-400 font-bold italic">¥{spot.fare}</span>
+                                <span className="text-xs text-gray-400 font-bold italic">{spot.fare}</span>
                             </button>
                         ))}
                     </div>
@@ -106,6 +125,42 @@ export function RouteMap() {
                         <Train className="w-5 h-5" /> 立即查詢路線
                     </button>
                 </form>
+
+                {/* 行程路線快速入口 */}
+                {itineraryPlaces.length > 0 && (
+                  <div className="mt-6 pt-6 border-t border-gray-100 dark:border-slate-700">
+                    <button
+                      onClick={() => setShowItineraryRoutes(!showItineraryRoutes)}
+                      className="w-full flex items-center justify-between p-3 bg-gray-50 dark:bg-slate-900 rounded-2xl hover:bg-primary/5 transition-all"
+                    >
+                      <span className="flex items-center gap-2 font-black text-sm">
+                        <Calendar className="w-4 h-4 text-primary" /> 依行程查詢路線
+                      </span>
+                      <span className="text-xs text-gray-400">{showItineraryRoutes ? "收起" : "展開"}</span>
+                    </button>
+
+                    {showItineraryRoutes && (
+                      <div className="mt-4 space-y-3 animate-in fade-in slide-in-from-top-2 duration-300">
+                        {itineraryPlaces.map(day => (
+                          <div key={day.dayKey} className="bg-gray-50 dark:bg-slate-900 rounded-2xl p-3">
+                            <div className="text-xs font-black text-primary mb-2">{day.title}</div>
+                            <div className="flex flex-wrap gap-1.5">
+                              {day.places.map((place, i) => (
+                                <button
+                                  key={i}
+                                  onClick={() => handleQuickSpot(place)}
+                                  className="text-xs bg-white dark:bg-slate-800 px-2.5 py-1.5 rounded-lg font-bold border border-gray-100 dark:border-slate-700 hover:border-primary hover:text-primary transition-all"
+                                >
+                                  {place}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
             </div>
         </div>
 
@@ -117,8 +172,8 @@ export function RouteMap() {
                         <div className="flex items-center gap-3">
                             <div className="bg-primary/10 p-2 rounded-xl text-primary"><MapIcon className="w-5 h-5" /></div>
                             <div>
-                                <h4 className="font-black text-base">{destination}</h4>
-                                <p className="text-sm text-gray-400 font-bold uppercase tracking-wider">Estimated Fare Info Inside</p>
+                                <h4 className="font-black text-base">{origin} → {destination}</h4>
+                                <p className="text-sm text-gray-400 font-bold uppercase tracking-wider">Transit Directions</p>
                             </div>
                         </div>
                         <button onClick={() => setIsSearched(false)} className="p-2 hover:bg-gray-200 dark:hover:bg-slate-700 rounded-full"><X className="w-4 h-4" /></button>
@@ -126,7 +181,7 @@ export function RouteMap() {
 
                     <div className="flex-1 relative bg-slate-100">
                         <iframe 
-                            src={`https://www.google.com/maps?q=${encodeURIComponent(destination)}&output=embed`}
+                            src={directionsEmbedUrl}
                             className="w-full h-full border-0"
                             allowFullScreen
                             loading="lazy"
@@ -153,7 +208,7 @@ export function RouteMap() {
                                 rel="noopener noreferrer"
                                 className="bg-primary hover:bg-primary-dark text-white py-4 rounded-2xl font-black shadow-xl shadow-primary/20 transition-all flex items-center justify-center gap-3 active:scale-95"
                             >
-                                <Navigation className="w-5 h-5" /> 開啟導航查精確票價
+                                <Navigation className="w-5 h-5" /> 開啟 Google Maps 導航
                             </a>
                         </div>
                     </div>
@@ -170,9 +225,9 @@ export function RouteMap() {
                     <h4 className="text-xl font-black text-blue-600">使用提示</h4>
                 </div>
                 <ul className="text-sm text-blue-500/80 space-y-2 font-bold leading-relaxed">
-                    <li>• 輸入景點即可在網站內預覽地圖</li>
+                    <li>• 輸入起點與目的地即可在頁面內預覽路線規劃</li>
                     <li>• 點擊快速標籤可預覽常用景點車資</li>
-                    <li>• 支援中英文搜尋日本在地景點</li>
+                    <li>• 展開「依行程查詢路線」可快速查看各景點交通</li>
                 </ul>
             </div>
             

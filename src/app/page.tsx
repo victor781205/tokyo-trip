@@ -13,6 +13,10 @@ import { CurrencyConverter } from "@/components/CurrencyConverter";
 import { WeatherForecast } from "@/components/WeatherForecast";
 import { Food } from "@/components/Food";
 import { Tips } from "@/components/Tips";
+import { EmergencyContacts } from "@/components/EmergencyContacts";
+import { PackingList } from "@/components/PackingList";
+import { JapanesePhrases } from "@/components/JapanesePhrases";
+import { OfflineIndicator } from "@/components/OfflineIndicator";
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState("hero");
@@ -40,8 +44,14 @@ export default function Home() {
             <CurrencyConverter />
           </div>
         );
+      case "packing":
+        return <PackingList />;
+      case "phrases":
+        return <JapanesePhrases />;
       case "food":
         return <Food />;
+      case "emergency":
+        return <EmergencyContacts />;
       case "tips":
         return <Tips />;
       default:
@@ -54,19 +64,21 @@ export default function Home() {
       <Navigation activeTab={activeTab} setActiveTab={setActiveTab} />
 
       <div className="max-w-7xl mx-auto pb-10">
-          <div key={activeTab} className="animate-in fade-in slide-in-from-bottom-2 duration-500">
-            {renderContent()}
-          </div>
+        <div key={activeTab} className="animate-in fade-in slide-in-from-bottom-2 duration-500">
+          {renderContent()}
+        </div>
       </div>
 
-      <footer className="bg-white dark:bg-slate-900 border-t border-gray-100 dark:border-slate-800 py-12 text-center text-base transition-colors">    
+      <OfflineIndicator />
+
+      <footer className="bg-white dark:bg-slate-900 border-t border-gray-100 dark:border-slate-800 py-12 text-center text-base transition-colors">
         <div className="max-w-4xl mx-auto px-6">
           <h3 className="text-2xl font-bold mb-4 text-primary">🗼 東京自由行行程規劃</h3>
 
           <div className="flex justify-center gap-6 mb-8 text-gray-500 font-bold">
-             <span>2026.09.01 - 09.06</span>
-             <span>•</span>
-             <span>Powered by Victor</span>
+            <span>2026.09.01 - 09.06</span>
+            <span>•</span>
+            <span>Powered by Victor</span>
           </div>
           <p className="text-gray-400 opacity-60">© 2026 Tokyo Trip Planner. Crafted with ❤️ for travelers.</p>
         </div>

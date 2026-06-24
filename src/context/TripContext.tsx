@@ -6,90 +6,128 @@ import { createClient, SupabaseClient } from "@supabase/supabase-js";
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() ?? "";
 const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim() ?? "";
 
+// ── localStorage 鍵名常數 ──
+const STORAGE_KEYS = {
+  tripId: "tokyoTripId",
+  tripSecret: "tokyoTripSecret",
+  itinerary: "tokyoItinerary",
+  budget: "tokyoBudget",
+  budgetLimit: "tokyoBudgetLimit",
+  customFoods: "tokyoCustomFoods",
+  packingList: "tokyoPackingList",
+} as const;
+
 export type Activity = { time: string; name: string; desc: string; tag: string; };
 export type DayPlan = { title: string; date: string; activities: Activity[]; };
 export type Itinerary = Record<string, DayPlan>;
 export type BudgetItem = { id: number; name: string; amount: number; category: string; date: string; };
 export type CustomFood = { id: number; emoji: string; name: string; location: string; hours: string; desc: string; mapLink: string; image: string; };
+export type PackingItem = { id: string; name: string; packed: boolean; category: string; };
+
+export type SyncStatus = "connecting" | "online" | "offline" | "error";
 
 interface TripContextType {
   isLoaded: boolean;
+  syncStatus: SyncStatus;
   itinerary: Itinerary;
   budgetItems: BudgetItem[];
   budgetLimit: number;
   customFoods: CustomFood[];
+  packingList: PackingItem[];
   tripId: string;
   tripSecret: string;
   setItinerary: (itin: Itinerary) => void;
   setBudgetItems: (items: BudgetItem[]) => void;
   setBudgetLimit: (limit: number) => void;
   setCustomFoods: (foods: CustomFood[]) => void;
+  setPackingList: (list: PackingItem[]) => void;
   loginToTrip: (id: string, secret: string) => Promise<boolean>;
   getShareLink: () => string;
 }
 
 const TripContext = createContext<TripContextType | undefined>(undefined);
 
-// Helper to generate tokens outside of render
 const generateToken = () => Math.random().toString(36).slice(2, 10);
 
 export function TripProvider({ children }: { children: React.ReactNode }) {
   const [isLoaded, setIsLoaded] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>("connecting");
   const [itinerary, _setItinerary] = useState<Itinerary>({});
   const [budgetItems, _setBudgetItems] = useState<BudgetItem[]>([]);
   const [budgetLimit, _setBudgetLimit] = useState(100000);
   const [customFoods, _setCustomFoods] = useState<CustomFood[]>([]);
-  
-  // Initialize with null to avoid hydration mismatch, then set in effect
+  const [packingList, _setPackingList] = useState<PackingItem[]>([]);
+
   const [tripId, setTripId] = useState<string>("");
   const [tripSecret, setTripSecret] = useState<string>("");
 
   const supabase = useRef<SupabaseClient | null>(null);
   const skipNextPush = useRef(false);
+  const pushReady = useRef(false); // 防止初始載入推送舊資料
   const lastUpdateRef = useRef(0);
   const realtimeChannel = useRef<ReturnType<SupabaseClient['channel']> | null>(null);
+  const isOnlineRef = useRef(true);
 
   const connectToTrip = useCallback(async (id: string, secret: string, client: SupabaseClient) => {
     if (realtimeChannel.current) {
-        client.removeChannel(realtimeChannel.current);
+      client.removeChannel(realtimeChannel.current);
     }
 
-    const { data } = await client.from("sync_state").select("*").eq("trip_id", id).eq("trip_secret", secret).maybeSingle();
-    
-    if (data) {
+    try {
+      const { data, error } = await client.from("sync_state").select("*").eq("trip_id", id).eq("trip_secret", secret).maybeSingle();
+
+      if (error) {
+        console.error("[Sync] Failed to fetch trip data:", error);
+        setSyncStatus("error");
+        pushReady.current = true;
+        return;
+      }
+
+      if (data) {
         skipNextPush.current = true;
         if (data.itinerary) _setItinerary(data.itinerary);
         if (data.budget_limit) _setBudgetLimit(data.budget_limit);
         if (data.budget_items) _setBudgetItems(data.budget_items);
         if (data.custom_foods) _setCustomFoods(data.custom_foods);
+        if (data.packing_list) _setPackingList(data.packing_list);
         lastUpdateRef.current = data.updated_at ? new Date(data.updated_at).getTime() : 0;
-        setTimeout(() => { skipNextPush.current = false; }, 1000);
-    }
+        // 等待 React 渲染完成後再允許 push
+        setTimeout(() => { skipNextPush.current = false; }, 500);
+      }
 
-    const channel = client.channel(`trip:${id}`)
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'sync_state', filter: `trip_id=eq.${id}` }, 
-      (payload) => {
-          const remoteUpdated = payload.new.updated_at ? new Date(payload.new.updated_at).getTime() : 0;
-          if (remoteUpdated > lastUpdateRef.current && payload.new.trip_secret === secret) {
+      const channel = client.channel(`trip:${id}`)
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'sync_state', filter: `trip_id=eq.${id}` },
+          (payload) => {
+            const remoteUpdated = payload.new.updated_at ? new Date(payload.new.updated_at).getTime() : 0;
+            if (remoteUpdated > lastUpdateRef.current && payload.new.trip_secret === secret) {
               skipNextPush.current = true;
               if (payload.new.itinerary) _setItinerary(payload.new.itinerary);
               if (payload.new.budget_limit) _setBudgetLimit(payload.new.budget_limit);
               if (payload.new.budget_items) _setBudgetItems(payload.new.budget_items);
               if (payload.new.custom_foods) _setCustomFoods(payload.new.custom_foods);
+              if (payload.new.packing_list) _setPackingList(payload.new.packing_list);
               lastUpdateRef.current = remoteUpdated;
-              setTimeout(() => { skipNextPush.current = false; }, 1000);
-          }
-      })
-      .subscribe();
-    
-    realtimeChannel.current = channel;
+              setTimeout(() => { skipNextPush.current = false; }, 500);
+            }
+          })
+        .subscribe();
+
+      realtimeChannel.current = channel;
+      setSyncStatus("online");
+    } catch (err) {
+      console.error("[Sync] Connection error:", err);
+      setSyncStatus("error");
+    } finally {
+      pushReady.current = true;
+    }
   }, []);
 
+  // ── 初始載入 ──
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    let initId = localStorage.getItem("tokyoTripId");
-    let initSecret = localStorage.getItem("tokyoTripSecret");
+    let initId = localStorage.getItem(STORAGE_KEYS.tripId);
+    let initSecret = localStorage.getItem(STORAGE_KEYS.tripSecret);
 
     const urlParams = new URLSearchParams(window.location.search);
     const urlTrip = urlParams.get("trip");
@@ -103,82 +141,142 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
       initSecret = "sec_" + generateToken();
     }
 
-    localStorage.setItem("tokyoTripId", initId!);
-    localStorage.setItem("tokyoTripSecret", initSecret!);
+    localStorage.setItem(STORAGE_KEYS.tripId, initId!);
+    localStorage.setItem(STORAGE_KEYS.tripSecret, initSecret!);
     setTimeout(() => {
       setTripId(initId!);
       setTripSecret(initSecret!);
     }, 0);
 
-    // Initialize state from localStorage (one-time hydration from external store)
+    // 從 localStorage 初始化狀態
     /* eslint-disable react-hooks/set-state-in-effect -- Intentional one-time hydration from localStorage on mount */
-    const savedItin = localStorage.getItem("tokyoItinerary");
+    const savedItin = localStorage.getItem(STORAGE_KEYS.itinerary);
     if (savedItin) try { _setItinerary(JSON.parse(savedItin)); } catch { /* ignore parse errors */ }
-    const savedBudget = localStorage.getItem("tokyoBudget");
+    const savedBudget = localStorage.getItem(STORAGE_KEYS.budget);
     if (savedBudget) try { _setBudgetItems(JSON.parse(savedBudget)); } catch { /* ignore parse errors */ }
-    const savedLimit = localStorage.getItem("tokyoBudgetLimit");
+    const savedLimit = localStorage.getItem(STORAGE_KEYS.budgetLimit);
     if (savedLimit) try { _setBudgetLimit(JSON.parse(savedLimit)); } catch { /* ignore parse errors */ }
-    const savedFoods = localStorage.getItem("tokyoCustomFoods");
+    const savedFoods = localStorage.getItem(STORAGE_KEYS.customFoods);
     if (savedFoods) try { _setCustomFoods(JSON.parse(savedFoods)); } catch { /* ignore parse errors */ }
+    const savedPacking = localStorage.getItem(STORAGE_KEYS.packingList);
+    if (savedPacking) try { _setPackingList(JSON.parse(savedPacking)); } catch { /* ignore parse errors */ }
     /* eslint-enable react-hooks/set-state-in-effect */
+
+    if (!SUPABASE_URL || !SUPABASE_KEY) {
+      console.warn("[Sync] Supabase credentials not configured. Running in offline mode.");
+      setSyncStatus("offline");
+      pushReady.current = true;
+      setIsLoaded(true);
+      return;
+    }
 
     const client = createClient(SUPABASE_URL, SUPABASE_KEY);
     supabase.current = client;
 
     connectToTrip(initId!, initSecret!, client).then(() => {
-        setIsLoaded(true);
+      setIsLoaded(true);
     });
 
     return () => { if (realtimeChannel.current) client.removeChannel(realtimeChannel.current); };
   }, [connectToTrip]);
 
+  // ── 網路狀態監聽 ──
   useEffect(() => {
-    if (!isLoaded || skipNextPush.current || !supabase.current || !tripId) return;
+    if (typeof window === "undefined") return;
+
+    isOnlineRef.current = navigator.onLine;
+
+    const handleOnline = () => {
+      isOnlineRef.current = true;
+      if (syncStatus === "offline" && supabase.current && tripId) {
+        // 恢復連線時重新連接 Supabase
+        setSyncStatus("connecting");
+        connectToTrip(tripId, tripSecret, supabase.current);
+      }
+    };
+
+    const handleOffline = () => {
+      isOnlineRef.current = false;
+      setSyncStatus("offline");
+    };
+
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, [connectToTrip, tripId, tripSecret, syncStatus]);
+
+  // ── 推送到 Supabase ──
+  useEffect(() => {
+    // 嚴格檢查：pushReady 必須為 true，且 skipNextPush 為 false
+    if (!pushReady.current || !isLoaded || skipNextPush.current || !supabase.current || !tripId) return;
+    if (!isOnlineRef.current) return; // 離線時不推送
 
     const push = async () => {
-        const now = new Date().toISOString();
-        const { error } = await supabase.current!.from("sync_state").upsert({
-            id: "state_" + tripId,
-            trip_id: tripId,
-            trip_secret: tripSecret,
-            itinerary,
-            budget_limit: budgetLimit,
-            budget_items: budgetItems,
-            custom_foods: customFoods,
-            updated_at: now
-        }, { onConflict: "id" })
+      const now = new Date().toISOString();
+      const { error } = await supabase.current!.from("sync_state").upsert({
+        id: "state_" + tripId,
+        trip_id: tripId,
+        trip_secret: tripSecret,
+        itinerary,
+        budget_limit: budgetLimit,
+        budget_items: budgetItems,
+        custom_foods: customFoods,
+        packing_list: packingList,
+        updated_at: now
+      }, { onConflict: "id" })
         .setHeader("x-trip-secret", tripSecret);
-        
-        if (error) {
-            console.error("[Sync] Push failed:", error);
-        } else {
-            lastUpdateRef.current = new Date(now).getTime();
-        }
+
+      if (error) {
+        console.error("[Sync] Push failed:", error);
+        setSyncStatus("error");
+      } else {
+        lastUpdateRef.current = new Date(now).getTime();
+        setSyncStatus("online");
+      }
     };
 
     const timer = setTimeout(push, 2000);
     return () => clearTimeout(timer);
-  }, [itinerary, budgetLimit, budgetItems, customFoods, isLoaded, tripId, tripSecret]);
+  }, [itinerary, budgetLimit, budgetItems, customFoods, packingList, isLoaded, tripId, tripSecret]);
 
   const loginToTrip = async (id: string, secret: string) => {
     if (!supabase.current) return false;
-    const { data } = await supabase.current.from("sync_state").select("*").eq("trip_id", id).maybeSingle();
-    if (data && data.trip_secret !== secret) {
+
+    // 先阻止推送，避免舊資料被推到新 trip
+    skipNextPush.current = true;
+    pushReady.current = false;
+
+    try {
+      const { data } = await supabase.current.from("sync_state").select("*").eq("trip_id", id).maybeSingle();
+      if (data && data.trip_secret !== secret) {
         console.warn("代號已存在，但密碼錯誤！");
+        skipNextPush.current = false;
+        pushReady.current = true;
         return false;
+      }
+
+      localStorage.setItem(STORAGE_KEYS.tripId, id);
+      localStorage.setItem(STORAGE_KEYS.tripSecret, secret);
+      setTripId(id);
+      setTripSecret(secret);
+      await connectToTrip(id, secret, supabase.current);
+      return true;
+    } catch {
+      skipNextPush.current = false;
+      pushReady.current = true;
+      return false;
     }
-    localStorage.setItem("tokyoTripId", id);
-    localStorage.setItem("tokyoTripSecret", secret);
-    setTripId(id);
-    setTripSecret(secret);
-    await connectToTrip(id, secret, supabase.current);
-    return true;
   };
 
-  const setItinerary = (val: Itinerary) => { _setItinerary(val); localStorage.setItem("tokyoItinerary", JSON.stringify(val)); };
-  const setBudgetItems = (val: BudgetItem[]) => { _setBudgetItems(val); localStorage.setItem("tokyoBudget", JSON.stringify(val)); };
-  const setBudgetLimit = (val: number) => { _setBudgetLimit(val); localStorage.setItem("tokyoBudgetLimit", JSON.stringify(val)); };
-  const setCustomFoods = (val: CustomFood[]) => { _setCustomFoods(val); localStorage.setItem("tokyoCustomFoods", JSON.stringify(val)); };
+  const setItinerary = (val: Itinerary) => { _setItinerary(val); localStorage.setItem(STORAGE_KEYS.itinerary, JSON.stringify(val)); };
+  const setBudgetItems = (val: BudgetItem[]) => { _setBudgetItems(val); localStorage.setItem(STORAGE_KEYS.budget, JSON.stringify(val)); };
+  const setBudgetLimit = (val: number) => { _setBudgetLimit(val); localStorage.setItem(STORAGE_KEYS.budgetLimit, JSON.stringify(val)); };
+  const setCustomFoods = (val: CustomFood[]) => { _setCustomFoods(val); localStorage.setItem(STORAGE_KEYS.customFoods, JSON.stringify(val)); };
+  const setPackingList = (val: PackingItem[]) => { _setPackingList(val); localStorage.setItem(STORAGE_KEYS.packingList, JSON.stringify(val)); };
 
   const getShareLink = () => {
     if (typeof window === "undefined") return "";
@@ -190,8 +288,8 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <TripContext.Provider value={{
-      isLoaded, itinerary, budgetItems, budgetLimit, customFoods, tripId, tripSecret,
-      setItinerary, setBudgetItems, setBudgetLimit, setCustomFoods, loginToTrip, getShareLink
+      isLoaded, syncStatus, itinerary, budgetItems, budgetLimit, customFoods, packingList, tripId, tripSecret,
+      setItinerary, setBudgetItems, setBudgetLimit, setCustomFoods, setPackingList, loginToTrip, getShareLink
     }}>
       {children}
     </TripContext.Provider>

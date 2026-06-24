@@ -1,16 +1,17 @@
 "use client";
 
-import { useState } from "react";
-import { Trash2, Pencil, Check, Plus, PieChart, CreditCard, Wallet } from "lucide-react";
+import { useState, useCallback } from "react";
+import { Trash2, Pencil, Check, Plus, PieChart, CreditCard, Wallet, ScanLine } from "lucide-react";
 import { useTripState } from "@/hooks/useTripState";
+import { ReceiptScanner, ReceiptItem } from "@/components/ReceiptScanner";
 
 const CATEGORIES = {
-  food: { icon: "🍜", label: "餐飲" },
-  transport: { icon: "🚆", label: "交通" },
-  shopping: { icon: "🛍️", label: "購物" },
-  ticket: { icon: "🎫", label: "門票" },
-  hotel: { icon: "🏨", label: "住宿" },
-  other: { icon: "💡", label: "其他" },
+  food: { icon: "🍜", label: "餐飲", color: "#ef4444" },
+  transport: { icon: "🚆", label: "交通", color: "#3b82f6" },
+  shopping: { icon: "🛍️", label: "購物", color: "#a855f7" },
+  ticket: { icon: "🎫", label: "門票", color: "#f59e0b" },
+  hotel: { icon: "🏨", label: "住宿", color: "#10b981" },
+  other: { icon: "💡", label: "其他", color: "#6b7280" },
 };
 
 export function BudgetTracker() {
@@ -21,6 +22,18 @@ export function BudgetTracker() {
   const [category, setCategory] = useState("food");
   const [isEditingLimit, setIsEditingLimit] = useState(false);
   const [tempLimit, setTempLimit] = useState("");
+  const [showScanner, setShowScanner] = useState(false);
+
+  const handleScanComplete = useCallback((scannedItems: ReceiptItem[]) => {
+    const newItems = scannedItems.map((item, index) => ({
+      id: Date.now() + index,
+      name: item.name,
+      amount: item.amount,
+      category: item.category,
+      date: new Date().toLocaleDateString("zh-TW"),
+    }));
+    updateBudgetItems([...newItems, ...budgetItems]);
+  }, [budgetItems, updateBudgetItems]);
 
   if (!isLoaded) return null;
 
@@ -112,6 +125,104 @@ export function BudgetTracker() {
           </div>
         </div>
 
+        {/* Category Pie Chart */}
+        {budgetItems.length > 0 && (() => {
+          const categoryData = Object.entries(CATEGORIES).map(([key, cat]) => {
+            const total = budgetItems
+              .filter(item => item.category === key)
+              .reduce((sum, item) => sum + item.amount, 0);
+            return { key, ...cat, total };
+          }).filter(c => c.total > 0);
+
+          const grandTotal = categoryData.reduce((sum, c) => sum + c.total, 0);
+          if (grandTotal === 0) return null;
+
+          // SVG Pie Chart using stroke-dasharray technique
+          const radius = 60;
+          const circumference = 2 * Math.PI * radius;
+          let offset = 0;
+
+          return (
+            <div className="mb-8 bg-gray-50 dark:bg-slate-900 rounded-[2rem] p-5 border border-gray-100 dark:border-slate-800">
+              <div className="text-sm font-black text-gray-400 uppercase tracking-widest mb-4">
+                類別支出比例
+              </div>
+              <div className="flex items-center gap-6">
+                {/* SVG Donut Chart */}
+                <div className="relative flex-shrink-0">
+                  <svg width="140" height="140" viewBox="0 0 140 140">
+                    <circle
+                      cx="70" cy="70" r={radius}
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="16"
+                      className="text-gray-100 dark:text-slate-800"
+                    />
+                    {categoryData.map((cat) => {
+                      const percent = cat.total / grandTotal;
+                      const dash = percent * circumference;
+                      const currentOffset = offset;
+                      offset += dash;
+                      return (
+                        <circle
+                          key={cat.key}
+                          cx="70" cy="70" r={radius}
+                          fill="none"
+                          stroke={cat.color}
+                          strokeWidth="16"
+                          strokeDasharray={`${dash} ${circumference - dash}`}
+                          strokeDashoffset={-currentOffset}
+                          strokeLinecap="butt"
+                          transform="rotate(-90 70 70)"
+                          className="transition-all duration-700"
+                        />
+                      );
+                    })}
+                  </svg>
+                  <div className="absolute inset-0 flex flex-col items-center justify-center">
+                    <span className="text-xs font-bold text-gray-400">總計</span>
+                    <span className="text-sm font-black">¥{grandTotal.toLocaleString()}</span>
+                  </div>
+                </div>
+
+                {/* Legend */}
+                <div className="flex-1 grid grid-cols-2 gap-x-4 gap-y-2.5">
+                  {categoryData.map((cat) => {
+                    const percent = ((cat.total / grandTotal) * 100).toFixed(1);
+                    return (
+                      <div key={cat.key} className="flex items-center gap-2">
+                        <div
+                          className="w-3 h-3 rounded-full flex-shrink-0"
+                          style={{ backgroundColor: cat.color }}
+                        />
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1">
+                            <span className="text-sm">{cat.icon}</span>
+                            <span className="text-xs font-bold text-gray-600 dark:text-gray-300 truncate">{cat.label}</span>
+                          </div>
+                          <div className="text-xs text-gray-400">
+                            <span className="font-black">{percent}%</span>
+                            <span className="ml-1">¥{cat.total.toLocaleString()}</span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* Scan Receipt Button */}
+        <button
+          onClick={() => setShowScanner(true)}
+          className="w-full mb-4 flex items-center justify-center gap-3 py-3.5 bg-gradient-to-r from-primary to-primary-dark text-white rounded-2xl font-black shadow-lg shadow-primary/20 active:scale-95 transition-all hover:shadow-xl hover:shadow-primary/30"
+        >
+          <ScanLine className="w-5 h-5" />
+          <span>掃描發票自動記帳</span>
+        </button>
+
         {/* Form - Legible Inputs */}
         <form onSubmit={handleAdd} className="flex flex-col sm:flex-row gap-2 mb-8 bg-gray-50 dark:bg-slate-900 p-4 rounded-[2rem] border border-gray-100 dark:border-slate-800">
           <div className="flex flex-1 gap-2">
@@ -177,6 +288,14 @@ export function BudgetTracker() {
           )}
         </div>
       </div>
+
+      {/* Receipt Scanner Modal */}
+      {showScanner && (
+        <ReceiptScanner
+          onScanComplete={handleScanComplete}
+          onClose={() => setShowScanner(false)}
+        />
+      )}
     </section>
   );
 }
