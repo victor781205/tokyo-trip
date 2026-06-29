@@ -21,19 +21,41 @@ export function WeatherForecast() {
         const res = await fetch("https://www.jma.go.jp/bosai/forecast/data/forecast/130000.json");
         const data = await res.json();
 
-        // JMA JSON structure is complex. We need the weekly forecast (index 1 in the root array)
-        const weekly = data[1].timeSeries[0];
-        const temps = data[1].timeSeries[1]; // Max/Min temps
+        const processed: WeatherData[] = [];
 
-        const processed: WeatherData[] = weekly.timeDefines.map((dateStr: string, i: number) => {
+        // data[0] = 今日天氣（短期予報）
+        const today = data[0].timeSeries[0];
+        const todayTemps = data[0].timeSeries[2];
+        if (today && todayTemps) {
+          const todayDate = new Date(today.timeDefines[0]);
+          processed.push({
+            date: `${todayDate.getMonth() + 1}/${todayDate.getDate()}`,
+            weather: today.areas[0].weatherCodes[0],
+            tempMax: todayTemps.areas[0].temps[1] || "--",
+            tempMin: todayTemps.areas[0].temps[0] || "--",
+            pop: data[0].timeSeries[1]?.areas[0]?.pops[0] || "--",
+          });
+        }
+
+        // data[1] = 週間預報
+        const weekly = data[1].timeSeries[0];
+        const temps = data[1].timeSeries[1];
+
+        weekly.timeDefines.forEach((dateStr: string, i: number) => {
           const date = new Date(dateStr);
-          return {
+          const tempMax = temps.areas[0].tempsMax[i];
+          const tempMin = temps.areas[0].tempsMin[i];
+
+          // 跳過今天（已從 data[0] 加入）
+          if (i === 0 && processed.length > 0) return;
+
+          processed.push({
             date: `${date.getMonth() + 1}/${date.getDate()}`,
-            weather: weekly.areas[0].weatherCodes[i], // simplified: using code for icon
-            tempMax: temps.areas[0].tempsMax[i] || "--",
-            tempMin: temps.areas[0].tempsMin[i] || "--",
-            pop: "--", // PoP is in a different series, often empty for later days
-          };
+            weather: weekly.areas[0].weatherCodes[i],
+            tempMax: tempMax || "--",
+            tempMin: tempMin || "--",
+            pop: weekly.areas[0].pops?.[i] || "--",
+          });
         });
 
         setForecast(processed.slice(0, 7));
