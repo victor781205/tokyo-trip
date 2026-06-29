@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import { checkRateLimit } from "@/lib/rate-limit";
+import { mapInfoQuerySchema } from "@/lib/validations";
 
 const ALLOWED_DOMAINS = [
   "maps.google.com",
@@ -20,18 +22,38 @@ function isAllowedMapUrl(url: string): boolean {
 }
 
 export async function GET(req: NextRequest) {
-  const url = req.nextUrl.searchParams.get("url");
+  const ip = req.headers.get("x-forwarded-for") ?? "anonymous";
+  const { allowed, remaining, retryAfter } = checkRateLimit(`map:${ip}`, 40, 60_000);
 
-  if (!url) {
-    return NextResponse.json({ error: "Missing URL" }, { status: 400 });
+  if (!allowed) {
+    return NextResponse.json(
+      { error: "Too many requests", retryAfter },
+      {
+        status: 429,
+        headers: {
+          "Retry-After": String(retryAfter),
+          "X-RateLimit-Remaining": "0",
+        },
+      }
+    );
   }
 
-  if (!isAllowedMapUrl(url)) {
+  const url = req.nextUrl.searchParams.get("url");
+
+  const parsed = mapInfoQuerySchema.safeParse({ url });
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: parsed.error.issues[0]?.message ?? "Invalid request" },
+      { status: 400 }
+    );
+  }
+
+  if (!isAllowedMapUrl(parsed.data.url)) {
     return NextResponse.json({ error: "URL must be a Google Maps link" }, { status: 403 });
   }
 
   try {
-    const response = await fetch(url, {
+    const response = await fetch(parsed.data.url, {
       headers: {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
         "Accept-Language": "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7",
@@ -41,7 +63,7 @@ export async function GET(req: NextRequest) {
 
     const finalUrl = response.url;
     const html = await response.text();
-    
+
     let name = "";
     let category = "";
     let address = "";
@@ -50,86 +72,86 @@ export async function GET(req: NextRequest) {
 
     // --- STRATEGY 1: Extract from Redirected URL Path ---
     try {
-        const urlObj = new URL(finalUrl);
-        const path = decodeURIComponent(urlObj.pathname);
-        // Matches /maps/place/Name+Here/ or /maps/search/Name+Here/
-        const placeMatch = path.match(/\/maps\/place\/(.*?)\//) || path.match(/\/maps\/search\/(.*?)\//);
-        if (placeMatch && placeMatch[1]) {
-            name = placeMatch[1].replace(/\+/g, " ").trim();
-        }
+      const urlObj = new URL(finalUrl);
+      const path = decodeURIComponent(urlObj.pathname);
+      // Matches /maps/place/Name+Here/ or /maps/search/Name+Here/
+      const placeMatch = path.match(/\/maps\/place\/(.*?)\//) || path.match(/\/maps\/search\/(.*?)\//);
+      if (placeMatch && placeMatch[1]) {
+        name = placeMatch[1].replace(/\+/g, " ").trim();
+      }
     } catch { /* URL parsing failed, continue to next strategy */ }
 
     // --- STRATEGY 2: Extract from HTML Content (Preview links or Data) ---
     if (!name || name === "Google 地圖" || name === "Google Maps") {
-        // Look for preview link q parameter: <link href="/maps/preview/place?...q=Name+Here&...
-        const qMatch = html.match(/&amp;q=(.*?)&amp;/) || html.match(/[\?&]q=(.*?)&/);
-        if (qMatch && qMatch[1]) {
-            name = decodeURIComponent(qMatch[1]).replace(/\+/g, " ").trim();
-        }
+      // Look for preview link q parameter: <link href="/maps/preview/place?...q=Name+Here&...
+      const qMatch = html.match(/&amp;q=(.*?)&amp;/) || html.match(/[\?&]q=(.*?)&/);
+      if (qMatch && qMatch[1]) {
+        name = decodeURIComponent(qMatch[1]).replace(/\+/g, " ").trim();
+      }
     }
 
     // --- STRATEGY 3: Extract from Metadata (Description) ---
-    const descMatch = html.match(/<meta content="(.*?)"\s+name="Description"/i) || 
-                      html.match(/<meta name="Description"\s+content="(.*?)"/i);
-    
+    const descMatch = html.match(/<meta content="(.*?)"\s+name="Description"/i) ||
+      html.match(/<meta name="Description"\s+content="(.*?)"/i);
+
     if (descMatch && descMatch[1]) {
-        const descContent = descMatch[1];
-        // If name wasn't found yet, the first part of description is often the name
-        if (!name || name === "Google 地圖" || name === "Google Maps") {
-            const parts = descContent.split(", ");
-            if (parts.length >= 1 && !parts[0].includes("利用「Google 地圖」")) {
-                name = parts[0].trim();
-            }
-        }
-
-        // Category & Emoji Keywords
-        const catKeywords = {
-            "🍣": ["sushi", "壽司", "sashimi"],
-            "🍜": ["ramen", "拉麵", "noodle", "udon", "そば", "soba"],
-            "🥩": ["steak", "yakiniku", "燒肉", "beef", "meat", "bbq"],
-            "🍱": ["bento", "box", "lunch", "convenience", "便利商店", "7-eleven", "lawson", "family mart"],
-            "🍺": ["bar", "pub", "izakaya", "居酒屋", "beer", "酒"],
-            "☕": ["cafe", "coffee", "咖啡"],
-            "🍰": ["cake", "dessert", "bakery", "甜點", "蛋糕"],
-            "🍡": ["dango", "wagashi", "和菓子", "mochi"],
-            "🍔": ["burger", "漢堡", "hamburger", "shake tree"],
-            "🍕": ["pizza", "italian"],
-            "🍛": ["curry", "咖哩"],
-            "🍦": ["ice cream", "冰淇淋", "gelato"],
-        };
-
-        // Scan description for category keywords
-        const lowDesc = descContent.toLowerCase();
-        for (const [e, keywords] of Object.entries(catKeywords)) {
-            if (keywords.some(k => lowDesc.includes(k))) {
-                emoji = e;
-                // Try to extract the specific category name from description
-                const parts = descContent.split(", ");
-                category = parts.find(p => keywords.some(k => p.toLowerCase().includes(k))) || "";
-                break;
-            }
-        }
-
-        // Address extraction
+      const descContent = descMatch[1];
+      // If name wasn't found yet, the first part of description is often the name
+      if (!name || name === "Google 地圖" || name === "Google Maps") {
         const parts = descContent.split(", ");
-        const addressPart = parts.find(p => p.match(/\d{3}-\d{4}/) || p.includes("Tokyo") || p.includes("City"));
-        if (addressPart) {
-            address = addressPart.replace(", Japan", "").trim();
+        if (parts.length >= 1 && !parts[0].includes("利用「Google 地圖」")) {
+          name = parts[0].trim();
         }
+      }
 
-        // Hours extraction
-        const hoursPart = parts.find(p => p.toLowerCase().includes("open") || p.toLowerCase().includes("closed") || p.includes("時"));
-        if (hoursPart && hoursPart !== name) {
-            hours = hoursPart.trim();
+      // Category & Emoji Keywords
+      const catKeywords = {
+        "🍣": ["sushi", "壽司", "sashimi"],
+        "🍜": ["ramen", "拉麵", "noodle", "udon", "そば", "soba"],
+        "🥩": ["steak", "yakiniku", "燒肉", "beef", "meat", "bbq"],
+        "🍱": ["bento", "box", "lunch", "convenience", "便利商店", "7-eleven", "lawson", "family mart"],
+        "🍺": ["bar", "pub", "izakaya", "居酒屋", "beer", "酒"],
+        "☕": ["cafe", "coffee", "咖啡"],
+        "🍰": ["cake", "dessert", "bakery", "甜點", "蛋糕"],
+        "🍡": ["dango", "wagashi", "和菓子", "mochi"],
+        "🍔": ["burger", "漢堡", "hamburger", "shake tree"],
+        "🍕": ["pizza", "italian"],
+        "🍛": ["curry", "咖哩"],
+        "🍦": ["ice cream", "冰淇淋", "gelato"],
+      };
+
+      // Scan description for category keywords
+      const lowDesc = descContent.toLowerCase();
+      for (const [e, keywords] of Object.entries(catKeywords)) {
+        if (keywords.some(k => lowDesc.includes(k))) {
+          emoji = e;
+          // Try to extract the specific category name from description
+          const parts = descContent.split(", ");
+          category = parts.find(p => keywords.some(k => p.toLowerCase().includes(k))) || "";
+          break;
         }
+      }
+
+      // Address extraction
+      const parts = descContent.split(", ");
+      const addressPart = parts.find(p => p.match(/\d{3}-\d{4}/) || p.includes("Tokyo") || p.includes("City"));
+      if (addressPart) {
+        address = addressPart.replace(", Japan", "").trim();
+      }
+
+      // Hours extraction
+      const hoursPart = parts.find(p => p.toLowerCase().includes("open") || p.toLowerCase().includes("closed") || p.includes("時"));
+      if (hoursPart && hoursPart !== name) {
+        hours = hoursPart.trim();
+      }
     }
 
     // --- STRATEGY 4: Final Fallback to Title ---
     if (!name || name === "Google 地圖" || name === "Google Maps") {
-        const titleMatch = html.match(/<title>(.*?)<\/title>/i);
-        if (titleMatch && titleMatch[1]) {
-            name = titleMatch[1].replace(/ - Google (地圖|Maps)/gi, "").trim();
-        }
+      const titleMatch = html.match(/<title>(.*?)<\/title>/i);
+      if (titleMatch && titleMatch[1]) {
+        name = titleMatch[1].replace(/ - Google (地圖|Maps)/gi, "").trim();
+      }
     }
 
     // Clean up generic placeholders
@@ -137,14 +159,28 @@ export async function GET(req: NextRequest) {
 
     const district = identifyDistrict(name, address, descMatch?.[1] || "", finalUrl);
 
-    return NextResponse.json({ 
-        name, 
-        emoji, 
+    // ── 提取座標 ──
+    let lat: number | undefined;
+    let lng: number | undefined;
+    const coordMatch = finalUrl.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
+    if (coordMatch) {
+      lat = parseFloat(coordMatch[1]);
+      lng = parseFloat(coordMatch[2]);
+    }
+
+    return NextResponse.json(
+      {
+        name,
+        emoji,
         location: district || address,
         hours,
         category,
-        finalUrl 
-    });
+        finalUrl,
+        lat,
+        lng,
+      },
+      { headers: { "X-RateLimit-Remaining": String(remaining) } }
+    );
   } catch (error) {
     console.error("Map info fetch error:", error);
     return NextResponse.json({ error: "Failed to fetch map info" }, { status: 500 });
@@ -153,7 +189,7 @@ export async function GET(req: NextRequest) {
 
 function identifyDistrict(name: string, address: string, description: string, finalUrl: string): string {
   const text = `${name} ${address} ${description}`.toLowerCase();
-  
+
   const areas = [
     { name: "澀谷", keywords: ["澀谷", "渋谷", "shibuya", "harajuku", "原宿", "omotesando", "表參道", "表参道", "udagawacho", "宇田川町"] },
     { name: "新宿", keywords: ["新宿", "shinjuku", "kabukicho", "歌舞伎町"] },
@@ -192,7 +228,7 @@ function identifyDistrict(name: string, address: string, description: string, fi
     if (coordMatch) {
       const lat = parseFloat(coordMatch[1]);
       const lng = parseFloat(coordMatch[2]);
-      
+
       const DISTRICT_COORDS = [
         { name: "秋葉原", lat: 35.6986, lng: 139.7742 },
         { name: "澀谷", lat: 35.6580, lng: 139.7016 },

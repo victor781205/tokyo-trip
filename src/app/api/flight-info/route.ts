@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 const AVIATION_STACK_KEY = process.env.AVIATION_STACK_KEY?.trim() ?? "";
 const TDX_CLIENT_ID = process.env.TDX_CLIENT_ID?.trim() ?? "";
@@ -23,7 +24,23 @@ async function getTdxToken(): Promise<string | null> {
   }
 }
 
-export async function GET() {
+export async function GET(request: Request) {
+  const ip = request.headers.get("x-forwarded-for") ?? "anonymous";
+  const { allowed, remaining, retryAfter } = checkRateLimit(`flight:${ip}`, 20, 60_000);
+
+  if (!allowed) {
+    return NextResponse.json(
+      { error: "Too many requests", retryAfter },
+      {
+        status: 429,
+        headers: {
+          "Retry-After": String(retryAfter),
+          "X-RateLimit-Remaining": "0",
+        },
+      }
+    );
+  }
+
   // ── 去程 JX800（TPE 出發）— 使用 TDX 機場 FIDS ──
   let outbound: Record<string, string> | null = null;
   try {
@@ -102,12 +119,15 @@ export async function GET() {
     }
   }
 
-  return NextResponse.json({
-    outbound: outbound ?? { error: "Flight not found in TDX FIDS" },
-    inbound: inbound ?? {
-      error: AVIATION_STACK_KEY
-        ? "Return flight data not yet available (AviationStack)"
-        : "AVIATION_STACK_KEY not configured",
+  return NextResponse.json(
+    {
+      outbound: outbound ?? { error: "Flight not found in TDX FIDS" },
+      inbound: inbound ?? {
+        error: AVIATION_STACK_KEY
+          ? "Return flight data not yet available (AviationStack)"
+          : "AVIATION_STACK_KEY not configured",
+      },
     },
-  });
+    { headers: { "X-RateLimit-Remaining": String(remaining) } }
+  );
 }
