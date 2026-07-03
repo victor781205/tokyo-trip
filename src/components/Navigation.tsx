@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useTheme } from "next-themes";
-import { Menu, X, Moon, Sun, Home, Share2, Check, Settings, Plane, CalendarDays, Wallet, UtensilsCrossed, BookOpen, Luggage, Languages, Building2, Map as MapIcon } from "lucide-react";
+import { Menu, X, Moon, Sun, Home, Share2, Check, Settings, Plane, CalendarDays, Wallet, UtensilsCrossed, Luggage, Languages, Map as MapIcon } from "lucide-react";
 import { useTrip } from "@/context/TripContext";
 import type { LucideIcon } from "lucide-react";
 
@@ -16,13 +16,11 @@ export const NAV_LINKS: NavLink[] = [
   { id: "hero", label: "首頁", icon: Home },
   { id: "flights", label: "機票", icon: Plane },
   { id: "tripprep", label: "行前準備", icon: Luggage },
-  { id: "accommodation", label: "住宿交通", icon: Building2 },
-  { id: "routemap", label: "地鐵查詢", icon: MapIcon },
+  { id: "transport", label: "交通", icon: MapIcon },
   { id: "itinerary", label: "行程", icon: CalendarDays },
   { id: "food", label: "美食", icon: UtensilsCrossed },
-  { id: "language", label: "語言應急", icon: Languages },
+  { id: "assistant", label: "旅遊助手", icon: Languages },
   { id: "tools", label: "預算", icon: Wallet },
-  { id: "tips", label: "實用", icon: BookOpen },
 ];
 
 interface NavigationProps {

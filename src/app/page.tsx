@@ -23,7 +23,7 @@ export default function Home() {
   const renderContent = () => {
     switch (activeTab) {
       case "hero":
-        return <Hero />;
+        return <Hero onNavigate={setActiveTab} />;
       case "flights":
         return <FlightInfo />;
       case "tripprep":
@@ -35,10 +35,13 @@ export default function Home() {
             </div>
           </div>
         );
-      case "accommodation":
-        return <HotelInfo />;
-      case "routemap":
-        return <RouteMap />;
+      case "transport":
+        return (
+          <div className="space-y-8">
+            <HotelInfo />
+            <RouteMap />
+          </div>
+        );
       case "itinerary":
         return <Itinerary />;
       case "tools":
@@ -50,19 +53,16 @@ export default function Home() {
         );
       case "food":
         return <Food />;
-      case "language":
+      case "assistant":
         return (
-          <div>
+          <div className="space-y-8">
             <EmergencyContacts />
-            <div className="mt-4">
-              <JapanesePhrases />
-            </div>
+            <JapanesePhrases />
+            <Tips />
           </div>
         );
-      case "tips":
-        return <Tips />;
       default:
-        return <Hero />;
+        return <Hero onNavigate={setActiveTab} />;
     }
   };
 
