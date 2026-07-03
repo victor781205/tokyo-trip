@@ -18,16 +18,39 @@ function loadGoogleMaps(apiKey: string): Promise<void> {
     w._googleMapsLoading = true;
 
     const script = document.createElement("script");
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places&language=zh-TW&loading=async&region=JP`;
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places&language=zh-TW&region=JP`;
     script.async = true;
     script.defer = true;
-    script.onload = () => {
+
+    // script.onload 時 google.maps 不一定 ready（async/defer 載入有 race condition）
+    // 用 polling 等 window.google.maps 出現才 resolve，避免 setStatus("error") 誤判
+    const fire = () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (window as any)._googleMapsCallbacks.forEach((cb: () => void) => cb());
+      const w = window as any;
+      if (w.google?.maps) {
+        /* eslint-disable @typescript-eslint/no-explicit-any */
+        (window as any)._googleMapsCallbacks.forEach((cb: () => void) => cb());
+        (window as any)._googleMapsCallbacks = [];
+        (window as any)._googleMapsLoading = false;
+        /* eslint-enable @typescript-eslint/no-explicit-any */
+        return true;
+      }
+      return false;
+    };
+
+    script.onload = () => {
+      if (fire()) return;
+      // onload 但 google.maps 還沒初始化，polling 等
+      let tries = 0;
+      const timer = setInterval(() => {
+        if (fire() || ++tries > 100) clearInterval(timer);  // 最多等 10 秒
+      }, 100);
+    };
+    script.onerror = () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (window as any)._googleMapsLoading = false;
+      reject("Google Maps script failed");
     };
-    script.onerror = () => reject("Google Maps script failed");
     document.head.appendChild(script);
   });
 }
