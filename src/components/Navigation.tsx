@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useTheme } from "next-themes";
-import { Menu, X, Moon, Sun, Home, Share2, Check, Settings, Plane, Train, Hotel, Map, CloudSun, CalendarDays, Wallet, UtensilsCrossed, BookOpen, Siren, Luggage, Languages } from "lucide-react";
+import { Menu, X, Moon, Sun, Home, Share2, Check, Settings, Plane, CalendarDays, Wallet, UtensilsCrossed, BookOpen, Luggage, Languages, Building2, Map as MapIcon } from "lucide-react";
 import { useTrip } from "@/context/TripContext";
 import type { LucideIcon } from "lucide-react";
 
@@ -15,16 +15,13 @@ export interface NavLink {
 export const NAV_LINKS: NavLink[] = [
   { id: "hero", label: "首頁", icon: Home },
   { id: "flights", label: "機票", icon: Plane },
-  { id: "transfer", label: "交通", icon: Train },
-  { id: "hotel", label: "住宿", icon: Hotel },
-  { id: "routemap", label: "路線", icon: Map },
-  { id: "weather", label: "天氣", icon: CloudSun },
+  { id: "tripprep", label: "行前準備", icon: Luggage },
+  { id: "accommodation", label: "住宿交通", icon: Building2 },
+  { id: "routemap", label: "地鐵查詢", icon: MapIcon },
   { id: "itinerary", label: "行程", icon: CalendarDays },
-  { id: "tools", label: "預算", icon: Wallet },
-  { id: "packing", label: "行李", icon: Luggage },
-  { id: "phrases", label: "日語", icon: Languages },
   { id: "food", label: "美食", icon: UtensilsCrossed },
-  { id: "emergency", label: "緊急", icon: Siren },
+  { id: "language", label: "語言應急", icon: Languages },
+  { id: "tools", label: "預算", icon: Wallet },
   { id: "tips", label: "實用", icon: BookOpen },
 ];
 
@@ -81,6 +78,7 @@ export function Navigation({ activeTab, setActiveTab }: NavigationProps) {
         <div className="max-w-7xl mx-auto px-4 md:px-8 h-16 flex items-center justify-between">
           <button
             onClick={() => setActiveTab("hero")}
+            aria-label="東京自由行主頁"
             className="text-2xl font-black text-primary hover:scale-105 transition-transform flex items-center gap-2"
           >
             🗼 <span className="hidden sm:inline">東京自由行</span>
@@ -92,6 +90,7 @@ export function Navigation({ activeTab, setActiveTab }: NavigationProps) {
               <button
                 key={link.id}
                 onClick={() => setActiveTab(link.id)}
+                aria-current={activeTab === link.id ? "page" : undefined}
                 className={`text-sm font-black px-4 py-2 rounded-2xl transition-all duration-300 ${activeTab === link.id
                   ? "bg-primary text-white shadow-lg shadow-primary/30 scale-105"
                   : "text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-800"
@@ -117,13 +116,13 @@ export function Navigation({ activeTab, setActiveTab }: NavigationProps) {
 
           {/* Mobile Nav Controls - Enhanced for Flagships */}
           <div className="flex lg:hidden items-center gap-1">
-            <button onClick={() => setShowSyncModal(true)} className="p-3 text-gray-400 active:bg-gray-100 dark:active:bg-slate-800 rounded-2xl transition-colors">
+            <button onClick={() => setShowSyncModal(true)} className="p-3.5 text-gray-400 active:bg-gray-100 dark:active:bg-slate-800 rounded-2xl transition-colors">
               <Settings className="w-6 h-6" />
             </button>
-            <button onClick={toggleTheme} className="p-3 text-gray-400 active:bg-gray-100 dark:active:bg-slate-800 rounded-2xl transition-colors">
+            <button onClick={toggleTheme} className="p-3.5 text-gray-400 active:bg-gray-100 dark:active:bg-slate-800 rounded-2xl transition-colors">
               {mounted && (theme === "dark" || (theme === "system" && systemTheme === "dark")) ? <Sun className="w-6 h-6 text-accent" /> : <Moon className="w-6 h-6 text-slate-700" />}
             </button>
-            <button onClick={() => setIsOpen(!isOpen)} className="p-3 text-primary bg-primary/5 rounded-2xl ml-1 active:scale-90 transition-all">
+            <button onClick={() => setIsOpen(!isOpen)} className="p-3.5 text-primary bg-primary/5 rounded-2xl ml-1 active:scale-90 transition-all">
               {isOpen ? <X className="w-7 h-7" /> : <Menu className="w-7 h-7" />}
             </button>
           </div>
@@ -141,7 +140,8 @@ export function Navigation({ activeTab, setActiveTab }: NavigationProps) {
                   <button
                     key={link.id}
                     onClick={() => { setActiveTab(link.id); setIsOpen(false); }}
-                    className={`h-28 rounded-[2rem] border-2 transition-all flex flex-col items-center justify-center gap-2 ${activeTab === link.id
+                    aria-current={activeTab === link.id ? "page" : undefined}
+                    className={`min-h-[6rem] rounded-[2rem] border-2 transition-all flex flex-col items-center justify-center gap-2 ${activeTab === link.id
                       ? "bg-primary border-primary text-white shadow-2xl shadow-primary/30 scale-105"
                       : "bg-gray-50 dark:bg-slate-800 border-transparent text-gray-700 dark:text-gray-300 active:scale-95"
                       }`}
@@ -177,11 +177,11 @@ export function Navigation({ activeTab, setActiveTab }: NavigationProps) {
 
             <div className="p-8 space-y-8">
               <div>
-                <label className="text-sm font-black text-gray-400 uppercase tracking-widest block mb-4 ml-1">您的專屬代號</label>
+                <label htmlFor="trip-id-input" className="text-sm font-black text-gray-400 uppercase tracking-widest block mb-4 ml-1">您的專屬代號</label>
                 <div className="bg-gray-50 dark:bg-slate-900 p-5 rounded-[2rem] border border-gray-100 dark:border-slate-800">
                   <div className="flex justify-between items-center mb-4">
                     <span className="text-sm text-gray-500 font-bold uppercase">Trip ID</span>
-                    <span className="font-mono font-black text-primary bg-primary/5 px-3 py-1 rounded-lg">{tripId}</span>
+                    <span id="trip-id-display" className="font-mono font-black text-primary bg-primary/5 px-3 py-1 rounded-lg">{tripId}</span>
                   </div>
                   <button
                     onClick={handleShare}
@@ -195,9 +195,10 @@ export function Navigation({ activeTab, setActiveTab }: NavigationProps) {
               </div>
 
               <div className="space-y-4">
-                <label className="text-sm font-black text-gray-400 uppercase tracking-widest block ml-1">登入其他行程</label>
+                <label htmlFor="login-trip-id" className="text-sm font-black text-gray-400 uppercase tracking-widest block ml-1">登入其他行程</label>
                 <form onSubmit={handleLogin} className="space-y-3">
                   <input
+                    id="login-trip-id"
                     type="text"
                     placeholder="輸入行程代號"
                     value={inputTripId}
@@ -205,6 +206,7 @@ export function Navigation({ activeTab, setActiveTab }: NavigationProps) {
                     className="w-full p-5 rounded-2xl border-2 border-gray-50 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 focus:border-primary focus:outline-none transition-all font-mono text-base"
                   />
                   <input
+                    id="login-secret"
                     type="password"
                     placeholder="輸入同步密碼"
                     value={inputSecret}

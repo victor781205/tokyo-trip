@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { MessageCircle, Volume2, ChevronDown, Search, BookOpen } from "lucide-react";
+import { Volume2, ChevronDown, Search } from "lucide-react";
 
 const PHRASE_CATEGORIES: Record<string, { emoji: string; phrases: { jp: string; romaji: string; zh: string }[] }> = {
   "基本問候": {
@@ -102,11 +102,11 @@ export function JapanesePhrases() {
   };
 
   return (
-    <section id="phrases" className="py-20 px-4 md:px-6 lg:px-8 max-w-5xl mx-auto transition-colors duration-300">
+    <section id="phrases" className="py-6 md:py-20 transition-colors duration-300">
       {/* Header */}
       <div className="text-center mb-10">
         <div className="inline-block bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 px-4 py-1 rounded-full text-xs font-black uppercase tracking-widest mb-4">Travel Phrases</div>
-        <h2 className="text-3xl md:text-5xl font-black mb-4">🇯🇵 實用日語短語</h2>
+        <h2 className="text-2xl sm:text-3xl md:text-5xl font-black mb-4">🇯🇵 實用日語短語</h2>
         <p className="text-gray-600 dark:text-gray-400">旅遊必備日語，點擊喇叭圖示可聆聽發音</p>
       </div>
 
@@ -117,6 +117,7 @@ export function JapanesePhrases() {
           type="text"
           value={search}
           onChange={e => setSearch(e.target.value)}
+          aria-label="搜尋日語短語"
           placeholder="搜尋日語短語..."
           className="w-full pl-14 pr-5 py-4 rounded-2xl border-2 border-gray-100 dark:border-slate-700 bg-white dark:bg-slate-800 focus:border-primary focus:outline-none transition-all font-bold"
         />
@@ -130,6 +131,7 @@ export function JapanesePhrases() {
             <div key={cat.category} className="bg-white dark:bg-slate-800 rounded-3xl shadow-lg border border-gray-100 dark:border-slate-700 overflow-hidden">
               <button
                 onClick={() => setExpanded(isExpanded ? null : cat.category)}
+                aria-expanded={isExpanded}
                 className="w-full flex items-center justify-between p-5 hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors"
               >
                 <div className="flex items-center gap-3">
@@ -150,7 +152,8 @@ export function JapanesePhrases() {
                             <span className="font-black text-xl text-gray-900 dark:text-white">{phrase.jp}</span>
                             <button
                               onClick={() => handleSpeak(phrase.jp)}
-                              className="p-1.5 rounded-lg text-gray-400 hover:text-primary hover:bg-primary/10 transition-colors md:opacity-0 md:group-hover:opacity-100"
+                              aria-label={`播放發音：${phrase.jp}`}
+                              className="p-2 sm:p-3 rounded-xl text-gray-400 hover:text-primary hover:bg-primary/10 transition-colors opacity-100 md:opacity-0 md:group-hover:opacity-100"
                               title="聆聽發音"
                             >
                               <Volume2 className="w-4 h-4" />

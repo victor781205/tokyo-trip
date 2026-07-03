@@ -1,64 +1,250 @@
-import { MapPin, Train, Globe, CheckCircle2 } from "lucide-react";
+"use client";
+
+import { useState } from "react";
+import { MapPin, Train, Globe, CheckCircle2, Plane, Navigation, ExternalLink } from "lucide-react";
+
+const HOTEL_GOOGLE_URL = "https://www.google.com/maps/dir/?api=1&origin=Narita+Airport+NRT&destination=Tobu+Levant+Hotel+Tokyo+Kinshicho";
+
+const transferMethods = [
+  {
+    icon: "🚌",
+    title: "利木津巴士",
+    subtitle: "直達飯店門口",
+    duration: "80~90 分鐘",
+    fare: "約 ¥3,100",
+    badge: "最輕鬆",
+    badgeBg: "bg-orange-100 text-orange-700",
+    badgeBorder: "border-orange-200",
+    description: "在成田機場第二航廈巴士售票處購票，直達飯店門口",
+    recommended: false,
+  },
+  {
+    icon: "🚃",
+    title: "JR 總武線直達",
+    subtitle: "CP 值最高",
+    duration: "75~80 分鐘",
+    fare: "約 ¥1,410",
+    badge: "最划算",
+    badgeBg: "bg-blue-100 text-blue-700",
+    badgeBorder: "border-blue-200",
+    description: "JR 成田線快速直達錦糸町站，一車到底",
+    recommended: true,
+  },
+  {
+    icon: "⚡",
+    title: "京成 Access 特快",
+    subtitle: "速度最快",
+    duration: "65~70 分鐘",
+    fare: "約 ¥1,380",
+    badge: "最快速",
+    badgeBg: "bg-green-100 text-green-700",
+    badgeBorder: "border-green-200",
+    description: "京成線至押上站轉乘半藏門線，班次密集",
+    recommended: false,
+  },
+  {
+    icon: "🚀",
+    title: "Skyliner + JR 線",
+    subtitle: "舒適度最高",
+    duration: "約 65 分鐘",
+    fare: "約 ¥2,800+",
+    badge: "最舒適",
+    badgeBg: "bg-purple-100 text-purple-700",
+    badgeBorder: "border-purple-200",
+    description: "對號座位、行李置放架，適合追求舒適",
+    recommended: false,
+  },
+];
+
+const arrivalSteps = [
+  { time: "12:55", label: "抵達成田機場", sub: "JX800 降落" },
+  { time: "14:00", label: "辦理入境手續", sub: "領行李、過海關" },
+  { time: "14:30", label: "搭乘交通工具", sub: "往錦糸町方向" },
+  { time: "16:00", label: "抵達飯店", sub: "Check-in" },
+  { time: "16:30", label: "開始遊玩！", sub: "淺草寺・雷門" },
+];
 
 export function HotelInfo() {
-  const features = ["🍳 含早餐", "📶 免費 WiFi", "♨️ 大浴場", "🏋️ 健身房", "👔 西裝熨燙", "🧺 洗衣服務"];
-
   return (
-    <section id="hotel" className="py-20 px-6 md:px-12 max-w-6xl mx-auto">
-      <div className="text-center mb-12">
-        <h2 className="text-3xl md:text-4xl font-bold mb-4">🏨 住宿資訊</h2>
-        <p className="text-gray-600 dark:text-gray-400">東京東武黎凡特飯店 Tobu Levant Hotel Tokyo</p>
+    <section id="hotel" className="py-6 md:py-12">
+      {/* ── 頁面抬頭 ── */}
+      <div className="text-center mb-8">
+        <h2 className="text-3xl md:text-4xl font-black mb-2">🏨 住宿與交通</h2>
+        <p className="text-gray-500 font-bold">Day 1 抵達資訊 · 機場接駁</p>
       </div>
 
-      <div className="bg-white dark:bg-slate-800 rounded-[2.5rem] shadow-xl overflow-hidden border border-gray-100 dark:border-slate-700 flex flex-col lg:flex-row transition-all duration-300">
-        <div className="p-8 md:p-12 lg:w-1/2 space-y-6">
-          <div>
-            <h3 className="text-3xl md:text-3xl font-extrabold text-primary mb-4">東京東武黎凡特飯店</h3>
-            <div className="space-y-3">
-              <p className="flex items-start gap-3 text-gray-600 dark:text-gray-300">
-                <MapPin className="w-5 h-5 text-primary shrink-0 mt-1" />
-                <span>東京都 墨田區錦糸 1-2-2 130-0013</span>
-              </p>
-              <p className="flex items-start gap-3 text-gray-600 dark:text-gray-300">
-                <Train className="w-5 h-5 text-primary shrink-0 mt-1" />
-                <span>JR總武線「錦糸町」站步行 5 分鐘</span>
-              </p>
-              <p className="flex items-start gap-3 text-gray-600 dark:text-gray-300 text-base italic">
-                <CheckCircle2 className="w-5 h-5 text-green-500 shrink-0 mt-1" />
-                <span>東武晴空塔線直通，方便前往日光、淺草</span>
-              </p>
+      {/* ═══════════════════════════════
+          第一區：飯店資訊 + Day 1 時間線
+      ═══════════════════════════════ */}
+      <div className="bg-white dark:bg-slate-800 rounded-[2.5rem] shadow-xl overflow-hidden border border-gray-100 dark:border-slate-700 mb-6">
+        <div className="p-6 md:p-8">
+          {/* 飯店抬頭 */}
+          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6">
+            <div>
+              <h3 className="text-2xl font-extrabold text-primary">東京東武黎凡特飯店</h3>
+              <p className="text-sm text-gray-400 font-bold">Tobu Levant Hotel Tokyo</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <a
+                href="https://tc.tobuhotel.co.jp/levant/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 bg-primary hover:bg-primary-dark text-white px-4 py-2 rounded-xl font-bold transition-all text-sm"
+              >
+                <Globe className="w-4 h-4" /> 官方網站
+              </a>
+              <a
+                href={HOTEL_GOOGLE_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 bg-gray-100 dark:bg-slate-700 hover:bg-gray-200 dark:hover:bg-slate-600 text-gray-700 dark:text-gray-200 px-4 py-2 rounded-xl font-bold transition-all text-sm"
+              >
+                <ExternalLink className="w-4 h-4" /> 地圖
+              </a>
             </div>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            {features.map((f, i) => (
-              <span key={i} className="bg-gray-50 dark:bg-slate-700/50 px-3 py-2 rounded-xl text-base font-medium text-gray-700 dark:text-gray-200 flex items-center justify-center">
+          {/* 飯店資訊網格 */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <div className="flex items-start gap-3">
+              <div className="w-8 h-8 bg-primary/10 rounded-lg flex items-center justify-center shrink-0 mt-0.5">
+                <MapPin className="w-4 h-4 text-primary" />
+              </div>
+              <div>
+                <div className="text-xs font-black text-gray-400 uppercase tracking-wider mb-0.5">地址</div>
+                <div className="font-bold text-sm text-gray-700 dark:text-gray-200">墨田區錦糸 1-2-2</div>
+                <div className="text-xs text-gray-400">130-0013</div>
+              </div>
+            </div>
+            <div className="flex items-start gap-3">
+              <div className="w-8 h-8 bg-primary/10 rounded-lg flex items-center justify-center shrink-0 mt-0.5">
+                <Train className="w-4 h-4 text-primary" />
+              </div>
+              <div>
+                <div className="text-xs font-black text-gray-400 uppercase tracking-wider mb-0.5">交通</div>
+                <div className="font-bold text-sm text-gray-700 dark:text-gray-200">JR 總武線「錦糸町」站</div>
+                <div className="text-xs text-gray-400">北口步行 5 分鐘</div>
+              </div>
+            </div>
+            <div className="flex items-start gap-3">
+              <div className="w-8 h-8 bg-green-500/10 rounded-lg flex items-center justify-center shrink-0 mt-0.5">
+                <CheckCircle2 className="w-4 h-4 text-green-500" />
+              </div>
+              <div>
+                <div className="text-xs font-black text-gray-400 uppercase tracking-wider mb-0.5">特色</div>
+                <div className="font-bold text-sm text-gray-700 dark:text-gray-200">東武晴空塔線直達</div>
+                <div className="text-xs text-gray-400">前往日光、淺草超方便</div>
+              </div>
+            </div>
+          </div>
+
+          {/* 設施標籤 */}
+          <div className="flex flex-wrap gap-2 mb-6">
+            {["🍳 含早餐", "📶 WiFi", "♨️ 大浴場", "🏋️ 健身房", "🧺 洗衣服務"].map((f) => (
+              <span key={f} className="bg-gray-50 dark:bg-slate-700/50 px-3 py-1.5 rounded-xl text-sm font-medium text-gray-600 dark:text-gray-300">
                 {f}
               </span>
             ))}
           </div>
 
-          <div className="pt-4">
-            <a 
-              href="https://tc.tobuhotel.co.jp/levant/" 
-              target="_blank" 
-              rel="noopener noreferrer" 
-              className="inline-flex items-center gap-2 bg-primary hover:bg-primary-dark text-white px-8 py-4 rounded-2xl font-bold transition-all shadow-lg shadow-primary/20"
-            >
-              <Globe className="w-5 h-5" /> 前往官方網站
-            </a>
+          {/* Day 1 抵達時間線 */}
+          <div className="bg-primary/5 dark:bg-primary/10 rounded-2xl p-5">
+            <h4 className="font-black text-sm text-primary uppercase tracking-wider mb-4 flex items-center gap-2">
+              <Plane className="w-4 h-4" /> Day 1 抵達時間線
+            </h4>
+
+            <div className="relative">
+              {/* 主軸線 */}
+              <div className="absolute top-[5px] left-0 right-0 h-px bg-primary/25 mx-2"></div>
+
+              {/* 時間點 */}
+              <div className="relative flex justify-between">
+                {arrivalSteps.map((step, i) => (
+                  <div key={i} className="flex flex-col items-center text-center z-10" style={{ flex: "1 0 0" }}>
+                    {/* 圓點 */}
+                    <div
+                      className={`w-2.5 h-2.5 rounded-full border-2 border-white dark:border-slate-900 mb-1.5 ${
+                        i === 4 ? "bg-green-500" : i === 0 ? "bg-blue-500" : "bg-primary"
+                      }`}
+                    ></div>
+                    {/* 時間 */}
+                    <div className="font-black text-xs text-primary leading-none mb-0.5 whitespace-nowrap">{step.time}</div>
+                    {/* 標籤 */}
+                    <div className="font-bold text-[10px] text-gray-700 dark:text-gray-200 leading-tight">{step.label}</div>
+                    {/* 副標 */}
+                    <div className="text-[9px] text-gray-400 leading-tight mt-0.5">{step.sub}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
+      </div>
 
-        <div className="lg:w-1/2 min-h-[400px] relative">
-          <iframe 
-            src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3241.8!2d139.8126!3d35.6966!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x60188ed0d1bfd3d1%3A0x3b9d96d0748f6b6d!2z5p2x5paH5YmN5Y6f6IiI5bqX!5e0!3m2!1szh-TW!2stw!4v1700000000000!5m2!1szh-TW!2stw" 
-            className="absolute inset-0 w-full h-full border-0 opacity-100 transition-all"
-            allowFullScreen 
-            loading="lazy" 
-            referrerPolicy="no-referrer-when-downgrade"
-          ></iframe>
+      {/* ═══════════════════════════════
+          第二區：機場 → 飯店 交通方式
+      ═══════════════════════════════ */}
+      <div className="mb-6">
+        <div className="flex items-center gap-2 mb-4">
+          <Plane className="w-5 h-5 text-primary" />
+          <h3 className="text-lg font-black text-gray-900 dark:text-white">
+            成田國際機場（NRT）→ 飯店
+          </h3>
         </div>
+
+        {/* 4 種交通方式 — 直接連結 Google Maps */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          {transferMethods.map((t, i) => (
+            <a
+              key={i}
+              href={`https://www.google.com/maps/dir/?api=1&origin=Narita+Airport+NRT&destination=Tobu+Levant+Hotel+Tokyo+Kinshicho&travelmode=transit`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={`
+                block bg-white dark:bg-slate-800 rounded-2xl p-5 border-2 transition-all
+                hover:shadow-lg hover:-translate-y-0.5 cursor-pointer
+                ${t.recommended
+                  ? "border-primary shadow-primary/10 shadow-md"
+                  : "border-gray-100 dark:border-slate-700 hover:border-gray-200 dark:hover:border-slate-600"
+                }
+              `}
+            >
+              <div className="flex items-start justify-between mb-2">
+                <span className="text-3xl">{t.icon}</span>
+                <span className={`text-xs px-2 py-0.5 rounded-full font-black ${t.badgeBg}`}>
+                  {t.badge}
+                </span>
+              </div>
+              <div className="font-black text-gray-900 dark:text-white mb-0.5">{t.title}</div>
+              <div className="text-xs text-gray-400 font-bold mb-3">{t.subtitle}</div>
+              <div className="space-y-1 mb-3">
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-400 font-bold">車程</span>
+                  <span className="font-black text-primary">{t.duration}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-400 font-bold">車資</span>
+                  <span className="font-black text-orange-500">{t.fare}</span>
+                </div>
+              </div>
+              <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">{t.description}</p>
+              <div className="mt-3 pt-3 border-t border-gray-100 dark:border-slate-700 flex items-center gap-1 text-xs font-black text-primary">
+                <Navigation className="w-3.5 h-3.5" /> Google Maps 導航
+              </div>
+            </a>
+          ))}
+        </div>
+      </div>
+
+      {/* ═══════════════════════════════
+          第三區：建議
+      ═══════════════════════════════ */}
+      <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-900/30 rounded-2xl p-5">
+        <p className="text-blue-700 dark:text-blue-300 text-sm font-bold leading-relaxed">
+          💡 <strong>Day 1 建議：</strong>JX800 航班 12:55 抵達成田，建議選擇{" "}
+          <strong className="text-primary">JR 總武線直達</strong>（約 ¥1,410，75-80 分鐘）CP 值最高，
+          或<strong className="text-primary">利木津巴士</strong>（約 ¥3,100）直達飯店免搬行李。
+        </p>
       </div>
     </section>
   );

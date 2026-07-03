@@ -1,6 +1,6 @@
 "use client";
 
-import { Phone, Shield, Stethoscope, Building2, Globe, MapPin, AlertTriangle, Heart } from "lucide-react";
+import { Phone, Shield, Stethoscope, Building2, Globe, MapPin, AlertTriangle, Heart, Languages, Volume2 } from "lucide-react";
 
 const CONTACTS = [
   { icon: Shield, label: "日本報警", number: "110", sub: "警察 (Police)", color: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400" },
@@ -19,11 +19,12 @@ const HOSPITALS = [
 
 export function EmergencyContacts() {
   const handleCall = (number: string) => {
-    window.location.href = `tel:${number.replace(/[^+\d]/g, "")}`;
+    const tel = number.replace(/[^+\d]/g, "");
+    window.open(`tel:${tel}`, "_self");
   };
 
   return (
-    <section id="emergency" className="py-20 px-4 md:px-6 lg:px-8 max-w-5xl mx-auto transition-colors duration-300">
+    <section id="emergency" className="py-6 md:py-20 transition-colors duration-300">
       {/* Header */}
       <div className="text-center mb-12">
         <div className="inline-block bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 px-4 py-1 rounded-full text-xs font-black uppercase tracking-widest mb-4">Emergency Info</div>
@@ -48,6 +49,7 @@ export function EmergencyContacts() {
             <button
               key={contact.number}
               onClick={() => handleCall(contact.number)}
+              aria-label={`撥打 ${contact.label}：${contact.number}`}
               className="bg-white dark:bg-slate-800 rounded-3xl p-6 shadow-lg border border-gray-100 dark:border-slate-700 hover:shadow-xl hover:scale-[1.02] transition-all active:scale-[0.98] text-left group"
             >
               <div className="flex items-start gap-4 mb-4">
@@ -88,6 +90,7 @@ export function EmergencyContacts() {
               </div>
               <button
                 onClick={() => handleCall(hospital.phone)}
+                aria-label={`撥打 ${hospital.name}：${hospital.phone}`}
                 className="flex items-center gap-2 bg-primary text-white px-5 py-2.5 rounded-xl font-black text-sm active:scale-95 transition-transform"
               >
                 <Phone className="w-4 h-4" />
@@ -95,6 +98,51 @@ export function EmergencyContacts() {
               </button>
             </div>
           ))}
+        </div>
+
+        {/* ── Emergency Japanese Phrases ── */}
+        <div className="bg-white dark:bg-slate-800 rounded-3xl p-8 shadow-xl border border-gray-100 dark:border-slate-700 mt-8">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="bg-red-100 dark:bg-red-900/30 p-3 rounded-2xl">
+              <Languages className="w-6 h-6 text-red-500" />
+            </div>
+            <div>
+              <h3 className="text-xl font-black text-gray-900 dark:text-white">緊急日語應急句</h3>
+              <p className="text-sm text-gray-500">緊急時用這些句子請求幫助</p>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {[
+              { jp: "助けて！", roma: "Tasukete!", zh: "救命！" },
+              { jp: "救急車を呼んでください", roma: "Kyūkyūsha wo yonde kudasai", zh: "請叫救護車" },
+              { jp: "病院はどこですか？", roma: "Byōin wa doko desu ka?", zh: "醫院在哪裡？" },
+              { jp: "警察を呼んでください", roma: "Keisatsu wo yonde kudasai", zh: "請叫警察" },
+              { jp: "言葉がわかりません", roma: "Kotoba ga wakarimasen", zh: "我聽不懂日語" },
+              { jp: "英語の話せる人はいますか？", roma: "Eigo no hanaseru hito wa imasu ka?", zh: "有人會說英語嗎？" },
+            ].map((phrase, i) => (
+              <div key={i} className="flex items-center gap-4 p-4 bg-red-50 dark:bg-red-900/10 rounded-2xl border border-red-100 dark:border-red-900/30">
+                <div className="flex-1">
+                  <div className="font-black text-lg text-red-600 dark:text-red-400">{phrase.jp}</div>
+                  <div className="text-xs text-gray-500 font-mono">{phrase.roma}</div>
+                  <div className="text-sm font-bold text-gray-600 dark:text-gray-300">{phrase.zh}</div>
+                </div>
+                <button
+                  onClick={() => {
+                    if ("speechSynthesis" in window) {
+                      const utterance = new SpeechSynthesisUtterance(phrase.jp);
+                      utterance.lang = "ja-JP";
+                      utterance.rate = 0.8;
+                      speechSynthesis.speak(utterance);
+                    }
+                  }}
+                  aria-label={`播放「${phrase.jp}」發音`}
+                  className="p-2.5 sm:p-3 bg-red-100 dark:bg-red-900/30 hover:bg-red-200 dark:hover:bg-red-900/50 rounded-full transition-colors"
+                >
+                  <Volume2 className="w-5 h-5 text-red-500" />
+                </button>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </section>

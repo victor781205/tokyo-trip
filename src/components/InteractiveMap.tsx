@@ -22,7 +22,7 @@ export function InteractiveMap() {
   ];
 
   return (
-    <section id="map" className="py-20 px-6 md:px-12 max-w-7xl mx-auto transition-colors duration-300">
+    <section id="map" className="py-20 px-6 md:px-12 max-w-7xl mx-auto transition-colors duration-300" aria-label="東京旅遊景點互動地圖">
       <div className="text-center mb-16">
         <div className="inline-block bg-primary/10 text-primary px-4 py-1 rounded-full text-sm font-black uppercase tracking-widest mb-4">Location Explorer</div>
         <h2 className="text-3xl md:text-5xl font-black mb-4">📍 互動景點探索</h2>
@@ -33,7 +33,7 @@ export function InteractiveMap() {
 
       <div className="flex flex-col lg:flex-row gap-8">
          {/* Map Window */}
-         <div className="flex-1 bg-white dark:bg-slate-800 rounded-[3rem] shadow-2xl border border-gray-100 dark:border-slate-700 overflow-hidden relative group h-[600px]">
+         <div className="flex-1 bg-white dark:bg-slate-800 rounded-[3rem] shadow-2xl border border-gray-100 dark:border-slate-700 overflow-hidden relative group h-[400px] sm:h-[500px] lg:h-[600px]">
             {/* Controls */}
             <div className="absolute top-6 left-6 z-10 flex flex-col gap-2">
               <button onClick={() => zoom(1.2)} className="p-3 bg-white/90 dark:bg-slate-700/90 backdrop-blur rounded-2xl shadow-xl hover:text-primary transition-all active:scale-95"><ZoomIn className="w-5 h-5"/></button>
@@ -80,10 +80,14 @@ export function InteractiveMap() {
 
                 {/* Markers */}
                 {spots.map((spot) => (
-                  <g 
-                    key={spot.id} 
+                  <g
+                    key={spot.id}
                     className="cursor-pointer transition-all duration-300"
                     onClick={() => setSelectedSpot(spot)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedSpot(spot); } }}
+                    tabIndex={0}
+                    role="button"
+                    aria-label={`${spot.name}：${spot.info}`}
                   >
                     <circle cx={spot.x} cy={spot.y} r="25" fill={spot.color} opacity="0" className="hover:opacity-10" />
                     

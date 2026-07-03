@@ -68,6 +68,14 @@ export function WeatherForecast() {
     fetchWeather();
   }, []);
 
+  const getWeatherLabel = (code: string) => {
+    const c = parseInt(code);
+    if (c < 200) return "晴";
+    if (c < 300) return "多雲";
+    if (c < 400) return "雨";
+    return "雷雨";
+  };
+
   const getWeatherIcon = (code: string) => {
     const c = parseInt(code);
     if (c < 200) return <Sun className="w-8 h-8 text-yellow-500" />;
@@ -78,7 +86,7 @@ export function WeatherForecast() {
 
   if (loading) {
     return (
-      <section id="weather" className="py-20 px-6 max-w-5xl mx-auto">
+      <section id="weather" className="py-6 md:py-20 px-6 max-w-5xl mx-auto">
         <div className="bg-white dark:bg-slate-800 rounded-[3rem] p-8 md:p-12 shadow-xl border border-gray-100 dark:border-slate-700">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-12">
             <div>
@@ -105,7 +113,7 @@ export function WeatherForecast() {
   }
 
   return (
-    <section id="weather" className="py-20 px-6 max-w-5xl mx-auto">
+    <section id="weather" className="py-6 md:py-20 px-6 max-w-5xl mx-auto">
       <div className="bg-white dark:bg-slate-800 rounded-[3rem] p-8 md:p-12 shadow-xl border border-gray-100 dark:border-slate-700">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-12">
           <div>
@@ -123,14 +131,52 @@ export function WeatherForecast() {
           {forecast.map((day, i) => (
             <div key={i} className="flex flex-col items-center p-4 bg-gray-50 dark:bg-slate-900/50 rounded-2xl border border-transparent hover:border-primary/30 transition-all">
               <span className="text-base font-bold text-gray-500 mb-3">{day.date}</span>
-              <div className="mb-3">{getWeatherIcon(day.weather)}</div>
+              <div className="mb-3" aria-label={`天氣：${getWeatherLabel(day.weather)}`}>{getWeatherIcon(day.weather)}</div>
               <div className="flex gap-2 font-black">
                 <span className="text-red-500">{day.tempMax}°</span>
                 <span className="text-blue-500 opacity-50">{day.tempMin}°</span>
               </div>
+              {day.pop && parseInt(day.pop) > 50 && (
+                <span className="text-xs text-blue-500 font-bold mt-2">☔ {day.pop}%</span>
+              )}
             </div>
           ))}
         </div>
+
+        {/* Outfit Suggestion */}
+        {forecast.length > 0 && (() => {
+          const avgTemp = forecast.reduce((sum, d) => {
+            const max = parseInt(d.tempMax) || 25;
+            const min = parseInt(d.tempMin) || 20;
+            return sum + (max + min) / 2;
+          }, 0) / forecast.length;
+          const hasRain = forecast.some(d => parseInt(d.pop) > 50);
+          let suggestion = "";
+          let icon = "👔";
+          if (avgTemp > 30) { suggestion = "炎熱！建議薄短袖、短褲，攜帶陽傘和防曬"; icon = "🥵"; }
+          else if (avgTemp > 25) { suggestion = "溫暖！短袖為主，備薄外套防早晚溫差"; icon = "☀️"; }
+          else if (avgTemp > 20) { suggestion = "舒適！建議薄長袖，外套必備"; icon = "🌤️"; }
+          else { suggestion = "涼爽！建議長袖、薄外套，攜帶雨具"; icon = "🧥"; }
+          
+          return (
+            <div className="mt-8 p-6 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-slate-800 dark:to-slate-800 rounded-[2rem]">
+              <h4 className="text-lg font-black mb-3 flex items-center gap-2">
+                <span className="text-2xl">{icon}</span> 穿搭建議
+              </h4>
+              <p className="text-gray-700 dark:text-gray-300 font-medium mb-3">{suggestion}</p>
+              {hasRain && (
+                <div className="flex items-center gap-2 text-sm text-blue-600 dark:text-blue-400 font-bold">
+                  <span>☔</span> 本週有降雨機率，建議攜帶雨具！
+                </div>
+              )}
+              {avgTemp > 28 && (
+                <div className="flex items-center gap-2 text-sm text-orange-600 dark:text-orange-400 font-bold mt-2">
+                  <span>🌡️</span> 高溫炎熱，記得多喝水補充水分！
+                </div>
+              )}
+            </div>
+          );
+        })()}
       </div>
     </section>
   );

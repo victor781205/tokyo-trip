@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Luggage, Plus, X, Check, ChevronDown, ChevronRight, Sparkles } from "lucide-react";
+import { Plus, X, Check, ChevronDown, ChevronRight, Sparkles } from "lucide-react";
 import { useTripState } from "@/hooks/useTripState";
 
 export interface PackingItem {
@@ -113,7 +113,7 @@ export function PackingList() {
 
   if (!isLoaded) {
     return (
-      <section className="py-20 px-4 md:px-6 max-w-4xl mx-auto">
+      <section className="py-6 md:py-20">
         <div className="bg-white dark:bg-slate-800 rounded-[3rem] p-8 shadow-xl border border-gray-100 dark:border-slate-700">
           <div className="h-9 w-48 bg-gray-200 dark:bg-slate-700 rounded-xl animate-pulse mb-6" />
           <div className="h-4 w-full bg-gray-100 dark:bg-slate-900 rounded-full animate-pulse mb-8" />
@@ -126,7 +126,7 @@ export function PackingList() {
   }
 
   return (
-    <section id="packing" className="py-20 px-4 md:px-6 lg:px-8 max-w-4xl mx-auto transition-colors duration-300">
+    <section id="packing" className="py-6 md:py-20 transition-colors duration-300">
       {/* Header */}
       <div className="text-center mb-10">
         <div className="inline-block bg-teal-100 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400 px-4 py-1 rounded-full text-xs font-black uppercase tracking-widest mb-4">Packing Checklist</div>
@@ -187,18 +187,20 @@ export function PackingList() {
                     >
                       <button
                         onClick={() => togglePacked(item.id)}
-                        className={`w-7 h-7 rounded-xl border-2 flex items-center justify-center transition-all shrink-0 ${item.packed ? "bg-green-500 border-green-500 text-white" : "border-gray-300 dark:border-slate-600 hover:border-primary"}`}
+                        aria-label={item.packed ? `取消標記「${item.name}」為已打包` : `標記「${item.name}」為已打包`}
+                        className={`w-11 h-11 rounded-xl border-2 flex items-center justify-center transition-all shrink-0 ${item.packed ? "bg-green-500 border-green-500 text-white" : "border-gray-300 dark:border-slate-600 hover:border-primary"}`}
                       >
-                        {item.packed && <Check className="w-4 h-4" />}
+                        {item.packed && <Check className="w-5 h-5" />}
                       </button>
                       <span className={`flex-1 font-bold ${item.packed ? "line-through text-gray-400 dark:text-gray-500" : "text-gray-900 dark:text-white"}`}>
                         {item.name}
                       </span>
                       <button
                         onClick={() => removeItem(item.id)}
-                        className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                        aria-label={`刪除「${item.name}」`}
+                        className="w-11 h-11 flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-colors"
                       >
-                        <X className="w-4 h-4" />
+                        <X className="w-5 h-5" />
                       </button>
                     </div>
                   ))}
@@ -256,6 +258,27 @@ export function PackingList() {
           <Plus className="w-6 h-6" /> 新增物品
         </button>
       )}
+
+      {/* ── Weather-Based Packing Tips ── */}
+      <div className="mt-6 bg-gradient-to-r from-yellow-50 to-orange-50 dark:from-slate-800 dark:to-slate-800 rounded-[2rem] p-6 border border-yellow-100 dark:border-slate-700">
+        <h4 className="text-lg font-black mb-4 flex items-center gap-2">
+          🌦️ 根據 9 月東京天氣建議
+        </h4>
+        <div className="flex flex-wrap gap-2 text-sm mb-4">
+          <span className="px-3 py-1.5 bg-yellow-100 dark:bg-yellow-900/30 rounded-full font-bold">👕 薄長袖 3-4 件</span>
+          <span className="px-3 py-1.5 bg-yellow-100 dark:bg-yellow-900/30 rounded-full font-bold">🧥 薄外套 1 件</span>
+          <span className="px-3 py-1.5 bg-blue-100 dark:bg-blue-900/30 rounded-full font-bold">☔ 摺疊傘</span>
+          <span className="px-3 py-1.5 bg-blue-100 dark:bg-blue-900/30 rounded-full font-bold">👟 舒適步行鞋</span>
+          <span className="px-3 py-1.5 bg-purple-100 dark:bg-purple-900/30 rounded-full font-bold">🔌 萬用轉接頭</span>
+          <span className="px-3 py-1.5 bg-green-100 dark:bg-green-900/30 rounded-full font-bold">💊 個人藥品</span>
+          <span className="px-3 py-1.5 bg-pink-100 dark:bg-pink-900/30 rounded-full font-bold">🧴 防曬乳 SPF50+</span>
+          <span className="px-3 py-1.5 bg-gray-100 dark:bg-gray-700 rounded-full font-bold">😷 口罩</span>
+        </div>
+        <div className="flex items-start gap-2 text-xs text-gray-500">
+          <span className="text-lg">💡</span>
+          <p>9 月東京氣溫約 23-30°C，午後常有雷陣雨，建議隨身攜帶雨具和薄外套。颱風季節請關注天氣預報。</p>
+        </div>
+      </div>
     </section>
   );
 }

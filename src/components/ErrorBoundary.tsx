@@ -1,6 +1,9 @@
 "use client";
 
 import React from "react";
+import * as Sentry from "@sentry/nextjs";
+
+const isSentryEnabled = !!process.env.NEXT_PUBLIC_SENTRY_DSN;
 
 interface Props {
   children: React.ReactNode;
@@ -23,7 +26,20 @@ export class ErrorBoundary extends React.Component<Props, State> {
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    console.error("[ErrorBoundary]", error, errorInfo);
+    // Send to Sentry if configured
+    if (isSentryEnabled) {
+      Sentry.captureException(error, {
+        contexts: {
+          react: {
+            componentStack: errorInfo.componentStack || "",
+          },
+        },
+      });
+    }
+
+    if (process.env.NODE_ENV === "development") {
+      console.error("[ErrorBoundary]", error, errorInfo);
+    }
   }
 
   handleReset = () => {
@@ -37,7 +53,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
       }
 
       return (
-        <div className="min-h-[40vh] flex items-center justify-center p-8">
+        <div className="min-h-[40vh] flex items-center justify-center p-8" role="alert" aria-live="assertive">
           <div className="text-center max-w-md">
             <div className="text-5xl mb-4">⚠️</div>
             <h2 className="text-xl font-black text-gray-900 dark:text-white mb-2">

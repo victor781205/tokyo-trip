@@ -1,8 +1,19 @@
 "use client";
 
 import { useState } from "react";
-import { Search, MapPin, ArrowRightLeft, Train, Navigation, Info, Map as MapIcon, X, Wallet, Tag, Calendar } from "lucide-react";
+import dynamic from "next/dynamic";
+import { Search, MapPin, ArrowRightLeft, Train, Navigation, Info, Map as MapIcon, X, Wallet, Tag, Calendar, CreditCard } from "lucide-react";
 import { useTripState } from "@/hooks/useTripState";
+
+// 動態載入 RouteMapView（避免 SSR window 問題）
+const RouteMapView = dynamic(() => import("./RouteMapView").then(m => m.RouteMapView), {
+  ssr: false,
+  loading: () => (
+    <div className="w-full h-full flex items-center justify-center bg-gray-100" style={{ minHeight: "450px" }}>
+      <div className="text-gray-400 font-bold text-sm">載入地圖中...</div>
+    </div>
+  ),
+});
 
 export function RouteMap() {
     const [origin, setOrigin] = useState("東京東武黎凡特飯店");
@@ -38,9 +49,7 @@ export function RouteMap() {
         { name: "成田機場", fare: "約 ¥1,350" },
     ];
 
-    // Google Maps Embed API (with API key for Directions)
-    const mapsApiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || "";
-    const directionsEmbedUrl = `https://www.google.com/maps/embed/v1/directions?key=${mapsApiKey}&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}&mode=transit&language=zh-TW`;
+    // Google Maps 深度連結（按鈕開啟完整導航）
     const googleMapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}&travelmode=transit`;
 
     // 從行程中取得所有地點，按天分組
@@ -52,7 +61,7 @@ export function RouteMap() {
     }).filter(d => d.places.length > 0);
 
     return (
-        <section id="routemap" className="py-20 px-4 md:px-12 max-w-6xl mx-auto transition-colors duration-300">
+        <section id="routemap" className="py-6 md:py-20 transition-colors duration-300">
             <div className="text-center mb-16">
                 <div className="inline-block bg-primary/10 text-primary px-4 py-1 rounded-full text-sm font-black uppercase tracking-widest mb-4">Internal Transit System</div>
                 <h2 className="text-3xl md:text-5xl font-black mb-4">🗺️ 智慧交通規劃</h2>
@@ -71,9 +80,10 @@ export function RouteMap() {
                         <form onSubmit={handleSearch} className="space-y-6">
                             <div className="space-y-4">
                                 <div className="relative group">
-                                    <label className="text-sm font-black text-gray-400 uppercase tracking-widest block mb-2 ml-1">起點</label>
+                                    <label htmlFor="route-origin" className="text-sm font-black text-gray-400 uppercase tracking-widest block mb-2 ml-1">起點</label>
                                     <div className="absolute left-4 top-[44px] text-gray-400"><MapPin className="w-4 h-4" /></div>
                                     <input
+                                        id="route-origin"
                                         type="text"
                                         value={origin}
                                         onChange={e => setOrigin(e.target.value)}
@@ -93,9 +103,10 @@ export function RouteMap() {
                                 </div>
 
                                 <div className="relative group">
-                                    <label className="text-sm font-black text-gray-400 uppercase tracking-widest block mb-2 ml-1">目的地</label>
+                                    <label htmlFor="route-destination" className="text-sm font-black text-gray-400 uppercase tracking-widest block mb-2 ml-1">目的地</label>
                                     <div className="absolute left-4 top-[44px] text-gray-400"><Search className="w-4 h-4" /></div>
                                     <input
+                                        id="route-destination"
                                         type="text"
                                         value={destination}
                                         onChange={e => setDestination(e.target.value)}
@@ -168,28 +179,23 @@ export function RouteMap() {
                 {/* Internal Display Result */}
                 {isSearched && (
                     <div className="lg:col-span-8 w-full animate-in fade-in slide-in-from-right-8 duration-700">
-                        <div className="bg-white dark:bg-slate-800 rounded-[2.5rem] shadow-2xl border border-gray-100 dark:border-slate-700 overflow-hidden flex flex-col h-[600px]">
-                            <div className="p-6 bg-gray-50 dark:bg-slate-900 border-b border-gray-100 dark:border-slate-800 flex justify-between items-center">
-                                <div className="flex items-center gap-3">
-                                    <div className="bg-primary/10 p-2 rounded-xl text-primary"><MapIcon className="w-5 h-5" /></div>
-                                    <div>
-                                        <h4 className="font-black text-base">{origin} → {destination}</h4>
+                        <div className="bg-white dark:bg-slate-800 rounded-[2.5rem] shadow-2xl border border-gray-100 dark:border-slate-700 overflow-hidden flex flex-col">
+                            <div className="p-6 bg-gray-50 dark:bg-slate-900 border-b border-gray-100 dark:border-slate-800 flex justify-between items-center shrink-0">
+                                <div className="flex items-center gap-3 min-w-0">
+                                    <div className="bg-primary/10 p-2 rounded-xl text-primary shrink-0"><MapIcon className="w-5 h-5" /></div>
+                                    <div className="min-w-0">
+                                        <h4 className="font-black text-base truncate">{origin} → {destination}</h4>
                                         <p className="text-sm text-gray-400 font-bold uppercase tracking-wider">Transit Directions</p>
                                     </div>
                                 </div>
-                                <button onClick={() => setIsSearched(false)} className="p-2 hover:bg-gray-200 dark:hover:bg-slate-700 rounded-full"><X className="w-4 h-4" /></button>
+                                <button onClick={() => setIsSearched(false)} className="p-2 hover:bg-gray-200 dark:hover:bg-slate-700 rounded-full shrink-0 ml-2"><X className="w-4 h-4" /></button>
                             </div>
 
-                            <div className="flex-1 relative bg-slate-100">
-                                <iframe
-                                    src={directionsEmbedUrl}
-                                    className="w-full h-full border-0"
-                                    allowFullScreen
-                                    loading="lazy"
-                                ></iframe>
+                            <div className="relative bg-slate-100 w-full" style={{ height: "450px" }}>
+                                <RouteMapView originName={origin} destName={destination} />
                             </div>
 
-                            <div className="p-6 md:p-8 bg-gray-50 dark:bg-slate-900 border-t border-gray-100 dark:border-slate-800">
+                            <div className="p-6 md:p-8 bg-gray-50 dark:bg-slate-900 border-t border-gray-100 dark:border-slate-800 shrink-0">
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
                                     <div className="flex items-start gap-4">
                                         <div className="bg-orange-500/10 p-3 rounded-2xl text-orange-500 shrink-0">
@@ -224,8 +230,70 @@ export function RouteMap() {
             </div>
 
             {!isSearched && (
-                <div className="mt-16 grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto animate-in fade-in duration-1000">
-                    <div className="bg-blue-50/50 dark:bg-blue-900/10 p-8 rounded-[2.5rem] border border-blue-100 dark:border-blue-900/30">
+                <div className="space-y-8 max-w-4xl mx-auto animate-in fade-in duration-1000">
+                    {/* 常用車資參考表 */}
+                    <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-slate-800 dark:to-slate-800 rounded-[2rem] p-6 border border-blue-100 dark:border-slate-700">
+                        <h3 className="text-lg font-black mb-4 flex items-center gap-2">
+                            <Tag className="w-5 h-5 text-primary" />
+                            常用車資參考（從飯店出發）
+                        </h3>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+                            {[
+                                { from: "錦糸町", to: "澀谷", fare: "約 ¥230", color: "text-blue-600" },
+                                { from: "錦糸町", to: "新宿", fare: "約 ¥230", color: "text-blue-600" },
+                                { from: "錦糸町", to: "淺草", fare: "約 ¥170", color: "text-green-600" },
+                                { from: "淺草", to: "晴空塔", fare: "約 ¥170", color: "text-green-600" },
+                                { from: "押上", to: "淺草", fare: "約 ¥170", color: "text-green-600" },
+                            ].map((f, i) => (
+                                <div key={i} className="bg-white dark:bg-slate-900 rounded-xl p-3 text-center shadow-sm">
+                                    <div className="text-xs text-gray-400 font-bold mb-1">{f.from} → {f.to}</div>
+                                    <div className={`font-black text-sm ${f.color}`}>{f.fare}</div>
+                                </div>
+                            ))}
+                        </div>
+                        <div className="mt-4 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-xl border border-amber-100 dark:border-amber-800">
+                            <p className="text-sm text-amber-700 dark:text-amber-300 font-bold">
+                                💡 善用「Tokyo Subway Ticket」（24/48/72 小時券），一天搭 3 次以上就划算！
+                            </p>
+                        </div>
+                    </div>
+
+                    {/* IC 卡指南 */}
+                    <div className="bg-white dark:bg-slate-800 rounded-[2rem] p-6 md:p-8 shadow-lg border border-gray-100 dark:border-slate-700">
+                        <h3 className="text-xl font-black mb-6 flex items-center gap-2">
+                            <CreditCard className="w-6 h-6 text-primary" />
+                            IC 卡使用指南
+                        </h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                            <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 rounded-2xl p-5">
+                                <div className="flex items-center gap-3 mb-3">
+                                    <span className="text-2xl">💳</span>
+                                    <h4 className="font-black text-lg text-blue-600 dark:text-blue-400">Suica（推薦首都圈）</h4>
+                                </div>
+                                <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed mb-2">
+                                    可用於東京 Metro、都營地鐵、JR 東日本全線，以及便利店、自动贩卖机
+                                </p>
+                                <p className="text-xs font-bold text-blue-600 dark:text-blue-400 bg-white/60 dark:bg-transparent px-2 py-1 rounded-lg inline-block">
+                                    💡 建議首次儲值 ¥5,000
+                                </p>
+                            </div>
+                            <div className="bg-green-50 dark:bg-green-900/20 border border-green-100 dark:border-green-800 rounded-2xl p-5">
+                                <div className="flex items-center gap-3 mb-3">
+                                    <span className="text-2xl">📱</span>
+                                    <h4 className="font-black text-lg text-green-600 dark:text-green-400">iPhone / Android 手機 Suica</h4>
+                                </div>
+                                <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed mb-2">
+                                    直接在 Wallet / Google Pay 開通，刷卡進站超方便！可綁定信用卡自動加值
+                                </p>
+                                <p className="text-xs font-bold text-green-600 dark:text-green-400 bg-white/60 dark:bg-transparent px-2 py-1 rounded-lg inline-block">
+                                    💡 出發前設定好，避免排隊購卡
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* 使用提示 */}
+                    <div className="bg-blue-50/50 dark:bg-blue-900/10 p-6 rounded-[2rem] border border-blue-100 dark:border-blue-900/30">
                         <div className="flex items-center gap-3 mb-4">
                             <Info className="w-6 h-6 text-blue-500" />
                             <h4 className="text-xl font-black text-blue-600">使用提示</h4>
@@ -234,18 +302,6 @@ export function RouteMap() {
                             <li>• 輸入起點與目的地即可在頁面內預覽路線規劃</li>
                             <li>• 點擊快速標籤可預覽常用景點車資</li>
                             <li>• 展開「依行程查詢路線」可快速查看各景點交通</li>
-                        </ul>
-                    </div>
-
-                    <div className="bg-green-50/50 dark:bg-green-900/10 p-8 rounded-[2.5rem] border border-green-100 dark:border-green-900/30">
-                        <div className="flex items-center gap-3 mb-4">
-                            <Tag className="w-6 h-6 text-green-500" />
-                            <h4 className="text-xl font-black text-green-600">車資省錢小撇步</h4>
-                        </div>
-                        <ul className="text-sm text-green-500/80 space-y-2 font-bold leading-relaxed">
-                            <li>• 使用 Suica/PASMO 刷卡通常比買票便宜</li>
-                            <li>• 錦糸町前往市中心 (新宿/澀谷) 固定約 ¥230</li>
-                            <li>• 善用「地鐵 24/48/72 小時券」可大幅省錢</li>
                         </ul>
                     </div>
                 </div>

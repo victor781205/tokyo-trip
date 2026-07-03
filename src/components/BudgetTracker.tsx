@@ -1,9 +1,27 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { Trash2, Pencil, Check, Plus, PieChart, CreditCard, Wallet, ScanLine } from "lucide-react";
+import dynamic from "next/dynamic";
+import { Trash2, Pencil, Check, Plus, PieChart, CreditCard, Wallet, ScanLine, Loader2 } from "lucide-react";
 import { useTripState } from "@/hooks/useTripState";
-import { ReceiptScanner, ReceiptItem } from "@/components/ReceiptScanner";
+
+// 動態載入 ReceiptScanner（Tesseract.js OCR ~5MB，按需載入）
+const ReceiptScanner = dynamic(
+  () => import("@/components/ReceiptScanner").then(mod => ({ default: mod.ReceiptScanner })),
+  {
+    loading: () => (
+      <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-md">
+        <div className="bg-white dark:bg-slate-800 rounded-[2.5rem] p-8 shadow-2xl flex flex-col items-center gap-4">
+          <Loader2 className="w-10 h-10 animate-spin text-primary" />
+          <p className="text-lg font-bold text-gray-600 dark:text-gray-300">載入發票掃描器...</p>
+        </div>
+      </div>
+    ),
+    ssr: false,
+  }
+);
+
+type ReceiptItem = { name: string; amount: number; category: string; };
 
 const CATEGORIES = {
   food: { icon: "🍜", label: "餐飲", color: "#ef4444" },
@@ -68,7 +86,7 @@ export function BudgetTracker() {
       <div className="bg-white dark:bg-slate-800 rounded-[2.5rem] p-5 md:p-8 shadow-2xl border border-gray-100 dark:border-slate-700">
         
         {/* Stats Row - Legible & Compact */}
-        <div className="grid grid-cols-3 gap-3 mb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
           <div className="bg-gray-50 dark:bg-slate-900 p-4 rounded-3xl relative group border border-transparent">
             <div className="text-sm font-black text-gray-400 uppercase tracking-widest mb-1.5 flex items-center gap-1">
                 <Wallet className="w-2.5 h-2.5" /> 總預算
@@ -110,6 +128,32 @@ export function BudgetTracker() {
             <div className="text-base sm:text-lg font-black leading-tight text-green-500 ">¥{remaining.toLocaleString()}</div>
           </div>
         </div>
+
+        {/* Budget Prediction */}
+        {spent > 0 && remaining > 0 && (
+          <div className="mb-6 p-4 bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 rounded-2xl border border-green-200 dark:border-green-800">
+            <div className="text-sm font-black text-green-700 dark:text-green-400 mb-2 flex items-center gap-2">
+              <span className="text-lg">💡</span> 預算分析
+            </div>
+            <div className="grid grid-cols-2 gap-4 text-sm">
+              <div>
+                <div className="text-gray-500 dark:text-gray-400">建議每日預算</div>
+                <div className="text-xl font-black text-green-600 dark:text-green-400">¥{Math.round(remaining / 5).toLocaleString()}</div>
+              </div>
+              <div>
+                <div className="text-gray-500 dark:text-gray-400">預計總支出</div>
+                <div className={`text-xl font-black ${spent > budgetLimit ? "text-red-500" : "text-blue-500"}`}>
+                  ¥{Math.round((spent / Math.max(1, 2)) * 6).toLocaleString()}
+                </div>
+              </div>
+            </div>
+            {spent / Math.max(1, 2) * 6 > budgetLimit && (
+              <div className="mt-3 text-xs text-red-600 dark:text-red-400 font-bold">
+                ⚠️ 以目前速度，您可能會超支約 ¥{Math.round((spent / Math.max(1, 2)) * 6 - budgetLimit).toLocaleString()}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Progress Bar */}
         <div className="mb-8 px-1">
@@ -262,7 +306,7 @@ export function BudgetTracker() {
         {/* List - Readable text */}
         <div className="space-y-3 max-h-[350px] md:max-h-[500px] overflow-y-auto pr-1 custom-scrollbar">
           {budgetItems.length === 0 ? (
-            <div className="text-center text-gray-400 py-12 text-base italic border-2 border-dashed border-gray-50 dark:border-slate-900 rounded-[2.5rem]">
+            <div className="text-center text-gray-400 dark:text-slate-500 py-12 text-base border-2 border-dashed border-gray-200 dark:border-slate-700 rounded-[2.5rem] font-bold">
               目前尚無任何記帳紀錄
             </div>
           ) : (
@@ -279,7 +323,7 @@ export function BudgetTracker() {
                 </div>
                 <div className="flex items-center gap-4">
                   <span className="font-black text-base">¥{item.amount.toLocaleString()}</span>
-                  <button onClick={() => handleDelete(item.id)} className="text-gray-300 hover:text-red-500 p-2 transition-all">
+                  <button onClick={() => handleDelete(item.id)} aria-label={`刪除「${item.name}」`} className="w-11 h-11 flex items-center justify-center text-gray-300 hover:text-red-500 rounded-xl transition-all">
                     <Trash2 className="w-4 h-4" />
                   </button>
                 </div>

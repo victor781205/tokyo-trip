@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://tokyo-trip.vercel.app/sitemap.xml

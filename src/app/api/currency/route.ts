@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { checkRateLimit } from "@/lib/rate-limit";
 
-const CURRENCY_API_KEY = process.env.CURRENCY_API_KEY?.trim() ?? "";
+export const runtime = "edge";
 
 export async function GET(request: Request) {
   const ip = request.headers.get("x-forwarded-for") ?? "anonymous";
@@ -10,39 +10,47 @@ export async function GET(request: Request) {
   if (!allowed) {
     return NextResponse.json(
       { error: "Too many requests", retryAfter },
-      {
-        status: 429,
-        headers: {
-          "Retry-After": String(retryAfter),
-          "X-RateLimit-Remaining": "0",
-        },
-      }
+      { status: 429, headers: { "Retry-After": String(retryAfter) } }
     );
-  }
-
-  if (!CURRENCY_API_KEY) {
-    return NextResponse.json({ rate: 4.65, source: "fallback" });
   }
 
   try {
+    // Frankfurter — 歐洲央行數據，穩定免費免 key
     const res = await fetch(
-      `https://currencyapi.net/api/v2/rates?base=TWD&output=json&key=${CURRENCY_API_KEY}`,
-      { next: { revalidate: 3600 } }
+      "https://api.frankfurter.app/latest?from=TWD&to=JPY",
+      { next: { revalidate: 300 } } // 快取 5 分鐘
     );
 
-    if (!res.ok) {
-      throw new Error(`Currency API returned ${res.status}`);
-    }
+    if (!res.ok) throw new Error(`Frankfurter returned ${res.status}`);
 
     const data = await res.json();
-    const jpyRate = data.rates.JPY;
+    const rate = data.rates.JPY as number;
+    const fetchedAt = new Date().toISOString();
 
     return NextResponse.json(
-      { rate: jpyRate, source: "live" },
-      { headers: { "X-RateLimit-Remaining": String(remaining) } }
+      { rate, fetchedAt, source: "Frankfurter (ECB)" },
+      {
+        headers: {
+          "X-RateLimit-Remaining": String(remaining),
+          "Cache-Control": "public, max-age=300, stale-while-revalidate=600",
+        },
+      }
     );
   } catch (error) {
-    console.error("[Currency API] Fetch failed:", error);
-    return NextResponse.json({ rate: 4.65, source: "fallback" });
+    console.error("[Currency API] Frankfurter failed:", error);
+    return NextResponse.json(
+      {
+        rate: 4.65,
+        fetchedAt: new Date().toISOString(),
+        source: "fallback",
+        error: "無法取得即時匯率，使用預設值",
+      },
+      {
+        headers: {
+          "X-RateLimit-Remaining": String(remaining),
+          "Cache-Control": "public, max-age=60",
+        },
+      }
+    );
   }
 }

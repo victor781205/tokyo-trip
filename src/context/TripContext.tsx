@@ -21,7 +21,7 @@ export type Activity = { time: string; name: string; desc: string; tag: string; 
 export type DayPlan = { title: string; date: string; activities: Activity[]; };
 export type Itinerary = Record<string, DayPlan>;
 export type BudgetItem = { id: number; name: string; amount: number; category: string; date: string; };
-export type CustomFood = { id: number; emoji: string; name: string; location: string; hours: string; desc: string; mapLink: string; image: string; };
+export type CustomFood = { id: number; emoji: string; name: string; location: string; hours: string; desc: string; mapLink: string; image: string; lat?: number; lng?: number; };
 export type PackingItem = { id: string; name: string; packed: boolean; category: string; };
 
 export type SyncStatus = "connecting" | "online" | "offline" | "error";
@@ -68,17 +68,22 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
   const realtimeChannel = useRef<ReturnType<SupabaseClient['channel']> | null>(null);
   const isOnlineRef = useRef(true);
 
-  const connectToTrip = useCallback(async (id: string, secret: string, client: SupabaseClient) => {
+  const connectToTrip = useCallback(async (id: string, secret: string, client: SupabaseClient, forceReconnect = false) => {
+    if (!forceReconnect && realtimeChannel.current) {
+      // 已連線且非強制重連 → 跳過
+      return;
+    }
     if (realtimeChannel.current) {
       client.removeChannel(realtimeChannel.current);
+      realtimeChannel.current = null;
     }
 
     try {
       const { data, error } = await client.from("sync_state").select("*").eq("trip_id", id).eq("trip_secret", secret).maybeSingle();
 
       if (error) {
-        console.error("[Sync] Failed to fetch trip data:", error);
-        setSyncStatus("error");
+        console.warn("[Sync] Supabase unavailable, offline mode:", error.message);
+        setSyncStatus("offline");
         pushReady.current = true;
         return;
       }
@@ -91,8 +96,10 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
         if (data.custom_foods) _setCustomFoods(data.custom_foods);
         if (data.packing_list) _setPackingList(data.packing_list);
         lastUpdateRef.current = data.updated_at ? new Date(data.updated_at).getTime() : 0;
-        // 等待 React 渲染完成後再允許 push
-        setTimeout(() => { skipNextPush.current = false; }, 500);
+        setTimeout(() => { skipNextPush.current = false; }, 800);
+      } else {
+        // 該 trip_id 還沒有資料 → 允許馬上推送本地資料
+        skipNextPush.current = false;
       }
 
       const channel = client.channel(`trip:${id}`)
@@ -107,7 +114,7 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
               if (payload.new.custom_foods) _setCustomFoods(payload.new.custom_foods);
               if (payload.new.packing_list) _setPackingList(payload.new.packing_list);
               lastUpdateRef.current = remoteUpdated;
-              setTimeout(() => { skipNextPush.current = false; }, 500);
+              setTimeout(() => { skipNextPush.current = false; }, 800);
             }
           })
         .subscribe();
@@ -115,8 +122,8 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
       realtimeChannel.current = channel;
       setSyncStatus("online");
     } catch (err) {
-      console.error("[Sync] Connection error:", err);
-      setSyncStatus("error");
+      console.warn("[Sync] Connection error, offline mode:", err);
+      setSyncStatus("offline");
     } finally {
       pushReady.current = true;
     }
@@ -178,7 +185,8 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
     });
 
     return () => { if (realtimeChannel.current) client.removeChannel(realtimeChannel.current); };
-  }, [connectToTrip]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ── 網路狀態監聽 ──
   useEffect(() => {
@@ -189,9 +197,8 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
     const handleOnline = () => {
       isOnlineRef.current = true;
       if (syncStatus === "offline" && supabase.current && tripId) {
-        // 恢復連線時重新連接 Supabase
         setSyncStatus("connecting");
-        connectToTrip(tripId, tripSecret, supabase.current);
+        connectToTrip(tripId, tripSecret, supabase.current, true);
       }
     };
 
@@ -207,7 +214,8 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
       window.removeEventListener("online", handleOnline);
       window.removeEventListener("offline", handleOffline);
     };
-  }, [connectToTrip, tripId, tripSecret, syncStatus]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [syncStatus]);
 
   // ── 推送到 Supabase ──
   useEffect(() => {
@@ -230,13 +238,11 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
       }, { onConflict: "id" })
         .setHeader("x-trip-secret", tripSecret);
 
-      if (error) {
-        console.error("[Sync] Push failed:", error);
-        setSyncStatus("error");
-      } else {
+      if (!error) {
         lastUpdateRef.current = new Date(now).getTime();
         setSyncStatus("online");
       }
+      // push 失敗時不顯示錯誤，安靜等待下次變更自動重試
     };
 
     const timer = setTimeout(push, 2000);

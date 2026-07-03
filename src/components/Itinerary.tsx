@@ -1,9 +1,115 @@
 "use client";
 
-import { useState, useRef } from "react";
-import { Calendar, Check, ChevronLeft, ChevronRight, Pencil, Plus, Trash2, X, Download, Loader2, CalendarPlus } from "lucide-react";
+import { useState, useRef, useMemo } from "react";
+import { Calendar, Check, ChevronLeft, ChevronRight, Pencil, Plus, Trash2, X, Download, Loader2, CalendarPlus, AlertTriangle, MapPin, BarChart3, List } from "lucide-react";
 import { useTripState, Itinerary as ItineraryType, Activity } from "@/hooks/useTripState";
 import { downloadICS } from "@/lib/ics-export";
+
+// ── 景點座標資料（用於估算移動時間）──
+const PLACE_COORDS: Record<string, { lat: number; lng: number }> = {
+  "成田機場": { lat: 35.7720, lng: 140.3929 },
+  "錦糸町": { lat: 35.6968, lng: 139.8144 },
+  "淺草寺": { lat: 35.7148, lng: 139.7967 },
+  "晴空塔": { lat: 35.7101, lng: 139.8107 },
+  "明治神宮": { lat: 35.6764, lng: 139.6993 },
+  "原宿": { lat: 35.6702, lng: 139.7027 },
+  "澀谷": { lat: 35.6595, lng: 139.7004 },
+  "新宿御苑": { lat: 35.6852, lng: 139.7100 },
+  "秋葉原": { lat: 35.6984, lng: 139.7731 },
+  "東京車站": { lat: 35.6812, lng: 139.7671 },
+  "皇居": { lat: 35.6852, lng: 139.7527 },
+  "銀座": { lat: 35.6715, lng: 139.7649 },
+  "豐洲市場": { lat: 35.6462, lng: 139.7786 },
+  "台場": { lat: 35.6267, lng: 139.7806 },
+  "DiverCity": { lat: 35.6267, lng: 139.7806 },
+  "teamLab": { lat: 35.6267, lng: 139.7833 },
+  "下北澤": { lat: 35.6609, lng: 139.6684 },
+  "吉祥寺": { lat: 35.7029, lng: 139.5700 },
+  "吉卜力美術館": { lat: 35.6961, lng: 139.5704 },
+  "上野": { lat: 35.7141, lng: 139.7774 },
+};
+
+// ── 預估活動時長（分鐘）──
+const ESTIMATED_DURATIONS: Record<string, number> = {
+  "早餐": 45, "午餐": 60, "晚餐": 90, "宵夜": 60,
+  "Check-in": 30, "Check-out": 30,
+  "逛": 120, "購物": 90, "逛街": 90,
+  "神社": 60, "寺": 60, "博物館": 120, "美術館": 120,
+  "展望台": 45, "夜景": 60,
+  "回飯店": 0, "回 hotel": 0, "回房間": 0,
+  "前往": 5, "出發": 5, "移動": 5,
+  "休息": 0, "自由活動": 30,
+};
+
+// ── 計算兩點間直線距離（km）──
+function haversineDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat/2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng/2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+// ── 估算交通工具時間（分鐘）──
+function estimateTravelTime(distance: number): { time: number; mode: string } {
+  if (distance < 1) return { time: 10, mode: "🚶 步行" };
+  if (distance < 3) return { time: Math.round(distance * 12), mode: "🚶/🚇 步行+電車" };
+  if (distance < 10) return { time: Math.round(distance * 3) + 10, mode: "🚇 電車" };
+  return { time: Math.round(distance * 1.5) + 20, mode: "🚇+🚌 電車+巴士" };
+}
+
+// ── 檢測行程衝突 ──
+function detectConflicts(activities: Activity[]): { index: number; message: string }[] {
+  const conflicts: { index: number; message: string }[] = [];
+  if (activities.length < 2) return conflicts;
+
+  // 按時間排序，計算兩兩之間的間隔
+  const withDuration = activities.map((act, idx) => ({
+    idx,
+    time: act.time,
+    name: act.name,
+    duration: getActivityDuration(act),
+  }));
+
+  // 依時間排序
+  withDuration.sort((a, b) => a.time.localeCompare(b.time));
+
+  for (let i = 0; i < withDuration.length - 1; i++) {
+    const current = withDuration[i];
+    const next = withDuration[i + 1];
+    const currentEnd = addMinutes(current.time, current.duration);
+    const gap = timeDifferenceMinutes(currentEnd, next.time);
+
+    if (gap < 0) {
+      conflicts.push({ index: current.idx, message: `與「${next.name}」時間重疊 ${Math.abs(gap)} 分鐘！` });
+    } else if (gap > 0 && gap < 15) {
+      conflicts.push({ index: current.idx, message: `與「${next.name}」只隔 ${gap} 分鐘，時間緊湊` });
+    }
+  }
+
+  return conflicts;
+}
+
+function getActivityDuration(activity: Activity): number {
+  for (const [keyword, duration] of Object.entries(ESTIMATED_DURATIONS)) {
+    if (activity.name.includes(keyword) || activity.desc.includes(keyword)) {
+      return duration;
+    }
+  }
+  return 60; // 預設 1 小時
+}
+
+function addMinutes(time: string, minutes: number): string {
+  const [h, m] = time.split(":").map(Number);
+  const totalMins = h * 60 + m + minutes;
+  return `${String(Math.floor(totalMins / 60) % 24).padStart(2, "0")}:${String(totalMins % 60).padStart(2, "0")}`;
+}
+
+function timeDifferenceMinutes(time1: string, time2: string): number {
+  const [h1, m1] = time1.split(":").map(Number);
+  const [h2, m2] = time2.split(":").map(Number);
+  return (h2 * 60 + m2) - (h1 * 60 + m1);
+}
 
 const DEFAULT_ITINERARY: ItineraryType = {
   day1: {
@@ -93,17 +199,80 @@ export function Itinerary() {
   const [isExporting, setIsExporting] = useState(false);
   const [editingTitleDay, setEditingTitleDay] = useState<string | null>(null);
   const [titleInput, setTitleInput] = useState("");
+  const [viewMode, setViewMode] = useState<"timeline" | "stats">("timeline");
   const tabScrollRef = useRef<HTMLDivElement>(null);
   const itineraryRef = useRef<HTMLDivElement>(null);
 
-  if (!isLoaded) {
-    return <div className="py-20 text-center">載入中...</div>;
-  }
-
-  const currentItin = Object.keys(itinerary).length > 0 ? itinerary : DEFAULT_ITINERARY;
+const currentItin = Object.keys(itinerary).length > 0 ? itinerary : DEFAULT_ITINERARY;
   const dayKeys = Object.keys(currentItin);
   const activeDayKey = dayKeys[activeDayIndex];
   const activeDayData = currentItin[activeDayKey];
+
+  // ── 衝突檢測（Hooks 必須在任何 early return 之前宣告）──
+  const activeConflicts = useMemo(() => detectConflicts(activeDayData.activities), [activeDayData]);
+
+  // ── 計算移動時間（以原始 index 為 key）──
+  const travelTimes = useMemo(() => {
+    // Map<原始index, {from, to, duration, mode}>
+    const timesMap = new Map<number, { from: string; to: string; duration: number; mode: string }>();
+    const sorted = activeDayData.activities.map((act, idx) => ({ act, idx })).sort((a, b) => a.act.time.localeCompare(b.act.time));
+
+    for (let i = 0; i < sorted.length - 1; i++) {
+      const from = sorted[i].act;
+      const to = sorted[i + 1].act;
+      const fromCoord = PLACE_COORDS[from.name] || Object.entries(PLACE_COORDS).find(([k]) => from.desc.includes(k))?.[1];
+      const toCoord = PLACE_COORDS[to.name] || Object.entries(PLACE_COORDS).find(([k]) => to.desc.includes(k))?.[1];
+
+      if (fromCoord && toCoord) {
+        const dist = haversineDistance(fromCoord.lat, fromCoord.lng, toCoord.lat, toCoord.lng);
+        const { time, mode } = estimateTravelTime(dist);
+        timesMap.set(sorted[i].idx, { from: from.name, to: to.name, duration: time, mode });
+      }
+    }
+    return timesMap;
+  }, [activeDayData]);
+
+  // ── 統計資料 ──
+  const stats = useMemo(() => {
+    let totalActivities = 0;
+    const tagCounts: Record<string, number> = {};
+    let totalTravelTime = 0;
+    const itin = Object.keys(itinerary).length > 0 ? itinerary : DEFAULT_ITINERARY;
+    const keys = Object.keys(itin);
+
+    Object.values(itin).forEach(day => {
+      day.activities.forEach(act => {
+        totalActivities++;
+        if (act.tag) tagCounts[act.tag] = (tagCounts[act.tag] || 0) + 1;
+      });
+    });
+
+    // 計算所有天的移動時間
+    keys.forEach(key => {
+      const dayActivities = itin[key].activities;
+      const sorted = [...dayActivities].sort((a, b) => a.time.localeCompare(b.time));
+      for (let i = 0; i < sorted.length - 1; i++) {
+        const fromCoord = PLACE_COORDS[sorted[i].name] || Object.entries(PLACE_COORDS).find(([k]) => sorted[i].desc.includes(k))?.[1];
+        const toCoord = PLACE_COORDS[sorted[i + 1].name] || Object.entries(PLACE_COORDS).find(([k]) => sorted[i + 1].desc.includes(k))?.[1];
+        if (fromCoord && toCoord) {
+          const dist = haversineDistance(fromCoord.lat, fromCoord.lng, toCoord.lat, toCoord.lng);
+          const { time } = estimateTravelTime(dist);
+          totalTravelTime += time;
+        }
+      }
+    });
+
+    return { totalActivities, tagCounts, totalTravelTime };
+  }, [itinerary]);
+
+  if (!isLoaded) {
+    return (
+      <div className="py-6 md:py-20 flex flex-col items-center justify-center gap-3">
+        <Loader2 className="w-8 h-8 text-primary animate-spin" />
+        <span className="text-gray-400 font-bold">載入行程資料中...</span>
+      </div>
+    );
+  }
 
   /** 切換天數 */
   const goToDay = (index: number) => {
@@ -236,30 +405,108 @@ export function Itinerary() {
   );
 
   return (
-    <section id="itinerary" className="py-20 px-4 md:px-6 lg:px-8 max-w-7xl mx-auto transition-colors duration-300">
+    <section id="itinerary" className="py-6 md:py-20 px-4 md:px-6 lg:px-8 max-w-7xl mx-auto transition-colors duration-300">
       {/* ── Header ── */}
       <div className="text-center mb-10 relative">
         <div className="inline-block bg-primary/10 text-primary px-4 py-1 rounded-full text-xs font-black uppercase tracking-widest mb-4">Travel Timeline</div>
         <h2 className="text-3xl md:text-5xl font-black mb-4">📅 行程詳情</h2>
         <p className="text-gray-600 dark:text-gray-400 mb-6">桌面版可一次瀏覽所有天數，手機版左右滑動切換</p>
+
+        {/* ── View Mode Toggle + Actions ── */}
         <div className="flex flex-wrap justify-center gap-3">
+          {/* View Mode Toggle */}
+          <div className="flex bg-gray-100 dark:bg-slate-800 rounded-full p-1">
+            <button
+              onClick={() => setViewMode("timeline")}
+              className={`flex items-center gap-2 px-4 py-2 rounded-full font-bold text-sm transition-all ${viewMode === "timeline" ? "bg-white dark:bg-slate-700 shadow-md" : "text-gray-500 hover:text-gray-700"}`}
+              aria-pressed={viewMode === "timeline"}
+            >
+              <List className="w-4 h-4" /> 時間線
+            </button>
+            <button
+              onClick={() => setViewMode("stats")}
+              className={`flex items-center gap-2 px-4 py-2 rounded-full font-bold text-sm transition-all ${viewMode === "stats" ? "bg-white dark:bg-slate-700 shadow-md" : "text-gray-500 hover:text-gray-700"}`}
+              aria-pressed={viewMode === "stats"}
+            >
+              <BarChart3 className="w-4 h-4" /> 統計
+            </button>
+          </div>
+
           <button
             onClick={handleExport}
             disabled={isExporting}
             className="flex items-center justify-center gap-2 bg-gray-900 dark:bg-white text-white dark:text-gray-900 px-6 py-3 rounded-full font-black text-sm shadow-xl hover:scale-105 transition-all disabled:opacity-50"
           >
             {isExporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-            {isExporting ? "正在產生圖片..." : "匯出為長圖"}
+            {isExporting ? "正在產生圖片..." : "匯出圖片"}
           </button>
           <button
             onClick={() => downloadICS(currentItin)}
             className="flex items-center justify-center gap-2 bg-primary text-white px-6 py-3 rounded-full font-black text-sm shadow-xl hover:scale-105 transition-all"
           >
             <CalendarPlus className="w-4 h-4" />
-            匯出至行事曆
+            匯出 ICS
           </button>
         </div>
       </div>
+
+      {/* ── 統計視圖 ── */}
+      {viewMode === "stats" && !isExporting && (
+        <div className="bg-white dark:bg-slate-800 rounded-[2.5rem] p-8 md:p-12 shadow-2xl border border-gray-100 dark:border-slate-700 mb-8">
+          <h3 className="text-2xl font-black mb-8 flex items-center gap-3">
+            <BarChart3 className="w-6 h-6 text-primary" /> 行程統計
+          </h3>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mb-8">
+            <div className="bg-gray-50 dark:bg-slate-900 p-6 rounded-2xl text-center">
+              <div className="text-4xl font-black text-primary mb-2">{stats.totalActivities}</div>
+              <div className="text-sm text-gray-500 font-bold">總活動數</div>
+            </div>
+            <div className="bg-gray-50 dark:bg-slate-900 p-6 rounded-2xl text-center">
+              <div className="text-4xl font-black text-accent mb-2">{Math.round(stats.totalTravelTime / 60)}h</div>
+              <div className="text-sm text-gray-500 font-bold">移動時間</div>
+            </div>
+            <div className="bg-gray-50 dark:bg-slate-900 p-6 rounded-2xl text-center">
+              <div className="text-4xl font-black text-green-500 mb-2">{dayKeys.length}</div>
+              <div className="text-sm text-gray-500 font-bold">天數</div>
+            </div>
+            <div className="bg-gray-50 dark:bg-slate-900 p-6 rounded-2xl text-center">
+              <div className="text-4xl font-black text-blue-500 mb-2">{Object.keys(stats.tagCounts).length}</div>
+              <div className="text-sm text-gray-500 font-bold">活動類別</div>
+            </div>
+          </div>
+
+          {/* Activity Type Distribution */}
+          <div className="mb-6">
+            <h4 className="text-lg font-black mb-4">活動類型分佈</h4>
+            <div className="flex flex-wrap gap-3">
+              {Object.entries(stats.tagCounts).sort((a, b) => b[1] - a[1]).map(([tag, count]) => (
+                <div key={tag} className={`px-4 py-2 rounded-full font-bold text-sm ${getTagColor(tag)}`}>
+                  {tag}: {count}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Tag Distribution Bar */}
+          <div className="space-y-3">
+            {Object.entries(stats.tagCounts).sort((a, b) => b[1] - a[1]).map(([tag, count]) => {
+              const percent = (count / stats.totalActivities) * 100;
+              const colors: Record<string, string> = { "美食": "bg-orange-500", "景點": "bg-blue-500", "交通": "bg-gray-500", "購物": "bg-pink-500" };
+              return (
+                <div key={tag}>
+                  <div className="flex justify-between text-sm mb-1">
+                    <span className="font-bold">{tag}</span>
+                    <span className="text-gray-500">{count} 項 ({percent.toFixed(0)}%)</span>
+                  </div>
+                  <div className="w-full h-3 bg-gray-100 dark:bg-slate-900 rounded-full overflow-hidden">
+                    <div className={`h-full rounded-full ${colors[tag] || "bg-gray-500"} transition-all duration-700`} style={{ width: `${percent}%` }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* ── 匯出模式：顯示全展開 ── */}
       {isExporting ? renderExportView() : (
@@ -278,6 +525,7 @@ export function Itinerary() {
                     <button
                       key={dayKey}
                       onClick={() => goToDay(i)}
+                      aria-current={isActive ? "true" : undefined}
                       className={`snap-center shrink-0 px-4 py-3 rounded-2xl font-black text-sm transition-all duration-300 flex items-center gap-2 min-w-[7rem] whitespace-nowrap ${isActive
                         ? "bg-gradient-to-r from-primary to-accent text-white shadow-lg shadow-primary/30 scale-105"
                         : "bg-white dark:bg-slate-800 text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-slate-700 hover:border-primary/30 hover:text-primary"
@@ -328,8 +576,8 @@ export function Itinerary() {
                       </div>
                       {act.desc && <p className="text-base text-gray-500 dark:text-gray-400 leading-relaxed mb-4">{act.desc}</p>}
                       <div className="flex gap-2 transition-all duration-300">
-                        <button onClick={() => openModal(activeDayKey, idx)} className="text-primary hover:bg-primary/10 p-2 rounded-xl transition-colors active:scale-90"><Pencil className="w-4 h-4" /></button>
-                        <button onClick={() => deleteActivity(activeDayKey, idx)} className="text-red-500 hover:bg-red-50 p-2 rounded-xl transition-colors active:scale-90"><Trash2 className="w-4 h-4" /></button>
+                        <button onClick={() => openModal(activeDayKey, idx)} aria-label={`編輯「${act.name}」`} className="w-11 h-11 flex items-center justify-center text-primary hover:bg-primary/10 rounded-xl transition-colors active:scale-90"><Pencil className="w-4 h-4" /></button>
+                        <button onClick={() => deleteActivity(activeDayKey, idx)} aria-label={`刪除「${act.name}」`} className="w-11 h-11 flex items-center justify-center text-red-500 hover:bg-red-50 rounded-xl transition-colors active:scale-90"><Trash2 className="w-4 h-4" /></button>
                       </div>
                     </div>
                   </div>
@@ -359,6 +607,7 @@ export function Itinerary() {
                   <button
                     key={dayKey}
                     onClick={() => goToDay(i)}
+                    aria-current={isActive ? "true" : undefined}
                     className={`relative px-4 py-4 rounded-2xl transition-all duration-300 text-center group overflow-hidden ${isActive
                       ? "bg-gradient-to-r from-primary to-accent text-white shadow-xl shadow-primary/30 scale-[1.03]"
                       : "bg-white dark:bg-slate-800 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-slate-700 hover:border-primary/40 hover:shadow-lg"
@@ -391,15 +640,15 @@ export function Itinerary() {
                     <button onClick={() => setEditingTitleDay(null)} className="p-2 bg-gray-200 dark:bg-slate-700 rounded-xl hover:bg-gray-300 dark:hover:bg-slate-600 transition-colors"><X className="w-4 h-4" /></button>
                   </div>
                 ) : (
-                  <h3
-                    className="text-2xl font-black text-gray-900 dark:text-white flex items-center gap-3 cursor-pointer hover:text-primary transition-colors group/title"
+                  <button
+                    aria-label="點擊編輯標題"
+                    className="text-2xl font-black text-gray-900 dark:text-white flex items-center gap-3 cursor-pointer hover:text-primary transition-colors group/title text-left"
                     onClick={() => { setEditingTitleDay(activeDayKey); setTitleInput(activeDayData.title); }}
-                    title="點擊編輯標題"
                   >
                     <Calendar className="w-6 h-6 text-primary" />
                     {activeDayData.title}
                     <Pencil className="w-4 h-4 opacity-0 group-hover/title:opacity-100 transition-opacity hidden md:inline" />
-                  </h3>
+                  </button>
                 )}
                 <span className="text-sm font-bold text-gray-400">{activeDayData.date}・{activeDayData.activities.length} 項行程</span>
               </div>
@@ -410,6 +659,12 @@ export function Itinerary() {
                     <div className="flex items-center justify-center w-5 h-5 rounded-full border-4 border-white dark:border-slate-800 bg-primary absolute left-[5rem] -translate-x-1/2 z-10 shadow-lg group-hover:scale-125 transition-transform"></div>
                     <div className="w-[5rem] pr-3 text-right text-primary font-black text-xl pt-0.5 shrink-0 tabular-nums">{act.time}</div>
                     <div className="flex-1 pb-1">
+                      {/* Conflict Warning */}
+                      {activeConflicts.find(c => c.index === idx) && (
+                        <div className="flex items-center gap-1.5 text-xs text-orange-500 font-bold mb-2 px-3 py-1.5 bg-orange-50 dark:bg-orange-900/20 rounded-lg w-fit">
+                          <AlertTriangle className="w-3.5 h-3.5" /> {activeConflicts.find(c => c.index === idx)?.message}
+                        </div>
+                      )}
                       <div className="bg-gray-50 dark:bg-slate-900/50 p-4 rounded-2xl hover:shadow-md transition-all relative group/card overflow-hidden">
                         <div className="absolute top-0 right-0 w-1.5 h-full bg-primary opacity-0 group-hover/card:opacity-100 transition-opacity"></div>
                         <div className="flex items-center justify-between gap-3 mb-1">
@@ -418,11 +673,19 @@ export function Itinerary() {
                         </div>
                         {act.desc && <p className="text-sm text-gray-500 dark:text-gray-400 leading-relaxed">{act.desc}</p>}
                         <div className="flex gap-1 md:opacity-0 md:group-hover:opacity-100 transition-all duration-300 mt-2">
-                          <button onClick={() => openModal(activeDayKey, idx)} className="text-primary hover:bg-primary/10 p-1.5 rounded-lg transition-colors active:scale-90"><Pencil className="w-3.5 h-3.5" /></button>
-                          <button onClick={() => deleteActivity(activeDayKey, idx)} className="text-red-500 hover:bg-red-50 p-1.5 rounded-lg transition-colors active:scale-90"><Trash2 className="w-3.5 h-3.5" /></button>
+                          <button onClick={() => openModal(activeDayKey, idx)} aria-label={`編輯「${act.name}」`} className="w-11 h-11 flex items-center justify-center text-primary hover:bg-primary/10 rounded-xl transition-colors active:scale-90"><Pencil className="w-3.5 h-3.5" /></button>
+                          <button onClick={() => deleteActivity(activeDayKey, idx)} aria-label={`刪除「${act.name}」`} className="w-11 h-11 flex items-center justify-center text-red-500 hover:bg-red-50 rounded-xl transition-colors active:scale-90"><Trash2 className="w-3.5 h-3.5" /></button>
                         </div>
                       </div>
                     </div>
+                    {/* Travel Time to Next Activity */}
+                    {travelTimes.get(idx) && (
+                      <div className="flex items-center gap-2 ml-16 sm:ml-20 md:ml-[5rem] mt-2 text-xs sm:text-sm text-gray-400">
+                        <MapPin className="w-4 h-4" />
+                        <span className="font-medium">↓ {travelTimes.get(idx)!.duration} 分鐘</span>
+                        <span className="text-gray-300">({travelTimes.get(idx)!.mode})</span>
+                      </div>
+                    )}
                   </div>
                 ))}
                 <button onClick={() => openModal(activeDayKey)} className="w-full p-4 border-2 border-dashed border-gray-200 dark:border-slate-700 rounded-2xl text-gray-400 hover:text-primary hover:border-primary hover:bg-primary/5 transition-all flex items-center justify-center gap-2 font-black text-sm uppercase tracking-widest">

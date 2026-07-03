@@ -20,7 +20,7 @@ export function Tips() {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
         {tips.map((tip, i) => (
-          <div key={i} className="bg-white dark:bg-slate-800 p-6 rounded-[2rem] shadow-xl border border-gray-100 dark:border-slate-700 hover:shadow-2xl transition-all duration-300 group">
+          <article key={i} className="bg-white dark:bg-slate-800 p-6 rounded-[2rem] shadow-xl border border-gray-100 dark:border-slate-700 hover:shadow-2xl transition-all duration-300 group">
             <div className="flex items-center gap-4 mb-4">
               <div className="bg-gray-50 dark:bg-slate-900 p-3 rounded-2xl group-hover:scale-110 transition-transform shadow-inner">
                 {tip.icon}
@@ -30,7 +30,7 @@ export function Tips() {
             <p className="text-sm text-gray-500 dark:text-gray-400 leading-relaxed font-medium">
               {tip.desc}
             </p>
-          </div>
+          </article>
         ))}
       </div>
 
