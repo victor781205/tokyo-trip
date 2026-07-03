@@ -18,7 +18,7 @@ function loadGoogleMaps(apiKey: string): Promise<void> {
     w._googleMapsLoading = true;
 
     const script = document.createElement("script");
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places&language=zh-TW`;
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places&language=zh-TW&loading=async&region=JP`;
     script.async = true;
     script.defer = true;
     script.onload = () => {
@@ -80,13 +80,22 @@ export function RouteMapView({ originName, destName }: { originName: string; des
         });
         directionsRenderer.setMap(map);
 
-        // 直接傳「字串地名」給 Google，讓 Google 自己 geocode，
-        // 不再依賴本地 KNOWN_PLACES 字典（避免輸入未收錄地標時 fallback 成同一點導致沒有路線）
+        // 直接傳「字串地名 + 區域 context」給 Google，提高命中率避免 ZERO_RESULTS
+        // 純「迪士尼」「機場」這類短字可能 Google 找不到，加上「日本」區域提示
+        const normalize = (s: string) => {
+          const trimmed = s.trim();
+          // 已含明確地點（如「東京迪士尼」「東京車站」）就不再加後綴
+          if (/東京|日本|機場|駅|站|JP$/i.test(trimmed)) return trimmed;
+          return `${trimmed}, 日本`;
+        };
+
         directionsService.route(
           {
-            origin: originName,
-            destination: destName,
+            origin: normalize(originName),
+            destination: normalize(destName),
             travelMode: google.maps.TravelMode.TRANSIT,
+            transitOptions: {},
+            region: "JP",
           },
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           (result: any, status: string) => {
@@ -98,24 +107,25 @@ export function RouteMapView({ originName, destName }: { originName: string; des
                 map.fitBounds(result.routes[0].bounds);
               }
             } else {
-              // 路線規劃失敗，退回 geocode 兩個地點並放 marker + fitBounds
+              // 路線規劃失敗（例如輸入已存在但 transit destinations 過遠、或跨國），
+              // 退回 geocode 兩個地點並放 marker + fitBounds，至少看得到「起」「終」位置
               const geocoder = new google.maps.Geocoder();
               const q: Array<[string, "起" | "終"]> = [[originName, "起"], [destName, "終"]];
               const bounds = new google.maps.LatLngBounds();
               let done = 0;
+              let okCount = 0;
               q.forEach(([addr, label]) => {
                 geocoder.geocode(
-                  { address: addr },
+                  { address: normalize(addr), region: "JP" },
                   // eslint-disable-next-line @typescript-eslint/no-explicit-any
                   (res: any, st: string) => {
                     done += 1;
                     if (st === "OK" && res && res[0]) {
+                      okCount += 1;
                       const pos = res[0].geometry.location;
                       new google.maps.Marker({ position: pos, map, label });
                       bounds.extend(pos);
-                      if (done === q.length) map.fitBounds(bounds);
-                    } else if (done === q.length && !bounds.isEmpty()) {
-                      map.fitBounds(bounds);
+                      if (done === q.length && okCount > 0) map.fitBounds(bounds);
                     }
                   }
                 );
