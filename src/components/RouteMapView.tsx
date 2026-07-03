@@ -2,39 +2,6 @@
 
 import { useEffect, useRef, useState } from "react";
 
-type LatLng = { lat: number; lng: number };
-
-const KNOWN_PLACES: Record<string, LatLng> = {
-  "東京東武黎凡特飯店": { lat: 35.6966, lng: 139.8144 },
-  "澀谷": { lat: 35.6580, lng: 139.7016 },
-  "新宿": { lat: 35.6896, lng: 139.7005 },
-  "東京車站": { lat: 35.6812, lng: 139.7671 },
-  "淺草": { lat: 35.7100, lng: 139.7966 },
-  "淺草雷門": { lat: 35.7100, lng: 139.7966 },
-  "秋葉原": { lat: 35.7023, lng: 139.7731 },
-  "上野": { lat: 35.7139, lng: 139.7745 },
-  "押上": { lat: 35.7104, lng: 139.8132 },
-  "晴空塔": { lat: 35.7101, lng: 139.8107 },
-  "成田機場": { lat: 35.7720, lng: 140.3929 },
-  "台場": { lat: 35.6239, lng: 139.7748 },
-  "銀座": { lat: 35.6720, lng: 139.7610 },
-  "原宿": { lat: 35.6705, lng: 139.7035 },
-  "明治神宮": { lat: 35.6764, lng: 139.6993 },
-  "吉祥寺": { lat: 35.7020, lng: 139.5733 },
-  "下北澤": { lat: 35.6614, lng: 139.6681 },
-  "錦糸町": { lat: 35.6905, lng: 139.8144 },
-};
-
-const DEFAULT_LOCATION: LatLng = { lat: 35.6812, lng: 139.7671 };
-
-function findLocation(name: string): LatLng {
-  if (KNOWN_PLACES[name]) return KNOWN_PLACES[name];
-  for (const [key, coord] of Object.entries(KNOWN_PLACES)) {
-    if (name.includes(key) || key.includes(name)) return coord;
-  }
-  return DEFAULT_LOCATION;
-}
-
 // 動態載入 Google Maps JS API
 function loadGoogleMaps(apiKey: string): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -83,21 +50,17 @@ export function RouteMapView({ originName, destName }: { originName: string; des
         if (cancelled || !mapRef.current) return;
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const google = (window as any).google;
-        const origin = findLocation(originName);
-        const dest = findLocation(destName);
 
         const map = new google.maps.Map(mapRef.current, {
           zoom: 13,
-          center: { lat: (origin.lat + dest.lat) / 2, lng: (origin.lng + dest.lng) / 2 },
+          center: { lat: 35.6812, lng: 139.7671 },
           mapTypeControl: false,
           streetViewControl: false,
           fullscreenControl: true,
           zoomControl: true,
-          // 用全螢幕控制會把按鈕推到邊界外，關掉避免溢出
           fullscreenControlOptions: { position: google.maps.ControlPosition.RIGHT_BOTTOM },
           zoomControlOptions: { position: google.maps.ControlPosition.RIGHT_BOTTOM },
           styles: [
-            // 淡化街道，讓地鐵路線條更突出
             { featureType: "road", stylers: [{ visibility: "simplified" }, { lightness: 40 }] },
             { featureType: "road.highway", stylers: [{ visibility: "off" }] },
             { featureType: "landscape", stylers: [{ lightness: 30 }] },
@@ -111,13 +74,18 @@ export function RouteMapView({ originName, destName }: { originName: string; des
         transitLayer.setMap(map);
 
         const directionsService = new google.maps.DirectionsService();
-        const directionsRenderer = new google.maps.DirectionsRenderer({ suppressMarkers: false });
+        const directionsRenderer = new google.maps.DirectionsRenderer({
+          suppressMarkers: false,
+          polylineOptions: { strokeColor: "#e74c3c", strokeWeight: 5 },
+        });
         directionsRenderer.setMap(map);
 
+        // 直接傳「字串地名」給 Google，讓 Google 自己 geocode，
+        // 不再依賴本地 KNOWN_PLACES 字典（避免輸入未收錄地標時 fallback 成同一點導致沒有路線）
         directionsService.route(
           {
-            origin: { lat: origin.lat, lng: origin.lng },
-            destination: { lat: dest.lat, lng: dest.lng },
+            origin: originName,
+            destination: destName,
             travelMode: google.maps.TravelMode.TRANSIT,
           },
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -125,22 +93,33 @@ export function RouteMapView({ originName, destName }: { originName: string; des
             if (cancelled) return;
             if (status === "OK" && result) {
               directionsRenderer.setDirections(result);
+              // 路線畫好後，自動縮放到包含整條路線的範圍
+              if (result.routes && result.routes[0]?.bounds) {
+                map.fitBounds(result.routes[0].bounds);
+              }
             } else {
-              // 路線規劃失敗，至少顯示兩個 marker
-              new google.maps.Marker({
-                position: { lat: origin.lat, lng: origin.lng },
-                map,
-                label: "起",
-              });
-              new google.maps.Marker({
-                position: { lat: dest.lat, lng: dest.lng },
-                map,
-                label: "終",
-              });
+              // 路線規劃失敗，退回 geocode 兩個地點並放 marker + fitBounds
+              const geocoder = new google.maps.Geocoder();
+              const q: Array<[string, "起" | "終"]> = [[originName, "起"], [destName, "終"]];
               const bounds = new google.maps.LatLngBounds();
-              bounds.extend({ lat: origin.lat, lng: origin.lng });
-              bounds.extend({ lat: dest.lat, lng: dest.lng });
-              map.fitBounds(bounds);
+              let done = 0;
+              q.forEach(([addr, label]) => {
+                geocoder.geocode(
+                  { address: addr },
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  (res: any, st: string) => {
+                    done += 1;
+                    if (st === "OK" && res && res[0]) {
+                      const pos = res[0].geometry.location;
+                      new google.maps.Marker({ position: pos, map, label });
+                      bounds.extend(pos);
+                      if (done === q.length) map.fitBounds(bounds);
+                    } else if (done === q.length && !bounds.isEmpty()) {
+                      map.fitBounds(bounds);
+                    }
+                  }
+                );
+              });
             }
           }
         );
