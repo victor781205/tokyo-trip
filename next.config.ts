@@ -84,6 +84,11 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   turbopack: {},
+  // 顯式把 NEXT_PUBLIC_* 透過 Next 的 env 機制 inline 進 client bundle
+  // （避免 dynamic + ssr:false 元件 build-time 沒替換到 process.env）
+  env: {
+    NEXT_PUBLIC_GOOGLE_MAPS_API_KEY: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY,
+  },
   async headers() {
     return [
       {
