@@ -2,6 +2,14 @@
 
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from "react";
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
+import {
+  budgetItemsSchema,
+  budgetLimitSchema,
+  customFoodsSchema,
+  itinerarySchema,
+  packingListSchema,
+  safeParse,
+} from "@/lib/storage-schemas";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() ?? "";
 const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim() ?? "";
@@ -89,14 +97,24 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
       }
 
       if (data) {
-        skipNextPush.current = true;
-        if (data.itinerary) _setItinerary(data.itinerary);
-        if (data.budget_limit) _setBudgetLimit(data.budget_limit);
-        if (data.budget_items) _setBudgetItems(data.budget_items);
-        if (data.custom_foods) _setCustomFoods(data.custom_foods);
-        if (data.packing_list) _setPackingList(data.packing_list);
-        lastUpdateRef.current = data.updated_at ? new Date(data.updated_at).getTime() : 0;
-        setTimeout(() => { skipNextPush.current = false; }, 800);
+        const remoteTs = data.updated_at ? new Date(data.updated_at).getTime() : 0;
+        // last-write-wins：只在「遠端比本地最後寫入更新」時，才允許遠端覆蓋本地
+        // （避免遠端誤存的空陣列蓋掉 Chrome 本地的實際資料）
+        const remoteWins = remoteTs > lastUpdateRef.current;
+        if (remoteWins) {
+          skipNextPush.current = true;
+          // 改用 `!= null`：空陣列 [] 是合法「未填」狀態也要尊重，但 null / undefined 視為遠端沒此欄位
+          if (data.itinerary != null) _setItinerary(data.itinerary);
+          if (data.budget_limit != null) _setBudgetLimit(data.budget_limit);
+          if (data.budget_items != null) _setBudgetItems(data.budget_items);
+          if (data.custom_foods != null) _setCustomFoods(data.custom_foods);
+          if (data.packing_list != null) _setPackingList(data.packing_list);
+          lastUpdateRef.current = remoteTs;
+          setTimeout(() => { skipNextPush.current = false; }, 800);
+        } else {
+          // 本地較新或同時 → 保留本地、下次 push 把本地推上去覆蓋遠端
+          skipNextPush.current = false;
+        }
       } else {
         // 該 trip_id 還沒有資料 → 允許馬上推送本地資料
         skipNextPush.current = false;
@@ -108,11 +126,11 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
             const remoteUpdated = payload.new.updated_at ? new Date(payload.new.updated_at).getTime() : 0;
             if (remoteUpdated > lastUpdateRef.current && payload.new.trip_secret === secret) {
               skipNextPush.current = true;
-              if (payload.new.itinerary) _setItinerary(payload.new.itinerary);
-              if (payload.new.budget_limit) _setBudgetLimit(payload.new.budget_limit);
-              if (payload.new.budget_items) _setBudgetItems(payload.new.budget_items);
-              if (payload.new.custom_foods) _setCustomFoods(payload.new.custom_foods);
-              if (payload.new.packing_list) _setPackingList(payload.new.packing_list);
+              if (payload.new.itinerary != null) _setItinerary(payload.new.itinerary);
+              if (payload.new.budget_limit != null) _setBudgetLimit(payload.new.budget_limit);
+              if (payload.new.budget_items != null) _setBudgetItems(payload.new.budget_items);
+              if (payload.new.custom_foods != null) _setCustomFoods(payload.new.custom_foods);
+              if (payload.new.packing_list != null) _setPackingList(payload.new.packing_list);
               lastUpdateRef.current = remoteUpdated;
               setTimeout(() => { skipNextPush.current = false; }, 800);
             }
@@ -148,25 +166,37 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
       initSecret = "sec_" + generateToken();
     }
 
-    localStorage.setItem(STORAGE_KEYS.tripId, initId!);
-    localStorage.setItem(STORAGE_KEYS.tripSecret, initSecret!);
-    setTimeout(() => {
-      setTripId(initId!);
-      setTripSecret(initSecret!);
-    }, 0);
-
-    // 從 localStorage 初始化狀態
+    // 1) tripId / secret：localStorage 同步，setState 也同步
+    //    （過去用 setTimeout(…,0) 包起來反而讓 UI 首次 render 看到空字串再跳變，
+    //     下面 5 個 slice 也是同步 setState；同一個 disable directive 覆蓋整段）
     /* eslint-disable react-hooks/set-state-in-effect -- Intentional one-time hydration from localStorage on mount */
-    const savedItin = localStorage.getItem(STORAGE_KEYS.itinerary);
-    if (savedItin) try { _setItinerary(JSON.parse(savedItin)); } catch { /* ignore parse errors */ }
-    const savedBudget = localStorage.getItem(STORAGE_KEYS.budget);
-    if (savedBudget) try { _setBudgetItems(JSON.parse(savedBudget)); } catch { /* ignore parse errors */ }
-    const savedLimit = localStorage.getItem(STORAGE_KEYS.budgetLimit);
-    if (savedLimit) try { _setBudgetLimit(JSON.parse(savedLimit)); } catch { /* ignore parse errors */ }
-    const savedFoods = localStorage.getItem(STORAGE_KEYS.customFoods);
-    if (savedFoods) try { _setCustomFoods(JSON.parse(savedFoods)); } catch { /* ignore parse errors */ }
-    const savedPacking = localStorage.getItem(STORAGE_KEYS.packingList);
-    if (savedPacking) try { _setPackingList(JSON.parse(savedPacking)); } catch { /* ignore parse errors */ }
+    localStorage.setItem(STORAGE_KEYS.tripId, initId);
+    localStorage.setItem(STORAGE_KEYS.tripSecret, initSecret);
+    setTripId(initId);
+    setTripSecret(initSecret);
+
+    // 2) 5 個持久化 slice：safeParse 把結構錯誤的舊資料丟回預設，不再讓髒資料混進元件
+    const localItin = safeParse(itinerarySchema, localStorage.getItem(STORAGE_KEYS.itinerary), {});
+    const localBudget = safeParse(budgetItemsSchema, localStorage.getItem(STORAGE_KEYS.budget), []);
+    const localLimit = safeParse(budgetLimitSchema, localStorage.getItem(STORAGE_KEYS.budgetLimit), 100000);
+    const localFoods = safeParse(customFoodsSchema, localStorage.getItem(STORAGE_KEYS.customFoods), []);
+    const localPacking = safeParse(packingListSchema, localStorage.getItem(STORAGE_KEYS.packingList), []);
+    _setItinerary(localItin);
+    _setBudgetItems(localBudget);
+    _setBudgetLimit(localLimit);
+    _setCustomFoods(localFoods);
+    _setPackingList(localPacking);
+    // 3) last-write-wins 仲裁基準：mount 後若本地非空，視為本地最後寫入時間 = now
+    //    避免遠端較舊的空陣列覆蓋本地既有內容（Chrome 既有清單不再被清空）
+    const hasLocalData =
+      Object.keys(localItin).length > 0 ||
+      localBudget.length > 0 ||
+      localFoods.length > 0 ||
+      localPacking.length > 0 ||
+      localLimit !== 100000;
+    if (hasLocalData) {
+      lastUpdateRef.current = Date.now();
+    }
     /* eslint-enable react-hooks/set-state-in-effect */
 
     if (!SUPABASE_URL || !SUPABASE_KEY) {
