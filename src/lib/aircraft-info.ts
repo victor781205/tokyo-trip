@@ -103,7 +103,7 @@ export function getAircraftInfo(icao: string | null | undefined): AircraftInfo |
  * 回程因 AviationStack 免費方案不提供機型欄位，故全程使用此 hardcode。
  */
 export const SCHEDULED_AIRCRAFT: Record<string, string> = {
-  JX800: "A359", // 星宇 JX800（TPE→NRT）預定機型：A350-900
+  JX800: "A35K", // 本次去程 JX800（TPE→NRT）預定機型：A350-1000
   JX801: "A359",
   JX802: "A359",
   JX804: "A359",

@@ -179,6 +179,12 @@ describe("flight info route source-date isolation", () => {
     ));
     const body = await response.json();
 
+    expect(body.outbound).toMatchObject({
+      aircraftIcao: "A35K",
+      aircraftModel: "Airbus A350-1000",
+      aircraftLive: false,
+      source: "hardcode-itinerary",
+    });
     expect(body.inbound).toMatchObject({
       depGate: "尚未公佈",
       depTerminal: "2",
