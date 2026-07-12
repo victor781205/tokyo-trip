@@ -36,9 +36,9 @@ const A330_300: AircraftInfo = {
 };
 const A330_900: AircraftInfo = {
   icao: "A339",
-  modelZh: "Airbus A330-900",
-  modelEn: "Airbus A330-900",
-  tags: ["WiFi", "USB 充電", "個人螢幕", "寬體 277 席"],
+  modelZh: "Airbus A330-900neo",
+  modelEn: "Airbus A330-900neo",
+  tags: ["WiFi", "USB 充電", "個人螢幕", "寬體 297 席"],
 };
 const B777_300ER: AircraftInfo = {
   icao: "B77W",
@@ -73,6 +73,7 @@ const AIRCRAFT_MAP: Record<string, AircraftInfo> = {
   "A350-100": A350_1000, // TDX 偶見的縮寫
   "A330-300": A330_300,
   "A330-900": A330_900,
+  "A330-900NEO": A330_900,
   // Boeing 廠商格式變體
   "777-300ER": B777_300ER,
   "777-300": B777_300ER,
@@ -107,7 +108,7 @@ export const SCHEDULED_AIRCRAFT: Record<string, string> = {
   JX801: "A359",
   JX802: "A359",
   JX804: "A359",
-  JX805: "A359", // 星宇 JX805（NRT→TPE）預定機型：A350-900
+  JX805: "A339", // 本次回程 JX805（NRT→TPE）預定機型：A330-900neo
   JX806: "A359",
 };
 
