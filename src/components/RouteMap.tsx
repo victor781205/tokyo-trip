@@ -4,16 +4,25 @@ import { useState } from "react";
 import dynamic from "next/dynamic";
 import { Search, MapPin, ArrowRightLeft, Train, Navigation, Info, Map as MapIcon, X, Wallet, Tag, Calendar, CreditCard } from "lucide-react";
 import { useTripState } from "@/hooks/useTripState";
+import { DEFAULT_ITINERARY } from "@/lib/default-itinerary";
 
 // 動態載入 RouteMapView（避免 SSR window 問題）
 const RouteMapView = dynamic(() => import("./RouteMapView").then(m => m.RouteMapView), {
-  ssr: false,
-  loading: () => (
-    <div className="w-full h-full flex items-center justify-center bg-gray-100" style={{ minHeight: "450px" }}>
-      <div className="text-gray-400 font-bold text-sm">載入地圖中...</div>
-    </div>
-  ),
+    ssr: false,
+    loading: () => (
+        <div className="w-full h-full flex items-center justify-center bg-gray-100" style={{ minHeight: "450px" }}>
+            <div className="text-gray-400 font-bold text-sm">載入地圖中...</div>
+        </div>
+    ),
 });
+
+export function isHotelOrKinshichoOrigin(value: string) {
+    const normalized = value.replace(/\s+/g, "").toLowerCase();
+    return normalized.includes("東武黎凡特")
+        || normalized.includes("錦糸町")
+        || normalized.includes("錦絲町")
+        || normalized.includes("kinshicho");
+}
 
 export function RouteMap() {
     const [origin, setOrigin] = useState("東京東武黎凡特飯店");
@@ -41,19 +50,21 @@ export function RouteMap() {
     };
 
     const quickSpots = [
-        { name: "澀谷", fare: "約 ¥230" },
-        { name: "新宿", fare: "約 ¥230" },
-        { name: "東京車站", fare: "約 ¥170" },
-        { name: "淺草雷門", fare: "約 ¥180" },
-        { name: "秋葉原", fare: "約 ¥170" },
-        { name: "成田機場", fare: "約 ¥1,350" },
+        { name: "澀谷", fare: "約 ¥260（Metro）" },
+        { name: "新宿", fare: "約 ¥230~260" },
+        { name: "東京車站", fare: "約 ¥180~210" },
+        { name: "淺草雷門", fare: "約 ¥210~300" },
+        { name: "秋葉原", fare: "約 ¥180~210" },
+        { name: "成田機場", fare: "約 ¥1,200~1,700" },
     ];
+    const hasHotelFareBasis = isHotelOrKinshichoOrigin(origin);
 
     // Google Maps 深度連結（按鈕開啟完整導航）
     const googleMapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}&travelmode=transit`;
 
     // 從行程中取得所有地點，按天分組
-    const itineraryPlaces = Object.entries(itinerary).map(([dayKey, dayPlan]) => {
+    const itinerarySource = Object.keys(itinerary || {}).length > 0 ? itinerary : DEFAULT_ITINERARY;
+    const itineraryPlaces = Object.entries(itinerarySource).map(([dayKey, dayPlan]) => {
         const places = dayPlan.activities
             .map(a => a.name)
             .filter(name => name && !name.includes("飯店") && !name.includes("回") && !name.includes("休息") && !name.includes("收拾"));
@@ -61,11 +72,11 @@ export function RouteMap() {
     }).filter(d => d.places.length > 0);
 
     return (
-        <section id="routemap" className="py-6 md:py-20 transition-colors duration-300">
-            <div className="text-center mb-16">
+        <section id="routemap" className="py-4 md:py-12 transition-colors duration-300 scroll-mt-28">
+            <div className="text-center mb-8 md:mb-12">
                 <div className="inline-block bg-primary/10 text-primary px-4 py-1 rounded-full text-sm font-black uppercase tracking-widest mb-4">Internal Transit System</div>
-                <h2 className="text-3xl md:text-5xl font-black mb-4">🗺️ 智慧交通規劃</h2>
-                <p className="text-gray-600 dark:text-gray-400">一站式查詢轉乘路線，並預覽行程所需車資</p>
+                <h2 className="text-3xl md:text-5xl font-black mb-3">🗺️ 智慧交通規劃</h2>
+                <p className="text-gray-600 dark:text-gray-400 text-sm md:text-base px-2">一站式查詢轉乘路線，並預覽行程所需車資</p>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
@@ -96,7 +107,8 @@ export function RouteMap() {
                                     <button
                                         type="button"
                                         onClick={swapPlaces}
-                                        className="p-2 bg-white dark:bg-slate-800 border-2 border-gray-100 dark:border-slate-700 hover:text-primary rounded-full transition-all shadow-md active:scale-90"
+                                        aria-label="交換起點與目的地"
+                                        className="w-11 h-11 inline-flex items-center justify-center bg-white dark:bg-slate-800 border-2 border-gray-100 dark:border-slate-700 hover:text-primary rounded-full transition-all shadow-md active:scale-90"
                                     >
                                         <ArrowRightLeft className="w-4 h-4 rotate-90" />
                                     </button>
@@ -125,7 +137,9 @@ export function RouteMap() {
                                         className="flex flex-col items-center p-2 rounded-xl bg-gray-50 dark:bg-slate-900 hover:bg-primary/10 hover:text-primary transition-all border border-gray-100 dark:border-slate-800"
                                     >
                                         <span className="text-sm font-black">{spot.name}</span>
-                                        <span className="text-xs text-gray-400 font-bold italic">{spot.fare}</span>
+                                        <span className="text-xs text-gray-400 font-bold italic">
+                                            {hasHotelFareBasis ? spot.fare : "車資依路線"}
+                                        </span>
                                     </button>
                                 ))}
                             </div>
@@ -161,7 +175,7 @@ export function RouteMap() {
                                                         <button
                                                             key={i}
                                                             onClick={() => handleQuickSpot(place)}
-                                                            className="text-xs bg-white dark:bg-slate-800 px-2.5 py-1.5 rounded-lg font-bold border border-gray-100 dark:border-slate-700 hover:border-primary hover:text-primary transition-all"
+                                                            className="min-h-11 text-xs bg-white dark:bg-slate-800 px-3 py-1.5 rounded-xl font-bold border border-gray-100 dark:border-slate-700 hover:border-primary hover:text-primary transition-all"
                                                         >
                                                             {place}
                                                         </button>
@@ -184,11 +198,11 @@ export function RouteMap() {
                                 <div className="flex items-center gap-3 min-w-0">
                                     <div className="bg-primary/10 p-2 rounded-xl text-primary shrink-0"><MapIcon className="w-5 h-5" /></div>
                                     <div className="min-w-0">
-                                        <h4 className="font-black text-base truncate">{origin} → {destination}</h4>
+                                        <p className="font-black text-base truncate">{origin} → {destination}</p>
                                         <p className="text-sm text-gray-400 font-bold uppercase tracking-wider">Transit Directions</p>
                                     </div>
                                 </div>
-                                <button onClick={() => setIsSearched(false)} className="p-2 hover:bg-gray-200 dark:hover:bg-slate-700 rounded-full shrink-0 ml-2"><X className="w-4 h-4" /></button>
+                                <button onClick={() => setIsSearched(false)} aria-label="關閉路線結果" className="w-11 h-11 inline-flex items-center justify-center hover:bg-gray-200 dark:hover:bg-slate-700 rounded-full shrink-0 ml-2"><X className="w-4 h-4" /></button>
                             </div>
 
                             <div className="relative bg-slate-100 w-full" style={{ height: "450px" }}>
@@ -205,9 +219,14 @@ export function RouteMap() {
                                             <h5 className="font-black text-base mb-1 text-orange-600 uppercase tracking-widest">車資預估</h5>
                                             <p className="text-sm text-gray-500 leading-relaxed font-bold">
                                                 {(() => {
+                                                    if (!hasHotelFareBasis) {
+                                                        return <>
+                                                            自訂起點車資 <span className="text-primary font-black">依路線而定</span>，請查看即時路線結果
+                                                        </>;
+                                                    }
                                                     const matched = quickSpots.find(s => destination.includes(s.name));
                                                     if (matched) return <>預估車資 <span className="text-primary font-black">{matched.fare}</span></>;
-                                                    return <>一般電車單程約 <span className="text-primary font-black">¥170 ~ ¥400</span>，實際票價依路線而定</>;
+                                                    return <>一般電車單程約 <span className="text-primary font-black">¥180 ~ ¥430</span>，實際票價依路線而定</>;
                                                 })()}
                                                 <br />
                                                 <span className="text-xs opacity-70">從 {origin} 出發，使用 Suica/PASMO 搭乘電車</span>
@@ -239,11 +258,11 @@ export function RouteMap() {
                         </h3>
                         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
                             {[
-                                { from: "錦糸町", to: "澀谷", fare: "約 ¥230", color: "text-blue-600" },
-                                { from: "錦糸町", to: "新宿", fare: "約 ¥230", color: "text-blue-600" },
-                                { from: "錦糸町", to: "淺草", fare: "約 ¥170", color: "text-green-600" },
-                                { from: "淺草", to: "晴空塔", fare: "約 ¥170", color: "text-green-600" },
-                                { from: "押上", to: "淺草", fare: "約 ¥170", color: "text-green-600" },
+                                { from: "錦糸町", to: "澀谷", fare: "約 ¥260（Metro）", color: "text-blue-600" },
+                                { from: "錦糸町", to: "新宿", fare: "約 ¥230~260", color: "text-blue-600" },
+                                { from: "錦糸町", to: "淺草", fare: "約 ¥210~300", color: "text-green-600" },
+                                { from: "淺草", to: "晴空塔", fare: "約 ¥180~220", color: "text-green-600" },
+                                { from: "押上", to: "淺草", fare: "約 ¥180", color: "text-green-600" },
                             ].map((f, i) => (
                                 <div key={i} className="bg-white dark:bg-slate-900 rounded-xl p-3 text-center shadow-sm">
                                     <div className="text-xs text-gray-400 font-bold mb-1">{f.from} → {f.to}</div>
@@ -252,8 +271,17 @@ export function RouteMap() {
                             ))}
                         </div>
                         <div className="mt-4 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-xl border border-amber-100 dark:border-amber-800">
-                            <p className="text-sm text-amber-700 dark:text-amber-300 font-bold">
-                                💡 善用「Tokyo Subway Ticket」（24/48/72 小時券），一天搭 3 次以上就划算！
+                            <p className="text-sm text-amber-700 dark:text-amber-300 font-bold leading-relaxed">
+                                💡 Tokyo Subway Ticket：24h ¥1,000／48h ¥1,500／72h ¥2,000。
+                                官方估算 24h 約搭 6 次才一定划算；請依行程逐段試算，且不適用 JR。{" "}
+                                <a
+                                    href="https://www.tokyometro.jp/tst/tcn/index.html"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex min-h-11 items-center px-1 underline underline-offset-2"
+                                >
+                                    官方票券說明
+                                </a>
                             </p>
                         </div>
                     </div>
@@ -268,10 +296,10 @@ export function RouteMap() {
                             <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 rounded-2xl p-5">
                                 <div className="flex items-center gap-3 mb-3">
                                     <span className="text-2xl">💳</span>
-                                    <h4 className="font-black text-lg text-blue-600 dark:text-blue-400">Suica（推薦首都圈）</h4>
+                                    <h3 className="font-black text-lg text-blue-600 dark:text-blue-400">Suica（推薦首都圈）</h3>
                                 </div>
                                 <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed mb-2">
-                                    可用於東京 Metro、都營地鐵、JR 東日本全線，以及便利店、自动贩卖机
+                                    可用於支援交通 IC 的東京 Metro、都營地鐵、JR 東日本路線，以及便利商店、自動販賣機
                                 </p>
                                 <p className="text-xs font-bold text-blue-600 dark:text-blue-400 bg-white/60 dark:bg-transparent px-2 py-1 rounded-lg inline-block">
                                     💡 建議首次儲值 ¥5,000
@@ -280,14 +308,23 @@ export function RouteMap() {
                             <div className="bg-green-50 dark:bg-green-900/20 border border-green-100 dark:border-green-800 rounded-2xl p-5">
                                 <div className="flex items-center gap-3 mb-3">
                                     <span className="text-2xl">📱</span>
-                                    <h4 className="font-black text-lg text-green-600 dark:text-green-400">iPhone / Android 手機 Suica</h4>
+                                    <h3 className="font-black text-lg text-green-600 dark:text-green-400">手機 Suica（裝置有限制）</h3>
                                 </div>
                                 <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed mb-2">
-                                    直接在 Wallet / Google Pay 開通，刷卡進站超方便！可綁定信用卡自動加值
+                                    Apple Pay 相容 iPhone 可用 Welcome Suica Mobile，並以 Apple Pay 信用卡手動加值。
+                                    海外版 Android 目前通常無法發行 Suica；建議改用實體 Welcome Suica。
                                 </p>
-                                <p className="text-xs font-bold text-green-600 dark:text-green-400 bg-white/60 dark:bg-transparent px-2 py-1 rounded-lg inline-block">
-                                    💡 出發前設定好，避免排隊購卡
-                                </p>
+                                <div className="text-xs font-bold text-green-700 dark:text-green-400 bg-white/60 dark:bg-transparent px-2 py-1 rounded-lg inline-block leading-relaxed">
+                                    一般信用卡不是自動加值；自動加值須符合日本 View Card 等資格。{" "}
+                                    <a
+                                        href="https://www.jreast.co.jp/multi/welcomesuicamobile/"
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="inline-flex min-h-11 items-center px-1 underline underline-offset-2"
+                                    >
+                                        JR 東日本說明
+                                    </a>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -296,7 +333,7 @@ export function RouteMap() {
                     <div className="bg-blue-50/50 dark:bg-blue-900/10 p-6 rounded-[2rem] border border-blue-100 dark:border-blue-900/30">
                         <div className="flex items-center gap-3 mb-4">
                             <Info className="w-6 h-6 text-blue-500" />
-                            <h4 className="text-xl font-black text-blue-600">使用提示</h4>
+                            <h3 className="text-xl font-black text-blue-600">使用提示</h3>
                         </div>
                         <ul className="text-sm text-blue-500/80 space-y-2 font-bold leading-relaxed">
                             <li>• 輸入起點與目的地即可在頁面內預覽路線規劃</li>

@@ -1,9 +1,46 @@
 "use client";
 
-import { useState, useRef, useMemo } from "react";
-import { Calendar, Check, ChevronLeft, ChevronRight, Pencil, Plus, Trash2, X, Download, Loader2, CalendarPlus, AlertTriangle, MapPin, BarChart3, List } from "lucide-react";
-import { useTripState, Itinerary as ItineraryType, Activity } from "@/hooks/useTripState";
+import { useState, useRef, useMemo, useCallback } from "react";
+import { Calendar, Check, ChevronLeft, ChevronRight, Pencil, Plus, Trash2, X, Download, Loader2, CalendarPlus, AlertTriangle, MapPin, BarChart3, List, Wallet, UtensilsCrossed } from "lucide-react";
+import { useTripState, Activity } from "@/hooks/useTripState";
+import { useDialog } from "@/context/DialogContext";
 import { downloadICS } from "@/lib/ics-export";
+import { DEFAULT_ITINERARY } from "@/lib/default-itinerary";
+import { useModalAccessibility } from "@/hooks/useModalAccessibility";
+
+const BUDGET_CATEGORIES: Record<string, { icon: string; label: string }> = {
+  food: { icon: "🍜", label: "餐飲" },
+  transport: { icon: "🚆", label: "交通" },
+  shopping: { icon: "🛍️", label: "購物" },
+  ticket: { icon: "🎫", label: "門票" },
+  hotel: { icon: "🏨", label: "住宿" },
+  other: { icon: "💡", label: "其他" },
+};
+
+/** 依活動名稱／標籤粗估預算類別 */
+function guessBudgetCategory(act: Activity): string {
+  const blob = `${act.tag || ""} ${act.name} ${act.desc || ""}`;
+  if (/餐|食|lunch|dinner|breakfast|拉麵|美食|定食|燒肉|cafe|咖啡/i.test(blob)) return "food";
+  if (/交通|電車|巴士|taxi|機場|移動|train|地鐵|metro|jr/i.test(blob)) return "transport";
+  if (/購|shopping|店|伴手禮|藥妝|百貨/i.test(blob)) return "shopping";
+  if (/門票|ticket|美術館|teamlab|展望|入場|票/i.test(blob)) return "ticket";
+  if (/hotel|住宿|check-?\s?in|check-?\s?out|飯店|旅館/i.test(blob)) return "hotel";
+  return "other";
+}
+
+/** 從活動名稱推測美食區（對齊 Food 的 district id） */
+function guessFoodDistrict(act: Activity): string {
+  const blob = `${act.name} ${act.desc || ""}`;
+  const districts = [
+    "錦糸町", "淺草", "上野", "秋葉原", "銀座", "新宿", "澀谷", "六本木",
+    "東京車站", "押上", "豐洲", "築地", "原宿", "表參道", "中目黑", "惠比壽",
+    "日比谷", "池袋", "晴空塔", "台場", "吉祥寺", "下北澤",
+  ];
+  for (const d of districts) {
+    if (blob.includes(d)) return d === "晴空塔" ? "押上" : d === "台場" ? "豐洲" : d;
+  }
+  return "all";
+}
 
 // ── 景點座標資料（用於估算移動時間）──
 const PLACE_COORDS: Record<string, { lat: number; lng: number }> = {
@@ -22,7 +59,7 @@ const PLACE_COORDS: Record<string, { lat: number; lng: number }> = {
   "豐洲市場": { lat: 35.6462, lng: 139.7786 },
   "台場": { lat: 35.6267, lng: 139.7806 },
   "DiverCity": { lat: 35.6267, lng: 139.7806 },
-  "teamLab": { lat: 35.6267, lng: 139.7833 },
+  "teamLab Planets TOKYO": { lat: 35.6491, lng: 139.7897 },
   "下北澤": { lat: 35.6609, lng: 139.6684 },
   "吉祥寺": { lat: 35.7029, lng: 139.5700 },
   "吉卜力美術館": { lat: 35.6961, lng: 139.5704 },
@@ -46,7 +83,7 @@ function haversineDistance(lat1: number, lng1: number, lat2: number, lng2: numbe
   const R = 6371;
   const dLat = (lat2 - lat1) * Math.PI / 180;
   const dLng = (lng2 - lng1) * Math.PI / 180;
-  const a = Math.sin(dLat/2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng/2) ** 2;
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
@@ -111,88 +148,9 @@ function timeDifferenceMinutes(time1: string, time2: string): number {
   return (h2 * 60 + m2) - (h1 * 60 + m1);
 }
 
-const DEFAULT_ITINERARY: ItineraryType = {
-  day1: {
-    title: "🛬 Day 1 - 抵達東京",
-    date: "9/1 (二)",
-    activities: [
-      { time: "12:55", name: "抵達成田機場", desc: "辦理入境手續、領取行李", tag: "交通" },
-      { time: "14:30", name: "前往飯店", desc: "搭乘成田特快 → 錦糸町站", tag: "交通" },
-      { time: "16:00", name: "飯店 Check-in", desc: "東武黎凡特飯店", tag: "" },
-      { time: "16:30", name: "淺草寺・雷門", desc: "東京最古老的寺廟", tag: "景點" },
-      { time: "18:30", name: "晴空塔", desc: "欣賞夜景", tag: "景點" },
-      { time: "20:00", name: "晚餐", desc: "淺草老字號天婦羅", tag: "美食" },
-      { time: "21:30", name: "回飯店休息", desc: "享受大浴場", tag: "" }
-    ]
-  },
-  day2: {
-    title: "⛩️ Day 2 - 澀谷・新宿",
-    date: "9/2 (三)",
-    activities: [
-      { time: "08:00", name: "飯店早餐", desc: "享用日式早餐", tag: "美食" },
-      { time: "09:30", name: "明治神宮", desc: "東京最大的神社", tag: "景點" },
-      { time: "11:30", name: "原宿竹下通", desc: "年輕人潮流聖地", tag: "購物" },
-      { time: "13:00", name: "午餐：拉麵", desc: "一蘭拉麵", tag: "美食" },
-      { time: "14:30", name: "澀谷 Scramble Square", desc: "Sky 展望台", tag: "景點" },
-      { time: "17:00", name: "新宿御苑", desc: "欣賞日式庭園", tag: "景點" },
-      { time: "19:00", name: "晚餐：思出橫丁", desc: "串燒與關東煮", tag: "美食" }
-    ]
-  },
-  day3: {
-    title: "🏰 Day 3 - 秋葉原・東京車站",
-    date: "9/3 (四)",
-    activities: [
-      { time: "08:00", name: "飯店早餐", desc: "享用日式早餐", tag: "美食" },
-      { time: "09:30", name: "秋葉原電氣街", desc: "動漫、電器", tag: "購物" },
-      { time: "12:00", name: "午餐", desc: "秋葉原女僕咖啡廳", tag: "美食" },
-      { time: "14:00", name: "東京車站一番街", desc: "地下街購物", tag: "購物" },
-      { time: "15:30", name: "皇居外苑", desc: "二重橋散步", tag: "景點" },
-      { time: "17:00", name: "銀座逛街", desc: "東京最高級商店街", tag: "購物" },
-      { time: "19:00", name: "晚餐：銀座壽司", desc: "新鮮握壽司", tag: "美食" }
-    ]
-  },
-  day4: {
-    title: "🌊 Day 4 - 台場・豐洲",
-    date: "9/4 (五)",
-    activities: [
-      { time: "08:00", name: "飯店早餐", desc: "享用日式早餐", tag: "美食" },
-      { time: "09:30", name: "豐洲市場", desc: "新鮮海鮮早餐", tag: "美食" },
-      { time: "11:30", name: "台場海濱公園", desc: "自由女神、彩虹大橋", tag: "景點" },
-      { time: "14:30", name: "DiverCity", desc: "1:1 鋼彈模型", tag: "景點" },
-      { time: "16:30", name: "teamLab Borderless", desc: "沉浸式數位藝術", tag: "景點" },
-      { time: "19:00", name: "晚餐：燒肉", desc: "欣賞夜景", tag: "美食" },
-      { time: "21:00", name: "台場夜景", desc: "摩天輪", tag: "景點" }
-    ]
-  },
-  day5: {
-    title: "🌸 Day 5 - 下北澤・吉祥寺",
-    date: "9/5 (六)",
-    activities: [
-      { time: "08:00", name: "飯店早餐", desc: "享用日式早餐", tag: "美食" },
-      { time: "09:30", name: "下北澤古著街", desc: "二手服飾", tag: "購物" },
-      { time: "12:00", name: "午餐：咖哩", desc: "日式咖哩名店", tag: "美食" },
-      { time: "13:30", name: "吉祥寺井之頭公園", desc: "划船、散步", tag: "景點" },
-      { time: "16:30", name: "吉卜力美術館", desc: "宮崎駿動畫迷必訪", tag: "景點" },
-      { time: "19:00", name: "晚餐：迴轉壽司", desc: "最後一晚的壽司", tag: "美食" },
-      { time: "21:00", name: "飯店收拾行李", desc: "準備明天回程", tag: "" }
-    ]
-  },
-  day6: {
-    title: "🛫 Day 6 - 回家",
-    date: "9/6 (日)",
-    activities: [
-      { time: "08:00", name: "飯店早餐", desc: "最後一頓日式早餐", tag: "美食" },
-      { time: "09:30", name: "上野阿美橫丁", desc: "採購伴手禮", tag: "購物" },
-      { time: "12:00", name: "午餐", desc: "上野周邊用餐", tag: "美食" },
-      { time: "14:00", name: "飯店 Check-out", desc: "寄放行李", tag: "" },
-      { time: "16:00", name: "前往成田機場", desc: "JR總武線", tag: "交通" },
-      { time: "20:40", name: "登機 JX805", desc: "返回台北", tag: "交通" }
-    ]
-  }
-};
-
-export function Itinerary() {
-  const { isLoaded, itinerary, updateItinerary } = useTripState();
+export function Itinerary({ onNavigate }: { onNavigate?: (tab: string) => void } = {}) {
+  const { isLoaded, itinerary, updateItinerary, budgetItems, updateBudgetItems } = useTripState();
+  const { confirm, alert } = useDialog();
   const [activeDayIndex, setActiveDayIndex] = useState(0);
   const [editingModal, setEditingModal] = useState<{ day: string; index: number } | null>(null);
   const [formData, setFormData] = useState<Activity>({ time: "", name: "", desc: "", tag: "" });
@@ -200,10 +158,19 @@ export function Itinerary() {
   const [editingTitleDay, setEditingTitleDay] = useState<string | null>(null);
   const [titleInput, setTitleInput] = useState("");
   const [viewMode, setViewMode] = useState<"timeline" | "stats">("timeline");
+  const [budgetModal, setBudgetModal] = useState<{
+    name: string;
+    amount: string;
+    category: string;
+  } | null>(null);
   const tabScrollRef = useRef<HTMLDivElement>(null);
   const itineraryRef = useRef<HTMLDivElement>(null);
+  const closeEditingModal = useCallback(() => setEditingModal(null), []);
+  const closeBudgetModal = useCallback(() => setBudgetModal(null), []);
+  const editingDialogRef = useModalAccessibility(Boolean(editingModal), closeEditingModal);
+  const budgetDialogRef = useModalAccessibility(Boolean(budgetModal), closeBudgetModal);
 
-const currentItin = Object.keys(itinerary).length > 0 ? itinerary : DEFAULT_ITINERARY;
+  const currentItin = Object.keys(itinerary).length > 0 ? itinerary : DEFAULT_ITINERARY;
   const dayKeys = Object.keys(currentItin);
   const activeDayKey = dayKeys[activeDayIndex];
   const activeDayData = currentItin[activeDayKey];
@@ -307,7 +274,11 @@ const currentItin = Object.keys(itinerary).length > 0 ? itinerary : DEFAULT_ITIN
         link.click();
       } catch (error) {
         console.error("Export failed:", error);
-        alert("匯出圖片失敗，請稍後再試。");
+        void alert({
+          title: "匯出失敗",
+          message: "匯出圖片失敗，請稍後再試。",
+          accent: "danger",
+        });
       } finally {
         setIsExporting(false);
       }
@@ -349,11 +320,73 @@ const currentItin = Object.keys(itinerary).length > 0 ? itinerary : DEFAULT_ITIN
     setEditingTitleDay(null);
   };
 
-  const deleteActivity = (day: string, idx: number) => {
-    if (!confirm("確定要刪除這項行程嗎？")) return;
+  const deleteActivity = async (day: string, idx: number) => {
+    const ok = await confirm({
+      title: "刪除行程",
+      message: "確定要刪除這項行程嗎？",
+      accent: "danger",
+      confirmText: "刪除",
+    });
+    if (!ok) return;
     const newItin = { ...currentItin };
     newItin[day].activities.splice(idx, 1);
     updateItinerary(newItin);
+  };
+
+  /** 開啟「加入預算」彈窗（可填金額／類別） */
+  const openBudgetModal = (act: Activity) => {
+    setBudgetModal({
+      name: act.name,
+      amount: "",
+      category: guessBudgetCategory(act),
+    });
+  };
+
+  const confirmAddToBudget = async () => {
+    if (!budgetModal) return;
+    const amountNum = parseInt(budgetModal.amount, 10);
+    if (!budgetModal.name.trim() || isNaN(amountNum) || amountNum < 0) {
+      await alert({
+        title: "請填金額",
+        message: "請輸入 0 以上的日圓金額（可先填 0，之後再改）。",
+        accent: "primary",
+      });
+      return;
+    }
+    const newItem = {
+      id: Date.now(),
+      name: budgetModal.name.trim(),
+      amount: amountNum,
+      category: budgetModal.category,
+      date: new Date().toLocaleDateString("zh-TW"),
+    };
+    updateBudgetItems([newItem, ...budgetItems]);
+    setBudgetModal(null);
+    await alert({
+      title: "已加入預算",
+      message: `「${newItem.name}」¥${amountNum.toLocaleString()} 已記到預算工具。`,
+      accent: "primary",
+    });
+  };
+
+  /** 一鍵跳美食並帶區域篩選（sessionStorage） */
+  const findNearbyFood = (act: Activity) => {
+    const district = guessFoodDistrict(act);
+    try {
+      sessionStorage.setItem(
+        "tokyo-trip-food-focus",
+        JSON.stringify({ district, q: act.name, t: Date.now() }),
+      );
+    } catch {
+      // ignore
+    }
+    if (onNavigate) {
+      onNavigate("food");
+    } else {
+      const url = new URL(window.location.href);
+      url.searchParams.set("tab", "food");
+      window.location.href = url.pathname + url.search + url.hash;
+    }
   };
 
   const getTagColor = (tag: string) => {
@@ -385,11 +418,10 @@ const currentItin = Object.keys(itinerary).length > 0 ? itinerary : DEFAULT_ITIN
             <div className="space-y-3 relative before:absolute before:left-[2.5rem] before:inset-y-0 before:w-0.5 before:bg-gray-200 dark:before:bg-slate-700">
               {dayData.activities.map((act, idx) => (
                 <div key={idx} className="relative flex items-start gap-4 group">
-                  <div className="flex items-center justify-center w-5 h-5 rounded-full border-2 border-white dark:border-slate-800 bg-primary absolute left-[2.5rem] -translate-x-1/2 z-10"></div>
-                  <div className="w-[5rem] text-right text-primary font-black text-lg pt-0.5 shrink-0">{act.time}</div>
+                  <div className="w-[5rem] text-right text-primary font-black text-lg pt-0.5 shrink-0 relative z-10 bg-transparent px-1">{act.time}</div>
                   <div className="flex-1 bg-gray-50 dark:bg-slate-900/50 p-4 rounded-xl border border-gray-100 dark:border-slate-800">
                     <div className="flex items-center gap-2 mb-1">
-                      <h4 className="font-black text-lg text-gray-900 dark:text-white">{act.name}</h4>
+                      <p className="font-black text-lg text-gray-900 dark:text-white">{act.name}</p>
                       {act.tag && <span className={`text-[10px] font-black px-2 py-0.5 rounded-lg ${getTagColor(act.tag)}`}>{act.tag}</span>}
                     </div>
                     {act.desc && <p className="text-sm text-gray-500">{act.desc}</p>}
@@ -418,14 +450,14 @@ const currentItin = Object.keys(itinerary).length > 0 ? itinerary : DEFAULT_ITIN
           <div className="flex bg-gray-100 dark:bg-slate-800 rounded-full p-1">
             <button
               onClick={() => setViewMode("timeline")}
-              className={`flex items-center gap-2 px-4 py-2 rounded-full font-bold text-sm transition-all ${viewMode === "timeline" ? "bg-white dark:bg-slate-700 shadow-md" : "text-gray-500 hover:text-gray-700"}`}
+              className={`flex min-h-11 items-center gap-2 px-4 py-2 rounded-full font-bold text-sm transition-all ${viewMode === "timeline" ? "bg-white dark:bg-slate-700 shadow-md" : "text-gray-500 hover:text-gray-700"}`}
               aria-pressed={viewMode === "timeline"}
             >
               <List className="w-4 h-4" /> 時間線
             </button>
             <button
               onClick={() => setViewMode("stats")}
-              className={`flex items-center gap-2 px-4 py-2 rounded-full font-bold text-sm transition-all ${viewMode === "stats" ? "bg-white dark:bg-slate-700 shadow-md" : "text-gray-500 hover:text-gray-700"}`}
+              className={`flex min-h-11 items-center gap-2 px-4 py-2 rounded-full font-bold text-sm transition-all ${viewMode === "stats" ? "bg-white dark:bg-slate-700 shadow-md" : "text-gray-500 hover:text-gray-700"}`}
               aria-pressed={viewMode === "stats"}
             >
               <BarChart3 className="w-4 h-4" /> 統計
@@ -477,7 +509,7 @@ const currentItin = Object.keys(itinerary).length > 0 ? itinerary : DEFAULT_ITIN
 
           {/* Activity Type Distribution */}
           <div className="mb-6">
-            <h4 className="text-lg font-black mb-4">活動類型分佈</h4>
+            <h3 className="text-lg font-black mb-4">活動類型分佈</h3>
             <div className="flex flex-wrap gap-3">
               {Object.entries(stats.tagCounts).sort((a, b) => b[1] - a[1]).map(([tag, count]) => (
                 <div key={tag} className={`px-4 py-2 rounded-full font-bold text-sm ${getTagColor(tag)}`}>
@@ -552,31 +584,32 @@ const currentItin = Object.keys(itinerary).length > 0 ? itinerary : DEFAULT_ITIN
                 <p className="text-sm font-bold text-white/70 mt-0.5">{activeDayData.date}・{activeDayData.activities.length} 項行程</p>
               </div>
               <div className="flex items-center gap-1">
-                <button onClick={() => goToDay(activeDayIndex - 1)} disabled={activeDayIndex === 0} className="p-2 rounded-xl bg-white/20 disabled:opacity-30 transition-all">
+                <button onClick={() => goToDay(activeDayIndex - 1)} aria-label="前一天" disabled={activeDayIndex === 0} className="w-11 h-11 inline-flex items-center justify-center rounded-xl bg-white/20 disabled:opacity-30 transition-all">
                   <ChevronLeft className="w-5 h-5" />
                 </button>
-                <button onClick={() => goToDay(activeDayIndex + 1)} disabled={activeDayIndex === dayKeys.length - 1} className="p-2 rounded-xl bg-white/20 disabled:opacity-30 transition-all">
+                <button onClick={() => goToDay(activeDayIndex + 1)} aria-label="後一天" disabled={activeDayIndex === dayKeys.length - 1} className="w-11 h-11 inline-flex items-center justify-center rounded-xl bg-white/20 disabled:opacity-30 transition-all">
                   <ChevronRight className="w-5 h-5" />
                 </button>
               </div>
             </div>
 
             {/* ── Activities Timeline (mobile) ── */}
-            <div className="relative space-y-6 before:absolute before:inset-0 before:ml-[4.5rem] before:-translate-x-px before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-gray-200 dark:before:via-slate-700 before:to-transparent animate-in fade-in slide-in-from-right-4 duration-400" key={activeDayKey}>
+            <div className="relative space-y-6 before:absolute before:inset-0 before:left-[2.25rem] before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-gray-200 dark:before:via-slate-700 before:to-transparent animate-in fade-in slide-in-from-right-4 duration-400" key={activeDayKey}>
               {activeDayData.activities.map((act, idx) => (
                 <div key={idx} className="relative flex items-start gap-6 group">
-                  <div className="flex items-center justify-center w-6 h-6 rounded-full border-4 border-white dark:border-slate-900 bg-primary absolute left-[4.5rem] -translate-x-1/2 z-10 shadow-lg group-hover:scale-125 transition-transform"></div>
-                  <div className="w-[4.5rem] pr-2 text-right text-primary font-black text-xl pt-0.5 shrink-0 tabular-nums">{act.time}</div>
+                  <div className="w-[4.5rem] pr-2 text-right text-primary font-black text-xl pt-0.5 shrink-0 tabular-nums relative z-10 px-1">{act.time}</div>
                   <div className="flex-1 pb-2">
                     <div className="bg-white dark:bg-slate-800 p-5 rounded-[1.5rem] shadow-sm border border-gray-100 dark:border-slate-700 hover:shadow-xl transition-all relative group/card overflow-hidden">
                       <div className="absolute top-0 right-0 w-2 h-full bg-primary opacity-0 group-hover/card:opacity-100 transition-opacity"></div>
                       <div className="flex flex-col justify-between gap-3 mb-3">
-                        <h4 className="font-black text-xl text-gray-900 dark:text-white leading-tight">{act.name}</h4>
+                        <p className="font-black text-xl text-gray-900 dark:text-white leading-tight">{act.name}</p>
                         {act.tag && <span className={`self-start text-[10px] font-black px-3 py-1 rounded-lg uppercase tracking-widest ${getTagColor(act.tag)}`}>{act.tag}</span>}
                       </div>
                       {act.desc && <p className="text-base text-gray-500 dark:text-gray-400 leading-relaxed mb-4">{act.desc}</p>}
                       <div className="flex gap-2 transition-all duration-300">
                         <button onClick={() => openModal(activeDayKey, idx)} aria-label={`編輯「${act.name}」`} className="w-11 h-11 flex items-center justify-center text-primary hover:bg-primary/10 rounded-xl transition-colors active:scale-90"><Pencil className="w-4 h-4" /></button>
+                        <button onClick={() => openBudgetModal(act)} aria-label={`將「${act.name}」加入預算`} className="w-11 h-11 flex items-center justify-center text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded-xl transition-colors active:scale-90"><Wallet className="w-4 h-4" /></button>
+                        <button onClick={() => findNearbyFood(act)} aria-label={`找「${act.name}」附近美食`} className="w-11 h-11 flex items-center justify-center text-orange-500 hover:bg-orange-50 dark:hover:bg-orange-900/20 rounded-xl transition-colors active:scale-90"><UtensilsCrossed className="w-4 h-4" /></button>
                         <button onClick={() => deleteActivity(activeDayKey, idx)} aria-label={`刪除「${act.name}」`} className="w-11 h-11 flex items-center justify-center text-red-500 hover:bg-red-50 rounded-xl transition-colors active:scale-90"><Trash2 className="w-4 h-4" /></button>
                       </div>
                     </div>
@@ -591,7 +624,15 @@ const currentItin = Object.keys(itinerary).length > 0 ? itinerary : DEFAULT_ITIN
             {/* ── Progress Dots ── */}
             <div className="flex justify-center gap-2 mt-8">
               {dayKeys.map((_, i) => (
-                <button key={i} onClick={() => goToDay(i)} className={`rounded-full transition-all duration-300 ${i === activeDayIndex ? "w-8 h-2.5 bg-primary" : "w-2.5 h-2.5 bg-gray-300 dark:bg-slate-600"}`} />
+                <button
+                  key={i}
+                  onClick={() => goToDay(i)}
+                  aria-label={`前往第 ${i + 1} 天`}
+                  aria-current={i === activeDayIndex ? "step" : undefined}
+                  className="w-11 h-11 inline-flex items-center justify-center rounded-full transition-transform active:scale-90"
+                >
+                  <span aria-hidden className={`rounded-full transition-all duration-300 ${i === activeDayIndex ? "w-8 h-2.5 bg-primary" : "w-2.5 h-2.5 bg-gray-300 dark:bg-slate-600"}`} />
+                </button>
               ))}
             </div>
           </div>
@@ -631,33 +672,33 @@ const currentItin = Object.keys(itinerary).length > 0 ? itinerary : DEFAULT_ITIN
                   <div className="flex items-center gap-2 flex-1">
                     <input
                       autoFocus
+                      aria-label="行程標題"
                       value={titleInput}
                       onChange={e => setTitleInput(e.target.value)}
                       onKeyDown={e => { if (e.key === "Enter") handleTitleSave(activeDayKey); if (e.key === "Escape") setEditingTitleDay(null); }}
                       className="flex-1 text-2xl font-black bg-transparent border-b-2 border-primary outline-none py-1 text-gray-900 dark:text-white"
                     />
-                    <button onClick={() => handleTitleSave(activeDayKey)} className="p-2 bg-primary text-white rounded-xl hover:bg-primary-dark transition-colors"><Check className="w-4 h-4" /></button>
-                    <button onClick={() => setEditingTitleDay(null)} className="p-2 bg-gray-200 dark:bg-slate-700 rounded-xl hover:bg-gray-300 dark:hover:bg-slate-600 transition-colors"><X className="w-4 h-4" /></button>
+                    <button onClick={() => handleTitleSave(activeDayKey)} aria-label="儲存行程標題" className="w-11 h-11 inline-flex items-center justify-center bg-primary text-white rounded-xl hover:bg-primary-dark transition-colors"><Check className="w-4 h-4" /></button>
+                    <button onClick={() => setEditingTitleDay(null)} aria-label="取消編輯行程標題" className="w-11 h-11 inline-flex items-center justify-center bg-gray-200 dark:bg-slate-700 rounded-xl hover:bg-gray-300 dark:hover:bg-slate-600 transition-colors"><X className="w-4 h-4" /></button>
                   </div>
                 ) : (
                   <button
                     aria-label="點擊編輯標題"
-                    className="text-2xl font-black text-gray-900 dark:text-white flex items-center gap-3 cursor-pointer hover:text-primary transition-colors group/title text-left"
+                    className="min-h-11 text-2xl font-black text-gray-900 dark:text-white flex items-center gap-3 cursor-pointer hover:text-primary transition-colors group/title text-left"
                     onClick={() => { setEditingTitleDay(activeDayKey); setTitleInput(activeDayData.title); }}
                   >
                     <Calendar className="w-6 h-6 text-primary" />
-                    {activeDayData.title}
+                    <h3>{activeDayData.title}</h3>
                     <Pencil className="w-4 h-4 opacity-0 group-hover/title:opacity-100 transition-opacity hidden md:inline" />
                   </button>
                 )}
                 <span className="text-sm font-bold text-gray-400">{activeDayData.date}・{activeDayData.activities.length} 項行程</span>
               </div>
 
-              <div className="relative space-y-4 before:absolute before:inset-0 before:ml-[5rem] before:-translate-x-px before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-gray-200 dark:before:via-slate-700 before:to-transparent">
+              <div className="relative space-y-4 before:absolute before:inset-0 before:left-[2.5rem] before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-gray-200 dark:before:via-slate-700 before:to-transparent">
                 {activeDayData.activities.map((act, idx) => (
                   <div key={idx} className="relative flex items-start gap-8 group">
-                    <div className="flex items-center justify-center w-5 h-5 rounded-full border-4 border-white dark:border-slate-800 bg-primary absolute left-[5rem] -translate-x-1/2 z-10 shadow-lg group-hover:scale-125 transition-transform"></div>
-                    <div className="w-[5rem] pr-3 text-right text-primary font-black text-xl pt-0.5 shrink-0 tabular-nums">{act.time}</div>
+                    <div className="w-[5rem] pr-3 text-right text-primary font-black text-xl pt-0.5 shrink-0 tabular-nums relative z-10 px-1">{act.time}</div>
                     <div className="flex-1 pb-1">
                       {/* Conflict Warning */}
                       {activeConflicts.find(c => c.index === idx) && (
@@ -668,12 +709,14 @@ const currentItin = Object.keys(itinerary).length > 0 ? itinerary : DEFAULT_ITIN
                       <div className="bg-gray-50 dark:bg-slate-900/50 p-4 rounded-2xl hover:shadow-md transition-all relative group/card overflow-hidden">
                         <div className="absolute top-0 right-0 w-1.5 h-full bg-primary opacity-0 group-hover/card:opacity-100 transition-opacity"></div>
                         <div className="flex items-center justify-between gap-3 mb-1">
-                          <h4 className="font-black text-lg text-gray-900 dark:text-white leading-tight">{act.name}</h4>
+                          <p className="font-black text-lg text-gray-900 dark:text-white leading-tight">{act.name}</p>
                           {act.tag && <span className={`text-xs font-black px-2.5 py-0.5 rounded-lg uppercase tracking-widest ${getTagColor(act.tag)}`}>{act.tag}</span>}
                         </div>
                         {act.desc && <p className="text-sm text-gray-500 dark:text-gray-400 leading-relaxed">{act.desc}</p>}
                         <div className="flex gap-1 md:opacity-0 md:group-hover:opacity-100 transition-all duration-300 mt-2">
                           <button onClick={() => openModal(activeDayKey, idx)} aria-label={`編輯「${act.name}」`} className="w-11 h-11 flex items-center justify-center text-primary hover:bg-primary/10 rounded-xl transition-colors active:scale-90"><Pencil className="w-3.5 h-3.5" /></button>
+                          <button onClick={() => openBudgetModal(act)} aria-label={`將「${act.name}」加入預算`} className="w-11 h-11 flex items-center justify-center text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded-xl transition-colors active:scale-90"><Wallet className="w-3.5 h-3.5" /></button>
+                          <button onClick={() => findNearbyFood(act)} aria-label={`找「${act.name}」附近美食`} className="w-11 h-11 flex items-center justify-center text-orange-500 hover:bg-orange-50 dark:hover:bg-orange-900/20 rounded-xl transition-colors active:scale-90"><UtensilsCrossed className="w-3.5 h-3.5" /></button>
                           <button onClick={() => deleteActivity(activeDayKey, idx)} aria-label={`刪除「${act.name}」`} className="w-11 h-11 flex items-center justify-center text-red-500 hover:bg-red-50 rounded-xl transition-colors active:scale-90"><Trash2 className="w-3.5 h-3.5" /></button>
                         </div>
                       </div>
@@ -700,13 +743,20 @@ const currentItin = Object.keys(itinerary).length > 0 ? itinerary : DEFAULT_ITIN
       {/* ── Edit/Add Modal ── */}
       {editingModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-300">
-          <div className="bg-white dark:bg-slate-800 w-full max-w-lg rounded-[2.5rem] shadow-2xl overflow-hidden animate-in zoom-in-95 slide-in-from-bottom-10 duration-300">
+          <div
+            ref={editingDialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="itinerary-edit-title"
+            tabIndex={-1}
+            className="bg-white dark:bg-slate-800 w-full max-w-lg rounded-[2.5rem] shadow-2xl overflow-hidden animate-in zoom-in-95 slide-in-from-bottom-10 duration-300 outline-none"
+          >
             <div className="p-6 md:p-8 bg-gradient-to-r from-primary to-accent text-white flex justify-between items-center">
               <div className="flex items-center gap-3">
                 <div className="bg-white/20 p-2 rounded-xl"><Calendar className="w-5 h-5" /></div>
-                <h3 className="text-2xl font-black">{editingModal.index >= 0 ? "編輯計畫" : "新增計畫"}</h3>
+                <h3 id="itinerary-edit-title" className="text-2xl font-black">{editingModal.index >= 0 ? "編輯計畫" : "新增計畫"}</h3>
               </div>
-              <button onClick={() => setEditingModal(null)} className="p-2 hover:bg-white/20 rounded-full transition-colors">
+              <button onClick={closeEditingModal} data-autofocus aria-label="關閉行程編輯" className="w-11 h-11 inline-flex items-center justify-center hover:bg-white/20 rounded-full transition-colors">
                 <X className="w-6 h-6" />
               </button>
             </div>
@@ -714,8 +764,9 @@ const currentItin = Object.keys(itinerary).length > 0 ? itinerary : DEFAULT_ITIN
             <div className="p-6 md:p-10 space-y-6">
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <label className="text-[10px] sm:text-xs font-black text-gray-400 uppercase tracking-widest ml-1">抵達時間</label>
+                  <label htmlFor="itinerary-time" className="text-[10px] sm:text-xs font-black text-gray-400 uppercase tracking-widest ml-1">抵達時間</label>
                   <input
+                    id="itinerary-time"
                     type="time"
                     value={formData.time}
                     onChange={e => setFormData({ ...formData, time: e.target.value })}
@@ -723,8 +774,9 @@ const currentItin = Object.keys(itinerary).length > 0 ? itinerary : DEFAULT_ITIN
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[10px] sm:text-xs font-black text-gray-400 uppercase tracking-widest ml-1">活動類型</label>
+                  <label htmlFor="itinerary-tag" className="text-[10px] sm:text-xs font-black text-gray-400 uppercase tracking-widest ml-1">活動類型</label>
                   <select
+                    id="itinerary-tag"
                     value={formData.tag}
                     onChange={e => setFormData({ ...formData, tag: e.target.value })}
                     className="w-full p-4 rounded-2xl border-2 border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 focus:border-primary focus:outline-none transition-all font-bold"
@@ -739,8 +791,9 @@ const currentItin = Object.keys(itinerary).length > 0 ? itinerary : DEFAULT_ITIN
               </div>
 
               <div className="space-y-2">
-                <label className="text-[10px] sm:text-xs font-black text-gray-400 uppercase tracking-widest ml-1">景點或店名</label>
+                <label htmlFor="itinerary-name" className="text-[10px] sm:text-xs font-black text-gray-400 uppercase tracking-widest ml-1">景點或店名</label>
                 <input
+                  id="itinerary-name"
                   type="text"
                   placeholder="例如：東京鐵塔、築地市場..."
                   value={formData.name}
@@ -750,8 +803,9 @@ const currentItin = Object.keys(itinerary).length > 0 ? itinerary : DEFAULT_ITIN
               </div>
 
               <div className="space-y-2">
-                <label className="text-[10px] sm:text-xs font-black text-gray-400 uppercase tracking-widest ml-1">詳細說明</label>
+                <label htmlFor="itinerary-description" className="text-[10px] sm:text-xs font-black text-gray-400 uppercase tracking-widest ml-1">詳細說明</label>
                 <textarea
+                  id="itinerary-description"
                   placeholder="補充交通資訊、門票價格、想吃的料理..."
                   value={formData.desc}
                   onChange={e => setFormData({ ...formData, desc: e.target.value })}
@@ -767,6 +821,82 @@ const currentItin = Object.keys(itinerary).length > 0 ? itinerary : DEFAULT_ITIN
                   <Check className="w-6 h-6" /> 儲存變更
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── 加入預算 Modal ── */}
+      {budgetModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-300">
+          <div
+            ref={budgetDialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="itinerary-budget-title"
+            tabIndex={-1}
+            className="bg-white dark:bg-slate-800 w-full max-w-md rounded-[2.5rem] shadow-2xl overflow-hidden animate-in zoom-in-95 slide-in-from-bottom-10 duration-300 outline-none"
+          >
+            <div className="p-6 bg-gradient-to-r from-emerald-500 to-teal-500 text-white flex justify-between items-center">
+              <div className="flex items-center gap-3">
+                <div className="bg-white/20 p-2 rounded-xl"><Wallet className="w-5 h-5" /></div>
+                <h3 id="itinerary-budget-title" className="text-xl font-black">加入預算</h3>
+              </div>
+              <button onClick={closeBudgetModal} data-autofocus className="w-11 h-11 inline-flex items-center justify-center hover:bg-white/20 rounded-full transition-colors" aria-label="關閉加入預算">
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            <div className="p-6 space-y-5">
+              <div className="space-y-2">
+                <label htmlFor="itinerary-budget-name" className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">項目名稱</label>
+                <input
+                  id="itinerary-budget-name"
+                  type="text"
+                  value={budgetModal.name}
+                  onChange={(e) => setBudgetModal({ ...budgetModal, name: e.target.value })}
+                  className="w-full p-4 rounded-2xl border-2 border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 focus:border-emerald-500 focus:outline-none transition-all font-bold text-lg"
+                />
+              </div>
+              <div className="space-y-2">
+                <label htmlFor="itinerary-budget-amount" className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">金額（日圓 ¥）</label>
+                <input
+                  id="itinerary-budget-amount"
+                  type="number"
+                  inputMode="numeric"
+                  min={0}
+                  placeholder="例如 1200"
+                  value={budgetModal.amount}
+                  onChange={(e) => setBudgetModal({ ...budgetModal, amount: e.target.value })}
+                  className="w-full p-4 rounded-2xl border-2 border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 focus:border-emerald-500 focus:outline-none transition-all font-black text-xl tabular-nums"
+                  autoFocus
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">類別</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {Object.entries(BUDGET_CATEGORIES).map(([key, cat]) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => setBudgetModal({ ...budgetModal, category: key })}
+                      className={`p-3 rounded-2xl border-2 text-sm font-bold transition-all ${budgetModal.category === key
+                        ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300"
+                        : "border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 text-gray-500"
+                        }`}
+                    >
+                      <span className="block text-xl mb-0.5">{cat.icon}</span>
+                      {cat.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => void confirmAddToBudget()}
+                className="w-full py-4 rounded-2xl font-black bg-emerald-500 hover:bg-emerald-600 text-white shadow-xl shadow-emerald-500/30 transition-all active:scale-95 flex items-center justify-center gap-2"
+              >
+                <Check className="w-5 h-5" /> 確認加入
+              </button>
             </div>
           </div>
         </div>

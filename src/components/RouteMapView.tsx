@@ -1,72 +1,35 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-
-// 動態載入 Google Maps JS API
-function loadGoogleMaps(apiKey: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (typeof window === "undefined") return reject("no window");
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const w = window as any;
-    if (w.google?.maps) return resolve();
-
-    if (w._googleMapsLoading) {
-      w._googleMapsCallbacks.push(resolve);
-      return;
-    }
-    w._googleMapsCallbacks = [resolve];
-    w._googleMapsLoading = true;
-
-    const script = document.createElement("script");
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places&language=zh-TW&region=JP`;
-    script.async = true;
-    script.defer = true;
-
-    // script.onload 時 google.maps 不一定 ready（async/defer 載入有 race condition）
-    // 用 polling 等 window.google.maps 出現才 resolve，避免 setStatus("error") 誤判
-    const fire = () => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const w = window as any;
-      if (w.google?.maps) {
-        /* eslint-disable @typescript-eslint/no-explicit-any */
-        (window as any)._googleMapsCallbacks.forEach((cb: () => void) => cb());
-        (window as any)._googleMapsCallbacks = [];
-        (window as any)._googleMapsLoading = false;
-        /* eslint-enable @typescript-eslint/no-explicit-any */
-        return true;
-      }
-      return false;
-    };
-
-    script.onload = () => {
-      if (fire()) return;
-      // onload 但 google.maps 還沒初始化，polling 等
-      let tries = 0;
-      const timer = setInterval(() => {
-        if (fire() || ++tries > 100) clearInterval(timer);  // 最多等 10 秒
-      }, 100);
-    };
-    script.onerror = () => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (window as any)._googleMapsLoading = false;
-      reject("Google Maps script failed");
-    };
-    document.head.appendChild(script);
-  });
-}
+import {
+  GoogleMapsLoadError,
+  loadGoogleMaps,
+  subscribeToGoogleMapsAuthFailure,
+} from "@/lib/google-maps-loader";
 
 export function RouteMapView({ originName, destName }: { originName: string; destName: string }) {
+  const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
   const mapRef = useRef<HTMLDivElement>(null);
-  const [status, setStatus] = useState<"loading" | "ok" | "error">("loading");
+  const [status, setStatus] = useState<"loading" | "ok" | "error">(apiKey ? "loading" : "error");
+  const [errorMessage, setErrorMessage] = useState(
+    apiKey ? "Google Maps 暫時無法載入。" : "Google Maps 金鑰尚未設定，請改用外部導航。",
+  );
+  const [retryKey, setRetryKey] = useState(0);
 
   useEffect(() => {
-    const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
-    if (!apiKey || !mapRef.current) {
-      setStatus("error");
-      return;
-    }
+    if (!mapRef.current) return;
+    if (!apiKey) return;
 
+    // 標記這次 effect 是否已被取消（unmount / deps 變更）
+    // loadGoogleMaps 內部 polling 等 window.google.maps 最多 10 秒，
+    // 若元件在 polling 期間 unmount，polling 的 resolve 觸發後仍會接著
+    // setStatus("ok") / 建 Map，這裡用 cancelled 做 gate 防止後續動作。
     let cancelled = false;
+    const unsubscribeAuthFailure = subscribeToGoogleMapsAuthFailure(() => {
+      if (cancelled) return;
+      setErrorMessage("Google Maps 驗證失敗，請改用外部導航。");
+      setStatus("error");
+    });
 
     loadGoogleMaps(apiKey)
       .then(() => {
@@ -159,27 +122,54 @@ export function RouteMapView({ originName, destName }: { originName: string; des
 
         setStatus("ok");
       })
-      .catch(() => {
-        if (!cancelled) setStatus("error");
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        setErrorMessage(
+          error instanceof GoogleMapsLoadError
+            ? error.message
+            : "Google Maps 暫時無法載入，請重試或改用外部導航。",
+        );
+        setStatus("error");
       });
 
     return () => {
       cancelled = true;
+      unsubscribeAuthFailure();
     };
-  }, [originName, destName]);
+  }, [apiKey, originName, destName, retryKey]);
 
   if (status === "error") {
     return (
       <div className="w-full h-full flex flex-col items-center justify-center bg-gray-100" style={{ minHeight: "450px" }}>
         <div className="text-gray-500 font-bold mb-2">地圖載入失敗</div>
-        <a
-          href={`https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(originName)}&destination=${encodeURIComponent(destName)}&travelmode=transit`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-primary text-sm underline font-bold"
-        >
-          開啟 Google Maps →
-        </a>
+        <p className="max-w-sm px-6 text-center text-sm text-gray-500 mb-4" role="alert">
+          {errorMessage}
+        </p>
+        <div className="flex flex-wrap items-center justify-center gap-3">
+          <button
+            type="button"
+            onClick={() => {
+              if (!apiKey) {
+                setErrorMessage("Google Maps 金鑰尚未設定，請改用外部導航。");
+                setStatus("error");
+                return;
+              }
+              setStatus("loading");
+              setRetryKey((value) => value + 1);
+            }}
+            className="min-h-11 px-4 rounded-xl bg-white border border-gray-200 text-gray-700 text-sm font-black"
+          >
+            重新載入
+          </button>
+          <a
+            href={`https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(originName)}&destination=${encodeURIComponent(destName)}&travelmode=transit`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="min-h-11 px-4 rounded-xl bg-primary text-white text-sm font-black inline-flex items-center"
+          >
+            開啟 Google Maps →
+          </a>
+        </div>
       </div>
     );
   }

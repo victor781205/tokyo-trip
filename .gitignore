@@ -23,19 +23,51 @@
 # misc
 .DS_Store
 *.pem
+*.log
+# accidental shell redirect junk
+$null
+m[0])
 
 # debug
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
+next-dev.log*
+next-dev.err.log*
+next-start.log*
+next-start.err.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
+.env.smoke
+.env.smoke.runtime
+.env.vercel*
+.env.vercel.prod
+.env.vercel.prod2
 
 # vercel
 .vercel
+.vercel/
 
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# ── Capacitor 原生平台（本機產生，不入庫）──
+/ios/
+/android/
+
+# ── FCM / APNs 推播憑證（絕對不能入庫）──
+google-services.json
+GoogleService-Info.plist
+*.p8
+firebase-service-account.json
+fcm-service-account.json
+
+# ── VAPID / 推播私密金鑰 ──
+vapid-keys.json
+.env.push
+
+.env*.local

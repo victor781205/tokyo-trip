@@ -1,0 +1,101 @@
+name: CI
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 防止「未來有人改壞了沒人知道」的最後防線
+#
+# 兩條主要 guardrail：
+#   1. `verify`    — pull request 與任何 push 都跑：TypeScript / ESLint / Vitest
+#   2. `build`     — 只在 main 分支跑 production `next build`，
+#                    確認 production bundle 沒被改壞（Vercel 部署前先攔）
+#
+# 設計原則：
+#   * 用 .nvmrc 鎖住 Node 版本，CI 與本地一致，避免「我這邊能跑 CI 不能跑」
+#   * npm ci 而非 npm install — 用 lockfile 嚴格還原，可重現建構
+#   * cache ~/.npm 與 .next/cache 加速後續 build
+#   * 不部署（Vercel 自動接 GitHub push 觸發），CI 只負責 gatekeeper
+# ─────────────────────────────────────────────────────────────────────────────
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+# 同分支新 push 來時，把舊的進行中 run 取消掉，省 runner 時數
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Type-check / Lint / Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node (from .nvmrc)
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: "npm"
+
+      - name: Install dependencies (strict)
+        run: npm ci
+
+      - name: Type-check (tsc --noEmit)
+        run: npx tsc --noEmit -p tsconfig.json
+
+      - name: Lint (ESLint)
+        run: npm run lint
+
+      - name: Unit tests (Vitest)
+        run: npx vitest run --reporter=verbose
+
+  build:
+    name: Production build (next build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # pull request 時跑 build 預先確認；push 到 main 必跑
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node (from .nvmrc)
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: "npm"
+
+      - name: Install dependencies (strict)
+        run: npm ci
+
+      - name: Restore .next cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            .next/cache
+            public/sw.js
+            public/workbox-*.js
+          key: next-build-${{ runner.os }}-${{ hashFiles('package-lock.json', 'next.config.ts', 'tsconfig.json') }}
+          restore-keys: |
+            next-build-${{ runner.os }}-
+
+      - name: Production build
+        # 把 PWA 建構出來的 sw.js / workbox-* 也包含進驗證流程
+        run: npm run build
+        env:
+          # build-time 必要的 NEXT_PUBLIC_* 環境變數沒設時不該炸整個 build
+          # Next 16 對未設環境變數會 fallback 為空字串，這裡僅確保 build 不被卡
+          CI: "true"
+
+      - name: Upload build artifacts（debug 用）
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: next-build-output
+          path: |
+            .next
+            public/sw.js
+            public/workbox-*.js
+          retention-days: 3
+          if-no-files-found: warn

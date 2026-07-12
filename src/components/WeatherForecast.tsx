@@ -2,71 +2,45 @@
 
 import { useEffect, useState } from "react";
 import { Cloud, CloudRain, Sun, CloudLightning, Calendar } from "lucide-react";
-
-type WeatherData = {
-  date: string;
-  weather: string;
-  tempMax: string;
-  tempMin: string;
-  pop: string; // Probability of precipitation
-};
+import { parseTokyoForecast, type TokyoForecastDay } from "@/lib/jma-forecast";
 
 export function WeatherForecast() {
-  const [forecast, setForecast] = useState<WeatherData[]>([]);
+  const [forecast, setForecast] = useState<TokyoForecastDay[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [requestKey, setRequestKey] = useState(0);
 
   useEffect(() => {
+    let cancelled = false;
     async function fetchWeather() {
       try {
         const res = await fetch("https://www.jma.go.jp/bosai/forecast/data/forecast/130000.json");
+        if (!res.ok) throw new Error(`JMA 回應錯誤 (${res.status})`);
         const data = await res.json();
-
-        const processed: WeatherData[] = [];
-
-        // data[0] = 今日天氣（短期予報）
-        const today = data[0].timeSeries[0];
-        const todayTemps = data[0].timeSeries[2];
-        if (today && todayTemps) {
-          const todayDate = new Date(today.timeDefines[0]);
-          processed.push({
-            date: `${todayDate.getMonth() + 1}/${todayDate.getDate()}`,
-            weather: today.areas[0].weatherCodes[0],
-            tempMax: todayTemps.areas[0].temps[1] || "--",
-            tempMin: todayTemps.areas[0].temps[0] || "--",
-            pop: data[0].timeSeries[1]?.areas[0]?.pops[0] || "--",
-          });
-        }
-
-        // data[1] = 週間預報
-        const weekly = data[1].timeSeries[0];
-        const temps = data[1].timeSeries[1];
-
-        weekly.timeDefines.forEach((dateStr: string, i: number) => {
-          const date = new Date(dateStr);
-          const tempMax = temps.areas[0].tempsMax[i];
-          const tempMin = temps.areas[0].tempsMin[i];
-
-          // 跳過今天（已從 data[0] 加入）
-          if (i === 0 && processed.length > 0) return;
-
-          processed.push({
-            date: `${date.getMonth() + 1}/${date.getDate()}`,
-            weather: weekly.areas[0].weatherCodes[i],
-            tempMax: tempMax || "--",
-            tempMin: tempMin || "--",
-            pop: weekly.areas[0].pops?.[i] || "--",
-          });
-        });
-
-        setForecast(processed.slice(0, 7));
+        const nextForecast = parseTokyoForecast(data);
+        if (nextForecast.length === 0) throw new Error("JMA 回傳內容不完整");
+        if (cancelled) return;
+        setForecast(nextForecast);
+        setError(null);
       } catch (e) {
         console.error("Weather fetch failed", e);
+        if (cancelled) return;
+        setError("目前無法取得日本氣象廳資料，請檢查網路後重試。");
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     }
-    fetchWeather();
-  }, []);
+    void fetchWeather();
+    return () => {
+      cancelled = true;
+    };
+  }, [requestKey]);
+
+  const retry = () => {
+    setLoading(true);
+    setError(null);
+    setRequestKey((value) => value + 1);
+  };
 
   const getWeatherLabel = (code: string) => {
     const c = parseInt(code);
@@ -86,7 +60,7 @@ export function WeatherForecast() {
 
   if (loading) {
     return (
-      <section id="weather" className="py-6 md:py-20 px-6 max-w-5xl mx-auto">
+      <section id="weather" className="py-4 md:py-12 max-w-5xl mx-auto scroll-mt-28">
         <div className="bg-white dark:bg-slate-800 rounded-[3rem] p-8 md:p-12 shadow-xl border border-gray-100 dark:border-slate-700">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-12">
             <div>
@@ -112,8 +86,28 @@ export function WeatherForecast() {
     );
   }
 
+  if (error) {
+    return (
+      <section id="weather" className="py-4 md:py-12 max-w-5xl mx-auto scroll-mt-28">
+        <div className="bg-white dark:bg-slate-800 rounded-[3rem] p-8 md:p-12 shadow-xl border border-gray-100 dark:border-slate-700 text-center">
+          <CloudRain className="w-12 h-12 text-sky-500 mx-auto mb-4" />
+          <h2 className="text-2xl md:text-3xl font-black mb-2">東京天氣暫時無法取得</h2>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-6" role="alert">{error}</p>
+          <button
+            type="button"
+            onClick={retry}
+            className="min-h-11 px-6 rounded-2xl bg-primary text-white font-black shadow-lg shadow-primary/20"
+          >
+            重新取得天氣
+          </button>
+          <p className="text-xs text-gray-400 mt-4">資料來源：日本氣象廳 (JMA)</p>
+        </div>
+      </section>
+    );
+  }
+
   return (
-    <section id="weather" className="py-6 md:py-20 px-6 max-w-5xl mx-auto">
+    <section id="weather" className="py-4 md:py-12 max-w-5xl mx-auto scroll-mt-28">
       <div className="bg-white dark:bg-slate-800 rounded-[3rem] p-8 md:p-12 shadow-xl border border-gray-100 dark:border-slate-700">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-12">
           <div>
@@ -133,8 +127,12 @@ export function WeatherForecast() {
               <span className="text-base font-bold text-gray-500 mb-3">{day.date}</span>
               <div className="mb-3" aria-label={`天氣：${getWeatherLabel(day.weather)}`}>{getWeatherIcon(day.weather)}</div>
               <div className="flex gap-2 font-black">
-                <span className="text-red-500">{day.tempMax}°</span>
-                <span className="text-blue-500 opacity-50">{day.tempMin}°</span>
+                <span className="text-red-500">
+                  {day.tempMax === "--" ? "高溫 —" : `${day.tempMax}°`}
+                </span>
+                <span className="text-blue-500 opacity-60">
+                  {day.tempMin === "--" ? "低溫 —" : `${day.tempMin}°`}
+                </span>
               </div>
               {day.pop && parseInt(day.pop) > 50 && (
                 <span className="text-xs text-blue-500 font-bold mt-2">☔ {day.pop}%</span>
@@ -157,12 +155,12 @@ export function WeatherForecast() {
           else if (avgTemp > 25) { suggestion = "溫暖！短袖為主，備薄外套防早晚溫差"; icon = "☀️"; }
           else if (avgTemp > 20) { suggestion = "舒適！建議薄長袖，外套必備"; icon = "🌤️"; }
           else { suggestion = "涼爽！建議長袖、薄外套，攜帶雨具"; icon = "🧥"; }
-          
+
           return (
             <div className="mt-8 p-6 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-slate-800 dark:to-slate-800 rounded-[2rem]">
-              <h4 className="text-lg font-black mb-3 flex items-center gap-2">
+              <h3 className="text-lg font-black mb-3 flex items-center gap-2">
                 <span className="text-2xl">{icon}</span> 穿搭建議
-              </h4>
+              </h3>
               <p className="text-gray-700 dark:text-gray-300 font-medium mb-3">{suggestion}</p>
               {hasRain && (
                 <div className="flex items-center gap-2 text-sm text-blue-600 dark:text-blue-400 font-bold">

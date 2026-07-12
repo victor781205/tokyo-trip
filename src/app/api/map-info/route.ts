@@ -1,24 +1,95 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkRateLimit } from "@/lib/rate-limit";
-import { mapInfoQuerySchema } from "@/lib/validations";
+import { isAllowedMapUrl, mapInfoQuerySchema } from "@/lib/validations";
 
-const ALLOWED_DOMAINS = [
-  "maps.google.com",
-  "www.google.com/maps",
-  "goo.gl/maps",
-  "maps.app.goo.gl",
-];
+const MAX_REDIRECTS = 3;
+const FETCH_TIMEOUT_MS = 8_000;
+const MAX_RESPONSE_BYTES = 512 * 1024; // 512KB
 
-function isAllowedMapUrl(url: string): boolean {
-  try {
-    const parsed = new URL(url);
-    return ALLOWED_DOMAINS.some((domain) => {
-      const [hostname, ...pathParts] = domain.split("/");
-      return parsed.hostname === hostname && (pathParts.length === 0 || parsed.pathname.startsWith("/" + pathParts.join("/")));
-    });
-  } catch {
-    return false;
+async function fetchMapHtml(startUrl: string): Promise<{ finalUrl: string; html: string }> {
+  let currentUrl = startUrl;
+
+  for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+    if (!isAllowedMapUrl(currentUrl)) {
+      throw new Error("Redirect target is not an allowed Google Maps host");
+    }
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+    try {
+      const response = await fetch(currentUrl, {
+        method: "GET",
+        redirect: "manual",
+        signal: controller.signal,
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+          "Accept-Language": "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7",
+          Accept: "text/html,application/xhtml+xml",
+        },
+      });
+
+      if (response.status >= 300 && response.status < 400) {
+        const location = response.headers.get("location");
+        if (!location) throw new Error("Redirect without Location header");
+        currentUrl = new URL(location, currentUrl).toString();
+        continue;
+      }
+
+      if (!response.ok) {
+        throw new Error(`Upstream responded ${response.status}`);
+      }
+
+      const contentType = response.headers.get("content-type") ?? "";
+      if (contentType && !/text\/html|application\/xhtml\+xml|text\/plain/i.test(contentType)) {
+        throw new Error("Unexpected content type from map URL");
+      }
+
+      const contentLength = Number(response.headers.get("content-length") ?? "0");
+      if (contentLength > MAX_RESPONSE_BYTES) {
+        throw new Error("Response too large");
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) {
+        const text = await response.text();
+        if (text.length > MAX_RESPONSE_BYTES) throw new Error("Response too large");
+        return { finalUrl: response.url || currentUrl, html: text };
+      }
+
+      const chunks: Uint8Array[] = [];
+      let total = 0;
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (value) {
+          total += value.byteLength;
+          if (total > MAX_RESPONSE_BYTES) {
+            try {
+              await reader.cancel();
+            } catch {
+              /* ignore */
+            }
+            throw new Error("Response too large");
+          }
+          chunks.push(value);
+        }
+      }
+
+      const merged = new Uint8Array(total);
+      let offset = 0;
+      for (const chunk of chunks) {
+        merged.set(chunk, offset);
+        offset += chunk.byteLength;
+      }
+      const html = new TextDecoder("utf-8", { fatal: false }).decode(merged);
+      return { finalUrl: response.url || currentUrl, html };
+    } finally {
+      clearTimeout(timer);
+    }
   }
+
+  throw new Error("Too many redirects");
 }
 
 export async function GET(req: NextRequest) {
@@ -53,16 +124,7 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const response = await fetch(parsed.data.url, {
-      headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
-        "Accept-Language": "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7",
-      },
-      redirect: "follow",
-    });
-
-    const finalUrl = response.url;
-    const html = await response.text();
+    const { finalUrl, html } = await fetchMapHtml(parsed.data.url);
 
     let name = "";
     let category = "";

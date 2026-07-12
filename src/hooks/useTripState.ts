@@ -8,6 +8,7 @@ export function useTripState() {
   const {
     isLoaded,
     syncStatus,
+    tripId,
     itinerary, setItinerary,
     budgetItems, setBudgetItems,
     budgetLimit, setBudgetLimit,
@@ -18,6 +19,7 @@ export function useTripState() {
   return {
     isLoaded,
     syncStatus,
+    tripId,
     itinerary,
     updateItinerary: setItinerary,
     budgetItems,

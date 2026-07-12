@@ -29,14 +29,38 @@
     min-height: 100svh;
     /* Smooth elastic scrolling for iOS */
     -webkit-overflow-scrolling: touch;
-    padding-top: var(--sat);
-    padding-bottom: var(--sab);
+    /*
+      注意：這裡「不」加 padding-top/bottom。
+      viewport 已設 viewportFit=cover，網頁會延伸到瀏海區。
+      top safe area 改由 fixed <nav> 的 .safe-top 自行內縮處理，
+      bottom safe area 由 footer / .thumb-zone 處理。
+      若在 body 加 padding 會推內容但推不動 fixed nav，
+      導致 nav 與 status bar 重疊（框架跑掉）。
+    */
   }
 }
 
 @layer utilities {
   .text-balance {
     text-wrap: balance;
+  }
+
+  /*
+    Safe-area insets 的 utility。
+    Navigation.tsx 已使用 .safe-top，但原本未定義 -> 無效 = nav 被瀏海蓋住。
+    這裡正式定義，讓 fixed 元件能自行從手機凹口 / 系統列內縮。
+  */
+  .safe-top {
+    padding-top: max(var(--sat), 0px);
+  }
+  .safe-bottom {
+    padding-bottom: max(var(--sab), 0px);
+  }
+  .mt-safe-top {
+    margin-top: max(var(--sat), 0px);
+  }
+  .mb-safe-bottom {
+    margin-bottom: max(var(--sab), 0px);
   }
 
   /* Reachability focus for large screens like S26 Ultra */

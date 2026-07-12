@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
-import { Plus, X, Check, ChevronDown, ChevronRight, Sparkles } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Plus, X, Check, ChevronDown, ChevronRight, Sparkles, RotateCcw, Download } from "lucide-react";
 import { useTripState } from "@/hooks/useTripState";
+import { generateShortId } from "@/lib/secure-id";
 
 export interface PackingItem {
   id: string;
@@ -38,8 +39,15 @@ const DEFAULT_CATEGORIES: Record<string, { icon: string; items: string[] }> = {
   },
 };
 
-function generateId() {
-  return Math.random().toString(36).slice(2, 10);
+function createDefaultPackingItems(): PackingItem[] {
+  return Object.entries(DEFAULT_CATEGORIES).flatMap(([category, data]) =>
+    data.items.map((name) => ({
+      id: generateShortId(),
+      name,
+      packed: false,
+      category,
+    })),
+  );
 }
 
 export function PackingList() {
@@ -48,27 +56,20 @@ export function PackingList() {
   const [newItemCategory, setNewItemCategory] = useState("其他");
   const [showAdd, setShowAdd] = useState(false);
   const [expandedCats, setExpandedCats] = useState<Set<string>>(new Set(Object.keys(DEFAULT_CATEGORIES)));
-  const [hasInitialized, setHasInitialized] = useState(false);
+  const [defaultItems] = useState(createDefaultPackingItems);
+  const initializedRef = useRef(false);
 
-  // Initialize defaults if empty
-  const currentList: PackingItem[] = (() => {
-    if (packingList && packingList.length > 0) return packingList;
-    if (!hasInitialized && isLoaded) {
-      const defaults: PackingItem[] = [];
-      for (const [cat, data] of Object.entries(DEFAULT_CATEGORIES)) {
-        for (const item of data.items) {
-          defaults.push({ id: generateId(), name: item, packed: false, category: cat });
-        }
-      }
-      // Defer to avoid state update during render
-      setTimeout(() => {
-        updatePackingList(defaults);
-        setHasInitialized(true);
-      }, 0);
-      return defaults;
-    }
-    return packingList || [];
-  })();
+  useEffect(() => {
+    if (!isLoaded || packingList.length > 0 || initializedRef.current) return;
+    initializedRef.current = true;
+    updatePackingList(defaultItems);
+  }, [defaultItems, isLoaded, packingList.length, updatePackingList]);
+
+  const currentList: PackingItem[] = packingList.length > 0
+    ? packingList
+    : isLoaded
+      ? defaultItems
+      : [];
 
   const categories = Array.from(new Set(currentList.map(i => i.category)));
   const totalItems = currentList.length;
@@ -86,7 +87,7 @@ export function PackingList() {
     if (!newItemName.trim()) return;
     const updated = [
       ...currentList,
-      { id: generateId(), name: newItemName.trim(), packed: false, category: newItemCategory },
+      { id: generateShortId(), name: newItemName.trim(), packed: false, category: newItemCategory },
     ];
     updatePackingList(updated);
     setNewItemName("");
@@ -96,6 +97,43 @@ export function PackingList() {
   const removeItem = (id: string) => {
     const updated = currentList.filter(item => item.id !== id);
     updatePackingList(updated);
+  };
+
+  /** 一鍵取消全部勾選（重打包） */
+  const uncheckAll = () => {
+    if (packedItems === 0) return;
+    updatePackingList(currentList.map((item) => ({ ...item, packed: false })));
+  };
+
+  /** 匯出成純文字（方便貼到 LINE / 備忘錄） */
+  const exportAsText = async () => {
+    const lines: string[] = ["🧳 行李清單", `進度 ${packedItems}/${totalItems}`, ""];
+    for (const cat of categories) {
+      const items = currentList.filter((i) => i.category === cat);
+      lines.push(`【${getCategoryIcon(cat)} ${cat}】`);
+      for (const item of items) {
+        lines.push(`${item.packed ? "☑" : "☐"} ${item.name}`);
+      }
+      lines.push("");
+    }
+    const text = lines.join("\n").trim() + "\n";
+    try {
+      await navigator.clipboard.writeText(text);
+      // 同時提供下載備份
+    } catch {
+      // ignore clipboard failure
+    }
+    try {
+      const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `packing-list-${new Date().toISOString().slice(0, 10)}.txt`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      // ignore download failure
+    }
   };
 
   const toggleCategory = (cat: string) => {
@@ -126,12 +164,12 @@ export function PackingList() {
   }
 
   return (
-    <section id="packing" className="py-6 md:py-20 transition-colors duration-300">
+    <section id="packing" className="py-4 md:py-12 transition-colors duration-300 scroll-mt-28">
       {/* Header */}
-      <div className="text-center mb-10">
+      <div className="text-center mb-6 md:mb-10">
         <div className="inline-block bg-teal-100 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400 px-4 py-1 rounded-full text-xs font-black uppercase tracking-widest mb-4">Packing Checklist</div>
-        <h2 className="text-3xl md:text-5xl font-black mb-4">🧳 行李清單</h2>
-        <p className="text-gray-600 dark:text-gray-400">已打包 {packedItems} / {totalItems} 項物品</p>
+        <h2 className="text-3xl md:text-5xl font-black mb-3">🧳 行李清單</h2>
+        <p className="text-gray-600 dark:text-gray-400 text-sm md:text-base">已打包 {packedItems} / {totalItems} 項物品</p>
       </div>
 
       {/* Progress Bar */}
@@ -153,6 +191,25 @@ export function PackingList() {
             <Sparkles className="w-5 h-5" /> 行李全部打包完成！可以安心出發了！
           </div>
         )}
+        <div className="mt-4 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={uncheckAll}
+            disabled={packedItems === 0}
+            className="inline-flex min-h-11 items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-black border border-gray-200 dark:border-slate-600 text-gray-600 dark:text-gray-300 bg-gray-50 dark:bg-slate-900 active:scale-95 disabled:opacity-40"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+            全部消勾
+          </button>
+          <button
+            type="button"
+            onClick={() => void exportAsText()}
+            className="inline-flex min-h-11 items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-black border border-teal-200 dark:border-teal-800 text-teal-700 dark:text-teal-300 bg-teal-50 dark:bg-teal-900/20 active:scale-95"
+          >
+            <Download className="w-3.5 h-3.5" />
+            匯出文字
+          </button>
+        </div>
       </div>
 
       {/* Category Groups */}
@@ -214,9 +271,11 @@ export function PackingList() {
       {/* Add Item */}
       {showAdd ? (
         <div className="bg-white dark:bg-slate-800 rounded-3xl p-6 shadow-xl border border-gray-100 dark:border-slate-700">
-          <h4 className="font-black text-lg mb-4 text-gray-900 dark:text-white">新增物品</h4>
+          <h3 className="font-black text-lg mb-4 text-gray-900 dark:text-white">新增物品</h3>
           <div className="space-y-3">
+            <label htmlFor="packing-item-name" className="sr-only">物品名稱</label>
             <input
+              id="packing-item-name"
               type="text"
               value={newItemName}
               onChange={e => setNewItemName(e.target.value)}
@@ -225,7 +284,9 @@ export function PackingList() {
               autoFocus
               className="w-full p-4 rounded-2xl border-2 border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 focus:border-primary focus:outline-none transition-all font-bold"
             />
+            <label htmlFor="packing-item-category" className="sr-only">物品分類</label>
             <select
+              id="packing-item-category"
               value={newItemCategory}
               onChange={e => setNewItemCategory(e.target.value)}
               className="w-full p-4 rounded-2xl border-2 border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 focus:border-primary focus:outline-none transition-all font-bold"
@@ -261,9 +322,9 @@ export function PackingList() {
 
       {/* ── Weather-Based Packing Tips ── */}
       <div className="mt-6 bg-gradient-to-r from-yellow-50 to-orange-50 dark:from-slate-800 dark:to-slate-800 rounded-[2rem] p-6 border border-yellow-100 dark:border-slate-700">
-        <h4 className="text-lg font-black mb-4 flex items-center gap-2">
+        <h3 className="text-lg font-black mb-4 flex items-center gap-2">
           🌦️ 根據 9 月東京天氣建議
-        </h4>
+        </h3>
         <div className="flex flex-wrap gap-2 text-sm mb-4">
           <span className="px-3 py-1.5 bg-yellow-100 dark:bg-yellow-900/30 rounded-full font-bold">👕 薄長袖 3-4 件</span>
           <span className="px-3 py-1.5 bg-yellow-100 dark:bg-yellow-900/30 rounded-full font-bold">🧥 薄外套 1 件</span>

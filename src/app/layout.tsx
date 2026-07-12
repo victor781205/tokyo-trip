@@ -3,6 +3,7 @@ import { Noto_Sans_TC, Noto_Serif_TC } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { TripProvider } from "@/context/TripContext";
+import { DialogProvider } from "@/context/DialogContext";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 const notoSansTC = Noto_Sans_TC({
@@ -21,14 +22,14 @@ export const metadata: Metadata = {
   title: "東京自由行 9/1-9/6",
   description: "東京六天五夜行程規劃 - 航班、住宿、交通、景點、美食推薦",
   manifest: "/manifest.json",
-  metadataBase: new URL("https://tokyo-trip.vercel.app"),
+  metadataBase: new URL("https://tokyo-trip-rosy.vercel.app"),
   alternates: {
     canonical: "/",
   },
   openGraph: {
     title: "東京自由行 9/1-9/6 六天五夜行程規劃",
     description: "東京六天五夜行程規劃 - 航班、住宿、交通、景點、美食推薦",
-    url: "https://tokyo-trip.vercel.app",
+    url: "https://tokyo-trip-rosy.vercel.app",
     siteName: "東京自由行",
     locale: "zh_TW",
     type: "website",
@@ -53,7 +54,12 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 1,
   viewportFit: "cover",
-  themeColor: "#e74c3c",
+  // 系統 status bar / splash 配色依 prefers-color-scheme 切換
+  // light = 品牌紅，dark = slate-900（搭配 manifest background_color）
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#e74c3c" },
+    { media: "(prefers-color-scheme: dark)", color: "#0f172a" },
+  ],
 };
 
 export default function RootLayout({
@@ -62,12 +68,14 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="zh-TW" suppressHydrationWarning className="scroll-smooth">
+    <html lang="zh-TW" suppressHydrationWarning data-scroll-behavior="smooth" className="scroll-smooth">
       <body className={`${notoSansTC.variable} ${notoSerifTC.variable} font-sans antialiased bg-gray-50 text-gray-900 dark:bg-slate-900 dark:text-gray-100 transition-colors duration-300`}>
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
           <TripProvider>
             <ErrorBoundary>
-              {children}
+              <DialogProvider>
+                {children}
+              </DialogProvider>
             </ErrorBoundary>
           </TripProvider>
         </ThemeProvider>

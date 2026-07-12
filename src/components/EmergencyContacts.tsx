@@ -1,20 +1,47 @@
 "use client";
 
-import { Phone, Shield, Stethoscope, Building2, Globe, MapPin, AlertTriangle, Heart, Languages, Volume2 } from "lucide-react";
+import { Phone, Shield, Stethoscope, Building2, Globe, MapPin, AlertTriangle, Heart, Languages, Volume2, ExternalLink } from "lucide-react";
 
 const CONTACTS = [
   { icon: Shield, label: "日本報警", number: "110", sub: "警察 (Police)", color: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400" },
   { icon: Stethoscope, label: "救護車・消防", number: "119", sub: "急救 (Ambulance / Fire)", color: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" },
   { icon: Building2, label: "駐日台北代表處", number: "+81-3-3280-7811", sub: "東京事務所 (Taipei Representative Office)", color: "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400" },
   { icon: Globe, label: "JNTO 旅遊熱線", number: "050-3816-2787", sub: "24小時多語言觀光諮詢", color: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" },
-  { icon: Heart, label: "旅遊保障熱線", number: "03-3592-1266", sub: "旅遊糾紛・消費爭議", color: "bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-400" },
+  { icon: Heart, label: "JATA 消費者相談", number: "03-3592-1266", sub: "旅行社糾紛・平日 10:00–17:00", color: "bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-400" },
   { icon: MapPin, label: "台灣桃園機場", number: "+886-3-398-3728", sub: "出發地機場聯繫", color: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400" },
 ];
 
 const HOSPITALS = [
-  { name: "東京警察病院", area: "東京都文京区", phone: "+81-3-3811-1181" },
-  { name: "聖路加國際病院", area: "東京都中央区", phone: "+81-3-3541-5151" },
-  { name: "亀田総合病院", area: "千葉県", phone: "+81-4-7092-2211" },
+  {
+    name: "東京都立墨東病院",
+    area: "墨田區江東橋 4-23-15（錦糸町附近）",
+    phone: "+81-3-3633-6151",
+    note: "JMIP 外國患者認證・英中醫療口譯",
+    languages: "英／中口譯",
+    hours: "急診 24h（先電話）",
+    distanceHint: "錦糸町步行約 10 分",
+    url: "https://www.tmhp.jp/bokutoh/about/information/foreign-patient.html",
+  },
+  {
+    name: "聖路加國際病院",
+    area: "中央區明石町 9-1",
+    phone: "+81-3-3541-5151",
+    note: "國際醫院・出發前可先電話確認科別",
+    languages: "英語為主",
+    hours: "門診平日・急診需確認",
+    distanceHint: "築地／明石町一帶",
+    url: "https://hospital.luke.ac.jp/",
+  },
+  {
+    name: "東京警察病院",
+    area: "中野區中野 4-22-1",
+    phone: "+81-3-5343-5611",
+    note: "官方代表號・非緊急狀況先電話確認",
+    languages: "日語為主",
+    hours: "門診平日・急診先電話",
+    distanceHint: "中野站附近",
+    url: "https://www.keisatsubyoin.or.jp/access/",
+  },
 ];
 
 export function EmergencyContacts() {
@@ -24,7 +51,7 @@ export function EmergencyContacts() {
   };
 
   return (
-    <section id="emergency" className="py-6 md:py-20 transition-colors duration-300">
+    <section id="emergency" className="py-4 md:py-12 transition-colors duration-300 scroll-mt-28">
       {/* Header */}
       <div className="text-center mb-12">
         <div className="inline-block bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 px-4 py-1 rounded-full text-xs font-black uppercase tracking-widest mb-4">Emergency Info</div>
@@ -36,8 +63,8 @@ export function EmergencyContacts() {
       <div className="mb-10 p-5 rounded-2xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 flex items-start gap-4">
         <AlertTriangle className="w-6 h-6 text-amber-500 shrink-0 mt-0.5" />
         <div>
-          <h4 className="font-black text-amber-800 dark:text-amber-300 mb-1">重要提醒</h4>
-          <p className="text-sm text-amber-700 dark:text-amber-400">在海外撥打緊急電話時，請先加上國碼。日本境內直撥即可。若需報警但語言不通，可要求「通訳（翻譯）」服務。</p>
+          <h3 className="font-black text-amber-800 dark:text-amber-300 mb-1">重要提醒</h3>
+          <p className="text-sm text-amber-700 dark:text-amber-400">人在日本時，警察直接撥 110、救護車／消防直接撥 119，不需加日本國碼。若語言不通，可要求「通訳（翻譯）」服務；非緊急醫療請先致電確認是否能立即接診。</p>
         </div>
       </div>
 
@@ -85,20 +112,44 @@ export function EmergencyContacts() {
           {HOSPITALS.map((hospital) => (
             <div key={hospital.name} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-gray-50 dark:bg-slate-900 rounded-2xl">
               <div>
-                <h4 className="font-black text-gray-900 dark:text-white">{hospital.name}</h4>
+                <h3 className="font-black text-gray-900 dark:text-white">{hospital.name}</h3>
                 <p className="text-sm text-gray-500 flex items-center gap-1"><MapPin className="w-3 h-3" />{hospital.area}</p>
+                <p className="text-xs text-emerald-700 dark:text-emerald-400 font-bold mt-1">{hospital.note}</p>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-gray-600 dark:text-gray-300">
+                    🗣 {hospital.languages}
+                  </span>
+                  <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-gray-600 dark:text-gray-300">
+                    ⏱ {hospital.hours}
+                  </span>
+                  <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-gray-600 dark:text-gray-300">
+                    📍 {hospital.distanceHint}
+                  </span>
+                </div>
               </div>
-              <button
-                onClick={() => handleCall(hospital.phone)}
-                aria-label={`撥打 ${hospital.name}：${hospital.phone}`}
-                className="flex items-center gap-2 bg-primary text-white px-5 py-2.5 rounded-xl font-black text-sm active:scale-95 transition-transform"
-              >
-                <Phone className="w-4 h-4" />
-                {hospital.phone}
-              </button>
+              <div className="flex flex-wrap gap-2">
+                <a
+                  href={hospital.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex min-h-11 items-center gap-1.5 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 px-3 py-2.5 rounded-xl font-black text-xs text-gray-600 dark:text-gray-300"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" /> 官方資料
+                </a>
+                <button
+                  onClick={() => handleCall(hospital.phone)}
+                  aria-label={`撥打 ${hospital.name}：${hospital.phone}`}
+                  className="flex min-h-11 items-center gap-2 bg-primary text-white px-5 py-2.5 rounded-xl font-black text-sm active:scale-95 transition-transform"
+                >
+                  <Phone className="w-4 h-4" />
+                  {hospital.phone}
+                </button>
+              </div>
             </div>
           ))}
         </div>
+
+        <p className="mt-5 text-xs text-gray-400 text-right">聯絡資料最後核對：2026-07-10</p>
 
         {/* ── Emergency Japanese Phrases ── */}
         <div className="bg-white dark:bg-slate-800 rounded-3xl p-8 shadow-xl border border-gray-100 dark:border-slate-700 mt-8">
@@ -136,7 +187,7 @@ export function EmergencyContacts() {
                     }
                   }}
                   aria-label={`播放「${phrase.jp}」發音`}
-                  className="p-2.5 sm:p-3 bg-red-100 dark:bg-red-900/30 hover:bg-red-200 dark:hover:bg-red-900/50 rounded-full transition-colors"
+                  className="w-11 h-11 shrink-0 inline-flex items-center justify-center bg-red-100 dark:bg-red-900/30 hover:bg-red-200 dark:hover:bg-red-900/50 rounded-full transition-colors"
                 >
                   <Volume2 className="w-5 h-5 text-red-500" />
                 </button>
