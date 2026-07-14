@@ -1,8 +1,11 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { activitySyncIdFromSource } from "@/lib/activity-identity";
+import { defaultPackingItemId } from "@/lib/packing-defaults";
 import {
   EMPTY_TRIP_SNAPSHOT,
   migrateLegacyTripCache,
   mergeRemoteSnapshot,
+  mergeSnapshotsThreeWay,
   readTripCache,
   tripCacheKey,
   writeTripCache,
@@ -87,7 +90,7 @@ describe("trip-scoped cache", () => {
 
     expect(migrated.snapshot.customFoods[0].name).toBe("只屬於 A");
     expect(migrated.dirtySlices).toEqual(expect.arrayContaining(["customFoods", "budgetLimit"]));
-    expect(JSON.parse(localStorage.getItem(tripCacheKey("trip-a")) || "{}").version).toBe(2);
+    expect(JSON.parse(localStorage.getItem(tripCacheKey("trip-a")) || "{}").version).toBe(3);
     expect(localStorage.getItem("tokyoCustomFoods")).toBeNull();
     expect(localStorage.getItem("tokyoBudgetLimit")).toBeNull();
     expect(localStorage.getItem("tokyoLocalUpdatedAt")).toBeNull();
@@ -127,5 +130,181 @@ describe("trip-scoped cache", () => {
       remoteUpdatedAt: 99,
       dirtySlices: ["customFoods"],
     });
+  });
+
+  it("merges concurrent additions inside the same array slice without losing either device", () => {
+    const base: TripSnapshot = { ...EMPTY_TRIP_SNAPSHOT, budgetItems: [] };
+    const local: TripSnapshot = {
+      ...base,
+      budgetItems: [{ id: 101, syncId: "budget:a", name: "A 車票", amount: 100, category: "交通", date: "" }],
+    };
+    const remote: TripSnapshot = {
+      ...base,
+      budgetItems: [{ id: 202, syncId: "budget:b", name: "B 晚餐", amount: 200, category: "餐飲", date: "" }],
+    };
+
+    const merged = mergeSnapshotsThreeWay(base, local, remote, ["budgetItems"]);
+
+    expect(merged.budgetItems.map((item) => item.name)).toEqual(["A 車票", "B 晚餐"]);
+  });
+
+  it("keeps an edit when the other device is unchanged and preserves a real deletion", () => {
+    const item = { id: "pack-1", name: "護照", packed: false, category: "文件" };
+    const base: TripSnapshot = { ...EMPTY_TRIP_SNAPSHOT, packingList: [item] };
+    const edited = mergeSnapshotsThreeWay(
+      base,
+      { ...base, packingList: [{ ...item, packed: true }] },
+      base,
+      ["packingList"],
+    );
+    const deleted = mergeSnapshotsThreeWay(
+      base,
+      { ...base, packingList: [] },
+      base,
+      ["packingList"],
+    );
+
+    expect(edited.packingList[0].packed).toBe(true);
+    expect(deleted.packingList).toEqual([]);
+  });
+
+  it("converges concurrent same-source schedules to one activity across different days", () => {
+    const sourceId = "food:recommended:ramen:shibuya";
+    const emptyDay = (title: string) => ({ title, date: "9/1", activities: [] });
+    const base: TripSnapshot = {
+      ...EMPTY_TRIP_SNAPSHOT,
+      itinerary: { day1: emptyDay("Day 1"), day3: emptyDay("Day 3") },
+    };
+    const local: TripSnapshot = {
+      ...base,
+      itinerary: {
+        ...base.itinerary,
+        day3: {
+          ...base.itinerary.day3,
+          activities: [{
+            syncId: "legacy-location-id",
+            sourceId,
+            time: "18:00",
+            name: "用餐：拉麵",
+            desc: "澀谷",
+            tag: "美食",
+          }],
+        },
+      },
+    };
+    const remote: TripSnapshot = {
+      ...base,
+      itinerary: {
+        ...base.itinerary,
+        day1: {
+          ...base.itinerary.day1,
+          activities: [{
+            sourceId,
+            time: "12:00",
+            name: "用餐：拉麵",
+            desc: "澀谷",
+            tag: "美食",
+          }],
+        },
+      },
+    };
+
+    const merged = mergeSnapshotsThreeWay(base, local, remote, ["itinerary"]);
+    const reversed = mergeSnapshotsThreeWay(base, remote, local, ["itinerary"]);
+    const placements = Object.entries(merged.itinerary).flatMap(([dayKey, day]) => (
+      day.activities.filter((activity) => activity.sourceId === sourceId).map((activity) => ({ dayKey, activity }))
+    ));
+
+    expect(placements).toHaveLength(1);
+    expect(placements[0]).toMatchObject({
+      dayKey: "day1",
+      activity: { syncId: activitySyncIdFromSource(sourceId), time: "12:00" },
+    });
+    expect(reversed.itinerary).toEqual(merged.itinerary);
+  });
+
+  it("deduplicates concurrent same-day additions that share a sourceId", () => {
+    const sourceId = "food:recommended:sushi:ginza";
+    const base: TripSnapshot = {
+      ...EMPTY_TRIP_SNAPSHOT,
+      itinerary: { day2: { title: "Day 2", date: "9/2", activities: [] } },
+    };
+    const activity = {
+      sourceId,
+      name: "用餐：壽司",
+      desc: "銀座",
+      tag: "美食",
+    };
+    const local: TripSnapshot = {
+      ...base,
+      itinerary: { day2: { ...base.itinerary.day2, activities: [{ ...activity, time: "19:00" }] } },
+    };
+    const remote: TripSnapshot = {
+      ...base,
+      itinerary: { day2: { ...base.itinerary.day2, activities: [{ ...activity, time: "12:00" }] } },
+    };
+
+    const merged = mergeSnapshotsThreeWay(base, local, remote, ["itinerary"]);
+    const reversed = mergeSnapshotsThreeWay(base, remote, local, ["itinerary"]);
+
+    expect(merged.itinerary.day2.activities).toHaveLength(1);
+    expect(merged.itinerary.day2.activities[0]).toMatchObject({
+      sourceId,
+      syncId: activitySyncIdFromSource(sourceId),
+      time: "12:00",
+    });
+    expect(reversed.itinerary).toEqual(merged.itinerary);
+  });
+
+  it("canonicalizes historical default packing ids without collapsing custom items", () => {
+    const passport = { name: "護照", packed: false, category: "證件" };
+    const base: TripSnapshot = {
+      ...EMPTY_TRIP_SNAPSHOT,
+      packingList: [{ id: "old-random-base", ...passport }],
+    };
+    const local: TripSnapshot = {
+      ...base,
+      packingList: [
+        { id: "old-random-local-a", ...passport },
+        { id: "old-random-local-b", ...passport, packed: true },
+        { id: "custom-a", name: "Victor 的自訂物品", packed: false, category: "其他" },
+      ],
+    };
+    const remote: TripSnapshot = {
+      ...base,
+      packingList: [
+        { id: "old-random-remote", ...passport },
+        { id: "custom-b", name: "Victor 的自訂物品", packed: true, category: "其他" },
+      ],
+    };
+
+    const merged = mergeSnapshotsThreeWay(base, local, remote, ["packingList"]);
+    const passports = merged.packingList.filter(
+      (item) => item.category === "證件" && item.name === "護照",
+    );
+
+    expect(passports).toEqual([{
+      id: defaultPackingItemId("證件", "護照"),
+      name: "護照",
+      packed: true,
+      category: "證件",
+    }]);
+    expect(merged.packingList.filter((item) => item.name === "Victor 的自訂物品"))
+      .toEqual(expect.arrayContaining([
+        expect.objectContaining({ id: "custom-a" }),
+        expect.objectContaining({ id: "custom-b" }),
+      ]));
+  });
+
+  it("merges food recommendation states by key", () => {
+    const base: TripSnapshot = { ...EMPTY_TRIP_SNAPSHOT, foodStatuses: {} };
+    const merged = mergeSnapshotsThreeWay(
+      base,
+      { ...base, foodStatuses: { ramen: "wishlist" } },
+      { ...base, foodStatuses: { sushi: "visited" } },
+      ["foodStatuses"],
+    );
+
+    expect(merged.foodStatuses).toEqual({ ramen: "wishlist", sushi: "visited" });
   });
 });

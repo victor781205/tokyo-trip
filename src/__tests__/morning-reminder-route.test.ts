@@ -26,8 +26,16 @@ vi.mock("@/lib/supabase-server", () => ({
 }));
 
 import { GET } from "@/app/api/push/morning-reminder/route";
+import { buildMorningReminderBody } from "@/lib/morning-reminder";
 
 describe("morning reminder cron authentication", () => {
+  it("adds a practical preparation time to the daily summary", () => {
+    expect(buildMorningReminderBody([
+      { time: "08:00", name: "飯店早餐" },
+      { time: "09:30", name: "明治神宮" },
+    ])).toContain("建議 07:30 開始準備");
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     vi.stubEnv("CRON_SECRET", "cron-test-secret");

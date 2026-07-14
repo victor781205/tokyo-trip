@@ -2,7 +2,7 @@
 
 import { useTrip } from "@/context/TripContext";
 
-export type { Activity, DayPlan, Itinerary, BudgetItem, CustomFood, SyncStatus, PackingItem } from "@/context/TripContext";
+export type { Activity, DayPlan, Itinerary, BudgetItem, CustomFood, SyncStatus, PackingItem, FoodStatus } from "@/context/TripContext";
 
 export function useTripState() {
   const {
@@ -13,7 +13,8 @@ export function useTripState() {
     budgetItems, setBudgetItems,
     budgetLimit, setBudgetLimit,
     customFoods, setCustomFoods,
-    packingList, setPackingList
+    packingList, setPackingList,
+    foodStatuses, setFoodStatuses,
   } = useTrip();
 
   return {
@@ -29,6 +30,8 @@ export function useTripState() {
     customFoods,
     updateCustomFoods: setCustomFoods,
     packingList,
-    updatePackingList: setPackingList
+    updatePackingList: setPackingList,
+    foodStatuses,
+    updateFoodStatuses: setFoodStatuses,
   };
 }

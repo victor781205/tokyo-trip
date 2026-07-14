@@ -27,6 +27,20 @@ describe("RouteMap state accuracy", () => {
     expect(screen.getByRole("button", { name: /依行程查詢路線/ })).toBeInTheDocument();
   });
 
+  it("exposes the itinerary route shortcuts as an accessible disclosure", () => {
+    render(<RouteMap />);
+
+    const disclosure = screen.getByRole("button", { name: /依行程查詢路線/ });
+    const panelId = disclosure.getAttribute("aria-controls");
+    expect(disclosure).toHaveAttribute("aria-expanded", "false");
+    expect(panelId).toBeTruthy();
+    expect(document.getElementById(panelId!)).toHaveAttribute("hidden");
+
+    fireEvent.click(disclosure);
+    expect(disclosure).toHaveAttribute("aria-expanded", "true");
+    expect(document.getElementById(panelId!)).not.toHaveAttribute("hidden");
+  });
+
   it("describes Welcome Suica Mobile by official device compatibility", () => {
     render(<RouteMap />);
 

@@ -8,6 +8,8 @@ const weatherResponse = (forecast: TokyoForecastDay[] = [
   { date: "9/1", weather: "100", tempMax: "30", tempMin: "22", pop: "20" },
 ]) => ({ forecast });
 
+const updateItineraryMock = vi.hoisted(() => vi.fn());
+
 vi.mock("@/hooks/useTripState", () => ({
   useTripState: () => ({
     isLoaded: true,
@@ -16,6 +18,7 @@ vi.mock("@/hooks/useTripState", () => ({
     budgetItems: [],
     budgetLimit: 100_000,
     packingList: [],
+    updateItinerary: updateItineraryMock,
   }),
 }));
 
@@ -70,9 +73,37 @@ describe("weather failure states", () => {
 
     render(<WeatherForecast />);
 
-    expect(await screen.findByLabelText("天氣：雪")).toBeInTheDocument();
+    expect(await screen.findByLabelText("天氣：雪")).toHaveAttribute("role", "img");
     expect(screen.getByText("☔ 50%")).toBeInTheDocument();
     expect(screen.getByText(/本週有降雨機率/)).toBeInTheDocument();
+  });
+
+  it("keeps the first three days compact on mobile and exposes the rest with a disclosure", async () => {
+    const forecast = Array.from({ length: 5 }, (_, index) => ({
+      date: `9/${index + 1}`,
+      weather: "100",
+      tempMax: "30",
+      tempMin: "22",
+      pop: "20",
+    }));
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: vi.fn().mockResolvedValue(weatherResponse(forecast)),
+    }));
+
+    render(<WeatherForecast />);
+
+    const disclosure = await screen.findByRole("button", { name: "查看其餘 2 天" });
+    const fourthCard = screen.getByText("9/4").parentElement;
+    expect(disclosure).toHaveAttribute("aria-expanded", "false");
+    expect(disclosure).toHaveAttribute("aria-controls", "weather-forecast-days");
+    expect(fourthCard).toHaveClass("hidden", "sm:flex");
+
+    fireEvent.click(disclosure);
+    expect(disclosure).toHaveAttribute("aria-expanded", "true");
+    expect(disclosure).toHaveTextContent("收起完整預報");
+    expect(fourthCard).not.toHaveClass("hidden");
   });
 
   it("renders the first day's observed high and low instead of empty placeholders", async () => {
@@ -146,5 +177,43 @@ describe("Today Focus push hint", () => {
       hasSubscription: true,
       backendRegistered: true,
     })).toBe("推播已開啟 · 出發日可收提醒");
+  });
+});
+
+describe("Today Focus travel progress", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    updateItineraryMock.mockClear();
+    vi.setSystemTime(new Date("2026-09-02T10:00:00+09:00"));
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: vi.fn().mockResolvedValue(weatherResponse()),
+    }));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it("preserves every default day when the first progress update starts from empty storage", () => {
+    render(<TodayFocus />);
+
+    fireEvent.click(screen.getByRole("button", { name: "標記完成" }));
+
+    const updater = updateItineraryMock.mock.calls[0]?.[0] as ((current: object) => Record<string, unknown>);
+    const next = updater({});
+    expect(Object.keys(next)).toEqual(["day1", "day2", "day3", "day4", "day5", "day6"]);
+    expect(next.day1).toBeDefined();
+    expect(next.day6).toBeDefined();
+    expect(next.day2).toMatchObject({
+      activities: expect.arrayContaining([
+        expect.objectContaining({ name: "明治神宮", status: "done" }),
+      ]),
+    });
+
+    const recovered = updater({ day2: next.day2 });
+    expect(Object.keys(recovered)).toEqual(["day1", "day2", "day3", "day4", "day5", "day6"]);
   });
 });

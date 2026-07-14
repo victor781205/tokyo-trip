@@ -19,6 +19,26 @@
     /* Handle Safe Areas for iPhone 15 Pro Max */
     --sab: env(safe-area-inset-bottom);
     --sat: env(safe-area-inset-top);
+    /*
+      Secondary copy previously relied on Tailwind gray-400 in many screens.
+      That gray is only 2.6:1 on white, so keep one semantic foreground token
+      here instead of fixing dozens of labels independently.
+    */
+    --foreground-muted: #4b5563;
+    --foreground-danger: #b91c1c;
+    --foreground-success: #15803d;
+    --foreground-warning: #c2410c;
+    --foreground-info: #1d4ed8;
+    --focus-ring: #c02f26;
+  }
+
+  .dark {
+    --foreground-muted: #cbd5e1;
+    --foreground-danger: #fca5a5;
+    --foreground-success: #86efac;
+    --foreground-warning: #fdba74;
+    --foreground-info: #93c5fd;
+    --focus-ring: #ff8b80;
   }
 
   html {
@@ -40,9 +60,21 @@
       導致 nav 與 status bar 重疊（框架跑掉）。
     */
   }
+
+  /* Keep section headings visible below the fixed header and sticky anchors. */
+  section[id] {
+    scroll-margin-top: calc(8rem + var(--sat));
+  }
+
 }
 
 @layer utilities {
+  /* A dependable fallback for controls that do not provide their own ring. */
+  :where(a, button, input, select, textarea, summary, [tabindex]):focus-visible:not([class*="focus-visible:ring"]) {
+    outline: 3px solid var(--focus-ring);
+    outline-offset: 3px;
+  }
+
   /*
     The darker brand tokens keep white-on-brand buttons accessible. Text and
     icon utilities need lighter counterparts on slate dark-mode surfaces.
@@ -68,6 +100,40 @@
   }
   .dark .fill-accent {
     fill: #ffb65c;
+  }
+
+  /*
+    System-wide readable secondary text. These selectors intentionally only
+    affect foreground utilities; gray backgrounds and borders keep their
+    original palette. The CSS variable switches to a light value in dark mode.
+  */
+  .text-gray-400,
+  .text-gray-500 {
+    color: var(--foreground-muted);
+  }
+
+  /* Status colors used as normal-size copy must also meet 4.5:1. */
+  .text-red-400,
+  .text-red-500,
+  .text-red-600 {
+    color: var(--foreground-danger);
+  }
+  .text-green-500,
+  .text-green-600 {
+    color: var(--foreground-success);
+  }
+  .text-orange-500,
+  .text-orange-600 {
+    color: var(--foreground-warning);
+  }
+  .text-blue-400,
+  .text-blue-500 {
+    color: var(--foreground-info);
+  }
+
+  /* Opacity made the footer copyright unreadable even with a darker token. */
+  footer .text-gray-400.opacity-60 {
+    opacity: 1;
   }
 
   .text-balance {
@@ -121,6 +187,17 @@
   }
   .dark ::-webkit-scrollbar-thumb {
     background: rgba(255, 255, 255, 0.1);
+  }
+
+  /*
+    On every viewport that still uses the mobile bottom navigation, keep the
+    travel dock above a visible sync toast. Both controls remain reachable at
+    tablet widths (768–1023px) instead of switching layouts too early.
+  */
+  @media (max-width: 1023px) {
+    body:has([data-sync-indicator]) .travel-mode-dock {
+      bottom: calc(10.75rem + var(--sab));
+    }
   }
 
   /* Reduced motion: disable animations for users who prefer it */

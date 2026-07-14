@@ -3,6 +3,10 @@
 import { useState } from "react";
 import { Plus, X, Check, ChevronDown, ChevronRight, Sparkles, RotateCcw, Download } from "lucide-react";
 import { useTripState } from "@/hooks/useTripState";
+import {
+  DEFAULT_PACKING_CATEGORIES,
+  defaultPackingItemId,
+} from "@/lib/packing-defaults";
 import { generateShortId } from "@/lib/secure-id";
 
 export interface PackingItem {
@@ -12,37 +16,12 @@ export interface PackingItem {
   category: string;
 }
 
-const DEFAULT_CATEGORIES: Record<string, { icon: string; items: string[] }> = {
-  "衣物": {
-    icon: "👕",
-    items: ["透氣短袖 ×5", "內衣褲 ×6", "襪子 ×5", "薄外套（冷氣房用）", "睡衣", "泳衣", "帽子", "拖鞋", "運動鞋"],
-  },
-  "證件": {
-    icon: "📄",
-    items: ["護照", "身分證", "機票 (電子)", "飯店訂房確認", "旅遊保險單", "信用卡", "日幣現金"],
-  },
-  "電子用品": {
-    icon: "🔌",
-    items: ["手機", "充電器", "行動電源（最多 2 顆、每顆 ≤100Wh；隨身攜帶）", "耳機", "相機", "三腳轉兩腳轉接頭（需要時）", "USB 線"],
-  },
-  "日用品": {
-    icon: "🧴",
-    items: ["牙刷牙膏", "洗面乳", "防曬乳", "面膜", "衛生紙", "濕紙巾", "雨傘", "水壺"],
-  },
-  "藥品": {
-    icon: "💊",
-    items: ["感冒藥", "腸胃藥", "止痛藥", "OK繃", "防蚊液", "暈車藥", "眼藥水"],
-  },
-  "其他": {
-    icon: "📦",
-    items: ["塑膠袋", "夾鏈袋", "旅行用洗衣精", "摺疊購物袋", "頸枕", "眼罩"],
-  },
-};
+export const DEFAULT_CATEGORIES = DEFAULT_PACKING_CATEGORIES;
 
-function createDefaultPackingItems(): PackingItem[] {
+export function createDefaultPackingItems(): PackingItem[] {
   return Object.entries(DEFAULT_CATEGORIES).flatMap(([category, data]) =>
     data.items.map((name) => ({
-      id: generateShortId(),
+      id: defaultPackingItemId(category, name),
       name,
       packed: false,
       category,
@@ -59,6 +38,9 @@ export function PackingList() {
   const currentList: PackingItem[] = isLoaded ? packingList : [];
 
   const categories = Array.from(new Set(currentList.map(i => i.category)));
+  const missingDefaultItems = Object.entries(DEFAULT_CATEGORIES).flatMap(([category, data]) =>
+    data.items.filter((name) => !currentList.some((item) => item.category === category && item.name === name)),
+  );
   const totalItems = currentList.length;
   const packedItems = currentList.filter(i => i.packed).length;
   const progress = totalItems > 0 ? Math.round((packedItems / totalItems) * 100) : 0;
@@ -87,8 +69,13 @@ export function PackingList() {
   };
 
   const restoreDefaults = () => {
-    updatePackingList(createDefaultPackingItems());
-    setExpandedCats(new Set(Object.keys(DEFAULT_CATEGORIES)));
+    updatePackingList((prev) => {
+      const missing = createDefaultPackingItems().filter(
+        (suggested) => !prev.some((item) => item.category === suggested.category && item.name === suggested.name),
+      );
+      return missing.length > 0 ? [...prev, ...missing] : prev;
+    });
+    setExpandedCats((prev) => new Set([...prev, ...Object.keys(DEFAULT_CATEGORIES)]));
   };
 
   /** 一鍵取消全部勾選（重打包） */
@@ -159,7 +146,7 @@ export function PackingList() {
     <section id="packing" className="py-4 md:py-12 transition-colors duration-300 scroll-mt-28">
       {/* Header */}
       <div className="text-center mb-6 md:mb-10">
-        <div className="inline-block bg-teal-100 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400 px-4 py-1 rounded-full text-xs font-black uppercase tracking-widest mb-4">Packing Checklist</div>
+        <div className="inline-block bg-teal-100 dark:bg-teal-900/30 text-teal-800 dark:text-teal-200 px-4 py-1 rounded-full text-xs font-black uppercase tracking-widest mb-4">Packing Checklist</div>
         <h2 className="text-3xl md:text-5xl font-black mb-3">🧳 行李清單</h2>
         <p className="text-gray-600 dark:text-gray-400 text-sm md:text-base">已打包 {packedItems} / {totalItems} 項物品</p>
       </div>
@@ -168,7 +155,7 @@ export function PackingList() {
       <div className="bg-white dark:bg-slate-800 rounded-3xl p-6 shadow-xl border border-gray-100 dark:border-slate-700 mb-8">
         <div className="flex items-center justify-between mb-3">
           <span className="text-sm font-black text-gray-500">打包進度</span>
-          <span className={`text-2xl font-black ${progress === 100 ? "text-green-500" : "text-primary"}`}>
+          <span className={`text-2xl font-black ${progress === 100 ? "text-green-700 dark:text-green-300" : "text-primary"}`}>
             {progress}%
           </span>
         </div>
@@ -184,14 +171,14 @@ export function PackingList() {
           </div>
         )}
         <div className="mt-4 flex flex-wrap gap-2">
-          {totalItems === 0 && (
+          {missingDefaultItems.length > 0 && (
             <button
               type="button"
               onClick={restoreDefaults}
               className="inline-flex min-h-11 items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-black border border-primary/30 text-primary bg-primary/5 active:scale-95"
             >
               <RotateCcw className="w-3.5 h-3.5" />
-              載入建議清單
+              {totalItems === 0 ? "載入建議清單" : `補上建議清單（${missingDefaultItems.length}）`}
             </button>
           )}
           <button
@@ -216,19 +203,23 @@ export function PackingList() {
 
       {/* Category Groups */}
       <div className="space-y-4 mb-8">
-        {categories.map((cat) => {
+        {categories.map((cat, categoryIndex) => {
           const items = currentList.filter(i => i.category === cat);
           const catPacked = items.filter(i => i.packed).length;
           const isExpanded = expandedCats.has(cat);
+          const panelId = `packing-category-${categoryIndex}`;
 
           return (
             <div key={cat} className="bg-white dark:bg-slate-800 rounded-3xl shadow-lg border border-gray-100 dark:border-slate-700 overflow-hidden">
               <button
+                type="button"
                 onClick={() => toggleCategory(cat)}
+                aria-expanded={isExpanded}
+                aria-controls={panelId}
                 className="w-full flex items-center justify-between p-5 hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors"
               >
                 <div className="flex items-center gap-3">
-                  <span className="text-2xl">{getCategoryIcon(cat)}</span>
+                  <span aria-hidden="true" className="text-2xl">{getCategoryIcon(cat)}</span>
                   <h3 className="font-black text-lg text-gray-900 dark:text-white">{cat}</h3>
                   <span className="text-xs font-bold text-gray-400 bg-gray-100 dark:bg-slate-700 px-2 py-0.5 rounded-full">
                     {catPacked}/{items.length}
@@ -237,8 +228,7 @@ export function PackingList() {
                 {isExpanded ? <ChevronDown className="w-5 h-5 text-gray-400" /> : <ChevronRight className="w-5 h-5 text-gray-400" />}
               </button>
 
-              {isExpanded && (
-                <div className="px-5 pb-5 space-y-2">
+              <div id={panelId} hidden={!isExpanded} className="px-5 pb-5 space-y-2">
                   {items.map((item) => (
                     <div
                       key={item.id}
@@ -263,8 +253,7 @@ export function PackingList() {
                       </button>
                     </div>
                   ))}
-                </div>
-              )}
+              </div>
             </div>
           );
         })}

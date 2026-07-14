@@ -163,10 +163,11 @@ export async function GET(request: Request) {
   }
 
   // ── 回程 JX805（NRT 出發 → TPE 抵達）— 並行查詢兩端即時資料 + 合成 ──
-  // 來源 A：TDX FIDS Arrival/TPE → 提供 TPE 抵達端航廈/登機門/時間 + AcType 機型
+  // 來源 A：TDX FIDS Arrival/TPE → 提供 TPE 抵達端航廈/登機門/時間，
+  // AcType 僅在與旅客已確認的訂位機型一致時標記為 LIVE。
   // 來源 B：AviationStack NRT Departure → 提供 NRT 出發端航廈/登機門/時間/狀態
   // fallback：getStationInfo hardcode 補 NRT/TPE 預設航廈（如 NRT 第 2 航廈）
-  // 機型優先序：TDX AcType → hardcode 預定機型
+  // 機型以本次訂位資料為準，TDX 只驗證是否一致。
   let inbound: Record<string, unknown> | null = null;
   const inboundNumber = inboundFlight.replace(/^[A-Za-z]+/, "");
   const inboundIcao =
@@ -309,7 +310,7 @@ export async function GET(request: Request) {
   }
 
   // ── 合成 inbound 物件（雙端資料）──
-  // 機型來源：TDX Arrival > hardcode 預定機型
+  // 機型內容固定使用本次訂位資料；TDX 一致時僅升級 LIVE 標示。
   const aircraft =
     tdxArr?.aircraftIcao || tdxArr?.aircraftModel
       ? {

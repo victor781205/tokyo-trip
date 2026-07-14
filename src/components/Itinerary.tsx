@@ -1,12 +1,15 @@
 "use client";
 
 import { useState, useRef, useMemo, useCallback } from "react";
-import { Calendar, Check, ChevronLeft, ChevronRight, Pencil, Plus, Trash2, X, Download, Loader2, CalendarPlus, AlertTriangle, MapPin, BarChart3, List, Wallet, UtensilsCrossed } from "lucide-react";
-import { useTripState, Activity } from "@/hooks/useTripState";
+import { Calendar, Check, ChevronLeft, ChevronRight, Pencil, Plus, Trash2, X, Download, Loader2, CalendarPlus, AlertTriangle, MapPin, BarChart3, List, Wallet, UtensilsCrossed, MoreHorizontal } from "lucide-react";
+import { useTripState, type Activity } from "@/hooks/useTripState";
 import { useDialog } from "@/context/DialogContext";
 import { downloadICS } from "@/lib/ics-export";
 import { DEFAULT_ITINERARY } from "@/lib/default-itinerary";
 import { useModalAccessibility } from "@/hooks/useModalAccessibility";
+import { getDateInTimeZone } from "@/lib/trip-dates";
+import { generateShortId } from "@/lib/secure-id";
+import { ensureStableItineraryActivityIds } from "@/lib/trip-cache";
 
 const BUDGET_CATEGORIES: Record<string, { icon: string; label: string }> = {
   food: { icon: "🍜", label: "餐飲" },
@@ -16,6 +19,16 @@ const BUDGET_CATEGORIES: Record<string, { icon: string; label: string }> = {
   hotel: { icon: "🏨", label: "住宿" },
   other: { icon: "💡", label: "其他" },
 };
+
+const BUDGET_SUGGESTED_AMOUNTS: Record<string, number> = {
+  food: 1500,
+  transport: 300,
+  shopping: 3000,
+  ticket: 2000,
+  hotel: 10000,
+  other: 1000,
+};
+const MAX_BUDGET_ITEM_AMOUNT = 999_999_999;
 
 /** 依活動名稱／標籤粗估預算類別 */
 function guessBudgetCategory(act: Activity): string {
@@ -150,12 +163,12 @@ function timeDifferenceMinutes(time1: string, time2: string): number {
 }
 
 export function Itinerary({ onNavigate }: { onNavigate?: (tab: string) => void } = {}) {
-  const { isLoaded, itinerary, updateItinerary, budgetItems, updateBudgetItems } = useTripState();
+  const { isLoaded, itinerary, updateItinerary, updateBudgetItems } = useTripState();
   const { confirm, alert } = useDialog();
   const [activeDayIndex, setActiveDayIndex] = useState(0);
-  const [editingModal, setEditingModal] = useState<{ day: string; index: number } | null>(null);
+  const [editingModal, setEditingModal] = useState<{ day: string; activitySyncId: string | null } | null>(null);
   const [formData, setFormData] = useState<Activity>({ time: "", name: "", desc: "", tag: "" });
-  const [formErrors, setFormErrors] = useState<{ time?: string; name?: string }>({});
+  const [formErrors, setFormErrors] = useState<{ time?: string; name?: string; conflict?: string }>({});
   const [isExporting, setIsExporting] = useState(false);
   const [editingTitleDay, setEditingTitleDay] = useState<string | null>(null);
   const [titleInput, setTitleInput] = useState("");
@@ -165,19 +178,27 @@ export function Itinerary({ onNavigate }: { onNavigate?: (tab: string) => void }
     amount: string;
     category: string;
   } | null>(null);
+  const [budgetError, setBudgetError] = useState("");
   const tabScrollRef = useRef<HTMLDivElement>(null);
   const itineraryRef = useRef<HTMLDivElement>(null);
   const timeInputRef = useRef<HTMLInputElement>(null);
   const nameInputRef = useRef<HTMLInputElement>(null);
+  const budgetAmountInputRef = useRef<HTMLInputElement>(null);
   const closeEditingModal = useCallback(() => {
     setEditingModal(null);
     setFormErrors({});
   }, []);
-  const closeBudgetModal = useCallback(() => setBudgetModal(null), []);
+  const closeBudgetModal = useCallback(() => {
+    setBudgetModal(null);
+    setBudgetError("");
+  }, []);
   const editingDialogRef = useModalAccessibility(Boolean(editingModal), closeEditingModal);
   const budgetDialogRef = useModalAccessibility(Boolean(budgetModal), closeBudgetModal);
 
-  const currentItin = Object.keys(itinerary).length > 0 ? itinerary : DEFAULT_ITINERARY;
+  const currentItin = useMemo(
+    () => ensureStableItineraryActivityIds(Object.keys(itinerary).length > 0 ? itinerary : DEFAULT_ITINERARY),
+    [itinerary],
+  );
   const dayKeys = Object.keys(currentItin);
   const safeActiveDayIndex = Math.min(activeDayIndex, Math.max(dayKeys.length - 1, 0));
   const activeDayKey = dayKeys[safeActiveDayIndex];
@@ -294,20 +315,26 @@ export function Itinerary({ onNavigate }: { onNavigate?: (tab: string) => void }
   };
 
   /** 編輯 / 新增 */
-  const openModal = (day: string, index: number = -1) => {
-    if (index >= 0) {
-      setFormData({ ...currentItin[day].activities[index] });
+  const openModal = (day: string, activity?: Activity) => {
+    if (activity) {
+      setFormData({ ...activity });
     } else {
-      setFormData({ time: "", name: "", desc: "", tag: "" });
+      setFormData({
+        time: "",
+        name: "",
+        desc: "",
+        tag: "",
+        syncId: `activity:${generateShortId()}`,
+      });
     }
     setFormErrors({});
-    setEditingModal({ day, index });
+    setEditingModal({ day, activitySyncId: activity?.syncId ?? null });
   };
 
   const handleSave = () => {
     if (!editingModal) return;
 
-    const errors: { time?: string; name?: string } = {};
+    const errors: { time?: string; name?: string; conflict?: string } = {};
     if (!formData.time) errors.time = "請選擇抵達時間";
     if (!formData.name.trim()) errors.name = "請輸入景點或店名";
     if (errors.time || errors.name) {
@@ -317,19 +344,47 @@ export function Itinerary({ onNavigate }: { onNavigate?: (tab: string) => void }
       return;
     }
 
-    const { day, index } = editingModal;
-    const normalizedFormData = { ...formData, name: formData.name.trim() };
-    const activities = index >= 0
-      ? currentItin[day].activities.map((activity, activityIndex) => activityIndex === index ? normalizedFormData : activity)
-      : [...currentItin[day].activities, normalizedFormData];
-    const newItin = {
-      ...currentItin,
-      [day]: {
-        ...currentItin[day],
-        activities: [...activities].sort((a, b) => a.time.localeCompare(b.time)),
-      },
+    const { day, activitySyncId } = editingModal;
+    const normalizedFormData = {
+      ...formData,
+      name: formData.name.trim(),
+      syncId: formData.syncId || `activity:${generateShortId()}`,
     };
-    updateItinerary(newItin);
+    let didSave = false;
+    updateItinerary((latest) => {
+      const source = ensureStableItineraryActivityIds(
+        Object.keys(latest).length > 0 ? latest : DEFAULT_ITINERARY,
+      );
+      const latestDay = source[day];
+      if (!latestDay) return latest;
+
+      let activities: Activity[];
+      if (activitySyncId) {
+        const targetIndex = latestDay.activities.findIndex((activity) => activity.syncId === activitySyncId);
+        if (targetIndex < 0) return latest;
+        activities = latestDay.activities.map((activity, index) => index === targetIndex
+          ? { ...activity, ...normalizedFormData, syncId: activitySyncId }
+          : activity);
+      } else {
+        activities = [...latestDay.activities, normalizedFormData];
+      }
+      didSave = true;
+      return {
+        ...source,
+        [day]: {
+          ...latestDay,
+          activities: [...activities].sort((a, b) => a.time.localeCompare(b.time)),
+        },
+      };
+    });
+    if (!didSave) {
+      setFormErrors({
+        conflict: activitySyncId
+          ? "這項活動已在其他裝置被移除或移動。為避免覆寫最新行程，本次變更尚未儲存。"
+          : "這個日期已在其他裝置被移除。為避免覆寫最新行程，本次變更尚未儲存。",
+      });
+      return;
+    }
     setEditingModal(null);
     setFormErrors({});
   };
@@ -342,42 +397,70 @@ export function Itinerary({ onNavigate }: { onNavigate?: (tab: string) => void }
     setEditingTitleDay(null);
   };
 
-  const deleteActivity = async (day: string, idx: number) => {
+  const deleteActivity = async (day: string, activity: Activity) => {
+    const activitySyncId = activity.syncId;
+    if (!activitySyncId) {
+      await alert({
+        title: "行程尚未同步完成",
+        message: "這項活動的同步識別尚未建立，請重新整理後再試一次。",
+        accent: "danger",
+      });
+      return;
+    }
     const ok = await confirm({
       title: "刪除行程",
-      message: "確定要刪除這項行程嗎？",
+      message: `確定要刪除「${activity.name}」嗎？`,
       accent: "danger",
       confirmText: "刪除",
     });
     if (!ok) return;
-    const newItin = {
-      ...currentItin,
-      [day]: {
-        ...currentItin[day],
-        activities: currentItin[day].activities.filter((_, activityIndex) => activityIndex !== idx),
-      },
-    };
-    updateItinerary(newItin);
+    let didDelete = false;
+    updateItinerary((latest) => {
+      const source = ensureStableItineraryActivityIds(
+        Object.keys(latest).length > 0 ? latest : DEFAULT_ITINERARY,
+      );
+      const latestDay = source[day];
+      if (!latestDay || !latestDay.activities.some((item) => item.syncId === activitySyncId)) return latest;
+      didDelete = true;
+      return {
+        ...source,
+        [day]: {
+          ...latestDay,
+          activities: latestDay.activities.filter((item) => item.syncId !== activitySyncId),
+        },
+      };
+    });
+    if (!didDelete) {
+      await alert({
+        title: "行程已在其他裝置變更",
+        message: "這項活動已被移除或移到其他日期，未覆寫最新行程。",
+        accent: "danger",
+      });
+    }
   };
 
   /** 開啟「加入預算」彈窗（可填金額／類別） */
   const openBudgetModal = (act: Activity) => {
+    const category = guessBudgetCategory(act);
     setBudgetModal({
       name: act.name,
-      amount: "",
-      category: guessBudgetCategory(act),
+      amount: String(BUDGET_SUGGESTED_AMOUNTS[category] ?? BUDGET_SUGGESTED_AMOUNTS.other),
+      category,
     });
+    setBudgetError("");
   };
 
   const confirmAddToBudget = async () => {
     if (!budgetModal) return;
-    const amountNum = parseInt(budgetModal.amount, 10);
-    if (!budgetModal.name.trim() || isNaN(amountNum) || amountNum < 0) {
-      await alert({
-        title: "請填金額",
-        message: "請輸入 0 以上的日圓金額（可先填 0，之後再改）。",
-        accent: "primary",
-      });
+    const amountNum = Number(budgetModal.amount);
+    if (
+      !budgetModal.name.trim()
+      || !Number.isSafeInteger(amountNum)
+      || amountNum < 1
+      || amountNum > MAX_BUDGET_ITEM_AMOUNT
+    ) {
+      setBudgetError(`請輸入 1～${MAX_BUDGET_ITEM_AMOUNT.toLocaleString()} 的整數日圓金額；0 元不會列入支出。`);
+      budgetAmountInputRef.current?.focus();
       return;
     }
     const newItem = {
@@ -385,10 +468,11 @@ export function Itinerary({ onNavigate }: { onNavigate?: (tab: string) => void }
       name: budgetModal.name.trim(),
       amount: amountNum,
       category: budgetModal.category,
-      date: new Date().toLocaleDateString("zh-TW"),
+      date: getDateInTimeZone(new Date(), "Asia/Tokyo"),
     };
-    updateBudgetItems([newItem, ...budgetItems]);
+    updateBudgetItems((prev) => [newItem, ...prev]);
     setBudgetModal(null);
+    setBudgetError("");
     await alert({
       title: "已加入預算",
       message: `「${newItem.name}」¥${amountNum.toLocaleString()} 已記到預算工具。`,
@@ -430,7 +514,7 @@ export function Itinerary({ onNavigate }: { onNavigate?: (tab: string) => void }
   const renderExportView = () => (
     <div ref={itineraryRef} className="p-8 space-y-8">
       <div className="text-center mb-10 pb-10 border-b border-gray-200 dark:border-gray-700">
-        <h1 className="text-4xl font-black text-primary mb-2">東京自由行</h1>
+        <h2 className="text-4xl font-black text-primary mb-2">東京自由行</h2>
         <p className="text-xl font-bold text-gray-500">2026.09.01 - 09.06</p>
       </div>
       {dayKeys.map((dayKey) => {
@@ -443,8 +527,8 @@ export function Itinerary({ onNavigate }: { onNavigate?: (tab: string) => void }
               <span className="ml-auto text-sm font-black bg-white/20 px-3 py-1 rounded-full">{dayData.date}</span>
             </div>
             <div className="space-y-3 relative before:absolute before:left-[2.5rem] before:inset-y-0 before:w-0.5 before:bg-gray-200 dark:before:bg-slate-700">
-              {dayData.activities.map((act, idx) => (
-                <div key={idx} className="relative flex items-start gap-4 group">
+              {dayData.activities.map((act) => (
+                <div key={act.syncId} className="relative flex items-start gap-4 group">
                   <div className="w-[5rem] text-right text-primary font-black text-lg pt-0.5 shrink-0 relative z-10 bg-transparent px-1">{act.time}</div>
                   <div className="flex-1 bg-gray-50 dark:bg-slate-900/50 p-4 rounded-xl border border-gray-100 dark:border-slate-800">
                     <div className="flex items-center gap-2 mb-1">
@@ -466,10 +550,10 @@ export function Itinerary({ onNavigate }: { onNavigate?: (tab: string) => void }
   return (
     <section id="itinerary" className="py-6 md:py-20 px-4 md:px-6 lg:px-8 max-w-7xl mx-auto transition-colors duration-300">
       {/* ── Header ── */}
-      <div className="text-center mb-10 relative">
-        <div className="inline-block bg-primary/10 text-primary px-4 py-1 rounded-full text-xs font-black uppercase tracking-widest mb-4">Travel Timeline</div>
-        <h2 className="text-3xl md:text-5xl font-black mb-4">📅 行程詳情</h2>
-        <p className="text-gray-600 dark:text-gray-400 mb-6">桌面版可一次瀏覽所有天數，手機版左右滑動切換</p>
+      <div className="text-center mb-6 md:mb-10 relative">
+        <div className="hidden sm:inline-block bg-primary/10 text-primary px-4 py-1 rounded-full text-xs font-black uppercase tracking-widest mb-4">Travel Timeline</div>
+        <h2 className="text-3xl md:text-5xl font-black mb-2 md:mb-4">📅 行程詳情</h2>
+        <p className="text-sm md:text-base text-gray-600 dark:text-gray-400 mb-4 md:mb-6">選擇天數後即可查看、編輯與導航</p>
 
         {/* ── View Mode Toggle + Actions ── */}
         <div className="flex flex-wrap justify-center gap-3">
@@ -491,21 +575,31 @@ export function Itinerary({ onNavigate }: { onNavigate?: (tab: string) => void }
             </button>
           </div>
 
-          <button
-            onClick={handleExport}
-            disabled={isExporting}
-            className="flex items-center justify-center gap-2 bg-gray-900 dark:bg-white text-white dark:text-gray-900 px-6 py-3 rounded-full font-black text-sm shadow-xl hover:scale-105 transition-all disabled:opacity-50"
-          >
-            {isExporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-            {isExporting ? "正在產生圖片..." : "匯出圖片"}
-          </button>
-          <button
-            onClick={() => downloadICS(currentItin)}
-            className="flex items-center justify-center gap-2 bg-primary text-white px-6 py-3 rounded-full font-black text-sm shadow-xl hover:scale-105 transition-all"
-          >
-            <CalendarPlus className="w-4 h-4" />
-            匯出 ICS
-          </button>
+          <details className="relative group text-left">
+            <summary className="min-h-11 cursor-pointer list-none [&::-webkit-details-marker]:hidden inline-flex items-center justify-center gap-2 bg-white dark:bg-slate-800 text-gray-800 dark:text-gray-100 border border-gray-200 dark:border-slate-700 px-4 py-2 rounded-full font-black text-sm shadow-sm hover:border-primary/40 transition-colors">
+              <MoreHorizontal aria-hidden="true" className="w-4 h-4" />
+              更多
+            </summary>
+            <div role="group" aria-label="匯出行程" className="absolute right-0 z-30 mt-2 w-52 space-y-2 rounded-2xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-2 shadow-2xl">
+              <button
+                type="button"
+                onClick={handleExport}
+                disabled={isExporting}
+                className="min-h-11 w-full flex items-center gap-2 bg-gray-900 dark:bg-white text-white dark:text-gray-900 px-4 py-2 rounded-xl font-black text-sm transition-colors disabled:opacity-50"
+              >
+                {isExporting ? <Loader2 aria-hidden="true" className="w-4 h-4 animate-spin" /> : <Download aria-hidden="true" className="w-4 h-4" />}
+                {isExporting ? "正在產生圖片..." : "匯出圖片"}
+              </button>
+              <button
+                type="button"
+                onClick={() => downloadICS(currentItin)}
+                className="min-h-11 w-full flex items-center gap-2 bg-primary text-white px-4 py-2 rounded-xl font-black text-sm transition-colors"
+              >
+                <CalendarPlus aria-hidden="true" className="w-4 h-4" />
+                匯出 ICS
+              </button>
+            </div>
+          </details>
         </div>
       </div>
 
@@ -525,7 +619,7 @@ export function Itinerary({ onNavigate }: { onNavigate?: (tab: string) => void }
               <div className="text-sm text-gray-500 font-bold">移動時間</div>
             </div>
             <div className="bg-gray-50 dark:bg-slate-900 p-6 rounded-2xl text-center">
-              <div className="text-4xl font-black text-green-500 mb-2">{dayKeys.length}</div>
+              <div className="text-4xl font-black text-green-700 dark:text-green-300 mb-2">{dayKeys.length}</div>
               <div className="text-sm text-gray-500 font-bold">天數</div>
             </div>
             <div className="bg-gray-50 dark:bg-slate-900 p-6 rounded-2xl text-center">
@@ -536,7 +630,7 @@ export function Itinerary({ onNavigate }: { onNavigate?: (tab: string) => void }
 
           {/* Activity Type Distribution */}
           <div className="mb-6">
-            <h3 className="text-lg font-black mb-4">活動類型分佈</h3>
+            <h4 className="text-lg font-black mb-4">活動類型分佈</h4>
             <div className="flex flex-wrap gap-3">
               {Object.entries(stats.tagCounts).sort((a, b) => b[1] - a[1]).map(([tag, count]) => (
                 <div key={tag} className={`px-4 py-2 rounded-full font-bold text-sm ${getTagColor(tag)}`}>
@@ -592,7 +686,7 @@ export function Itinerary({ onNavigate }: { onNavigate?: (tab: string) => void }
                     >
                       <span className="text-lg">{emoji}</span>
                       <div className="text-left leading-tight">
-                        <div className="text-[10px] uppercase tracking-widest opacity-70">Day {i + 1}</div>
+                        <div className={`text-[10px] uppercase tracking-widest ${isActive ? "text-white" : "text-gray-600 dark:text-gray-300"}`}>Day {i + 1}</div>
                         <div className="text-xs font-black truncate max-w-[6rem]">{label}</div>
                       </div>
                     </button>
@@ -608,7 +702,7 @@ export function Itinerary({ onNavigate }: { onNavigate?: (tab: string) => void }
               </div>
               <div className="flex-1">
                 <h3 className="text-xl font-black leading-tight">{activeDayData.title}</h3>
-                <p className="text-sm font-bold text-white/70 mt-0.5">{activeDayData.date}・{activeDayData.activities.length} 項行程</p>
+                <p className="text-sm font-bold text-white mt-0.5">{activeDayData.date}・{activeDayData.activities.length} 項行程</p>
               </div>
               <div className="flex items-center gap-1">
                 <button onClick={() => goToDay(safeActiveDayIndex - 1)} aria-label="前一天" disabled={safeActiveDayIndex === 0} className="w-11 h-11 shrink-0 inline-flex items-center justify-center rounded-xl bg-white/20 disabled:opacity-30 transition-all">
@@ -622,8 +716,8 @@ export function Itinerary({ onNavigate }: { onNavigate?: (tab: string) => void }
 
             {/* ── Activities Timeline (mobile) ── */}
             <div className="relative space-y-6 before:absolute before:inset-0 before:left-[2.25rem] before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-gray-200 dark:before:via-slate-700 before:to-transparent animate-in fade-in slide-in-from-right-4 duration-400" key={activeDayKey}>
-              {activeDayData.activities.map((act, idx) => (
-                <div key={idx} className="relative flex items-start gap-6 group">
+              {activeDayData.activities.map((act) => (
+                <div key={act.syncId} className="relative flex items-start gap-6 group">
                   <div className="w-[4.5rem] pr-2 text-right text-primary font-black text-xl pt-0.5 shrink-0 tabular-nums relative z-10 px-1">{act.time}</div>
                   <div className="flex-1 pb-2">
                     <div className="bg-white dark:bg-slate-800 p-5 rounded-[1.5rem] shadow-sm border border-gray-100 dark:border-slate-700 hover:shadow-xl transition-all relative group/card overflow-hidden">
@@ -634,10 +728,10 @@ export function Itinerary({ onNavigate }: { onNavigate?: (tab: string) => void }
                       </div>
                       {act.desc && <p className="text-base text-gray-500 dark:text-gray-400 leading-relaxed mb-4">{act.desc}</p>}
                       <div className="grid grid-cols-2 min-[390px]:grid-cols-4 gap-2 transition-all duration-300">
-                        <button onClick={() => openModal(activeDayKey, idx)} aria-label={`編輯「${act.name}」`} className="w-full min-w-11 h-11 flex items-center justify-center text-primary hover:bg-primary/10 rounded-xl transition-colors active:scale-90"><Pencil className="w-4 h-4" /></button>
+                        <button onClick={() => openModal(activeDayKey, act)} aria-label={`編輯「${act.name}」`} className="w-full min-w-11 h-11 flex items-center justify-center text-primary hover:bg-primary/10 rounded-xl transition-colors active:scale-90"><Pencil className="w-4 h-4" /></button>
                         <button onClick={() => openBudgetModal(act)} aria-label={`將「${act.name}」加入預算`} className="w-full min-w-11 h-11 flex items-center justify-center text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded-xl transition-colors active:scale-90"><Wallet className="w-4 h-4" /></button>
                         <button onClick={() => findNearbyFood(act)} aria-label={`找「${act.name}」附近美食`} className="w-full min-w-11 h-11 flex items-center justify-center text-orange-500 hover:bg-orange-50 dark:hover:bg-orange-900/20 rounded-xl transition-colors active:scale-90"><UtensilsCrossed className="w-4 h-4" /></button>
-                        <button onClick={() => deleteActivity(activeDayKey, idx)} aria-label={`刪除「${act.name}」`} className="w-full min-w-11 h-11 flex items-center justify-center text-red-500 hover:bg-red-50 rounded-xl transition-colors active:scale-90"><Trash2 className="w-4 h-4" /></button>
+                        <button onClick={() => deleteActivity(activeDayKey, act)} aria-label={`刪除「${act.name}」`} className="w-full min-w-11 h-11 flex items-center justify-center text-red-500 hover:bg-red-50 rounded-xl transition-colors active:scale-90"><Trash2 className="w-4 h-4" /></button>
                       </div>
                     </div>
                   </div>
@@ -681,9 +775,9 @@ export function Itinerary({ onNavigate }: { onNavigate?: (tab: string) => void }
                       : "bg-white dark:bg-slate-800 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-slate-700 hover:border-primary/40 hover:shadow-lg"
                       }`}
                   >
-                    <div className={`text-xs font-black uppercase tracking-widest ${isActive ? "text-white/60" : "text-gray-400"}`}>Day {i + 1}</div>
+                    <div className={`text-xs font-black uppercase tracking-widest ${isActive ? "text-white" : "text-gray-400"}`}>Day {i + 1}</div>
                     <div className="font-black text-sm leading-tight line-clamp-1 mt-1" title={dayData.title}>{dayData.title.replace(/^[^\s]+\s+Day\s+\d+\s*[-–—:：]?\s*/, "")}</div>
-                    <div className={`text-xs font-extrabold mt-1 ${isActive ? "text-white/70" : "text-gray-500"}`}>{dayData.date}・{dayData.activities.length} 項</div>
+                    <div className={`text-xs font-extrabold mt-1 ${isActive ? "text-white" : "text-gray-500"}`}>{dayData.date}・{dayData.activities.length} 項</div>
                     {isActive && (
                       <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 w-6 h-6 bg-gradient-to-r from-primary to-accent rotate-45 rounded-sm shadow-lg"></div>
                     )}
@@ -724,12 +818,12 @@ export function Itinerary({ onNavigate }: { onNavigate?: (tab: string) => void }
 
               <div className="relative space-y-4 before:absolute before:inset-0 before:left-[2.5rem] before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-gray-200 dark:before:via-slate-700 before:to-transparent">
                 {activeDayData.activities.map((act, idx) => (
-                  <div key={idx} className="relative flex items-start gap-8 group">
+                  <div key={act.syncId} className="relative flex items-start gap-8 group">
                     <div className="w-[5rem] pr-3 text-right text-primary font-black text-xl pt-0.5 shrink-0 tabular-nums relative z-10 px-1">{act.time}</div>
                     <div className="flex-1 pb-1">
                       {/* Conflict Warning */}
                       {activeConflicts.find(c => c.index === idx) && (
-                        <div className="flex items-center gap-1.5 text-xs text-orange-500 font-bold mb-2 px-3 py-1.5 bg-orange-50 dark:bg-orange-900/20 rounded-lg w-fit">
+                        <div className="flex items-center gap-1.5 text-xs text-orange-800 dark:text-orange-200 font-bold mb-2 px-3 py-1.5 bg-orange-50 dark:bg-orange-900/20 rounded-lg w-fit">
                           <AlertTriangle className="w-3.5 h-3.5" /> {activeConflicts.find(c => c.index === idx)?.message}
                         </div>
                       )}
@@ -741,10 +835,10 @@ export function Itinerary({ onNavigate }: { onNavigate?: (tab: string) => void }
                         </div>
                         {act.desc && <p className="text-sm text-gray-500 dark:text-gray-400 leading-relaxed">{act.desc}</p>}
                         <div className="flex gap-1 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 transition-all duration-300 mt-2">
-                          <button onClick={() => openModal(activeDayKey, idx)} aria-label={`編輯「${act.name}」`} className="w-11 h-11 shrink-0 flex items-center justify-center text-primary hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded-xl transition-colors active:scale-90"><Pencil className="w-3.5 h-3.5" /></button>
+                          <button onClick={() => openModal(activeDayKey, act)} aria-label={`編輯「${act.name}」`} className="w-11 h-11 shrink-0 flex items-center justify-center text-primary hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded-xl transition-colors active:scale-90"><Pencil className="w-3.5 h-3.5" /></button>
                           <button onClick={() => openBudgetModal(act)} aria-label={`將「${act.name}」加入預算`} className="w-11 h-11 shrink-0 flex items-center justify-center text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 rounded-xl transition-colors active:scale-90"><Wallet className="w-3.5 h-3.5" /></button>
                           <button onClick={() => findNearbyFood(act)} aria-label={`找「${act.name}」附近美食`} className="w-11 h-11 shrink-0 flex items-center justify-center text-orange-500 hover:bg-orange-50 dark:hover:bg-orange-900/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 rounded-xl transition-colors active:scale-90"><UtensilsCrossed className="w-3.5 h-3.5" /></button>
-                          <button onClick={() => deleteActivity(activeDayKey, idx)} aria-label={`刪除「${act.name}」`} className="w-11 h-11 shrink-0 flex items-center justify-center text-red-500 hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 rounded-xl transition-colors active:scale-90"><Trash2 className="w-3.5 h-3.5" /></button>
+                          <button onClick={() => deleteActivity(activeDayKey, act)} aria-label={`刪除「${act.name}」`} className="w-11 h-11 shrink-0 flex items-center justify-center text-red-500 hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 rounded-xl transition-colors active:scale-90"><Trash2 className="w-3.5 h-3.5" /></button>
                         </div>
                       </div>
                     </div>
@@ -775,13 +869,14 @@ export function Itinerary({ onNavigate }: { onNavigate?: (tab: string) => void }
             role="dialog"
             aria-modal="true"
             aria-labelledby="itinerary-edit-title"
+            aria-describedby={formErrors.conflict ? "itinerary-edit-conflict" : undefined}
             tabIndex={-1}
             className="bg-white dark:bg-slate-800 w-full max-w-lg max-h-[calc(100dvh-1.5rem-var(--sat)-var(--sab))] sm:max-h-[calc(100dvh-2rem-var(--sat)-var(--sab))] rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 slide-in-from-bottom-10 duration-300 outline-none"
           >
             <div className="p-6 md:p-8 bg-gradient-to-r from-primary to-accent text-white flex justify-between items-center shrink-0">
               <div className="flex items-center gap-3">
                 <div className="bg-white/20 p-2 rounded-xl"><Calendar className="w-5 h-5" /></div>
-                <h3 id="itinerary-edit-title" className="text-2xl font-black">{editingModal.index >= 0 ? "編輯計畫" : "新增計畫"}</h3>
+                <h3 id="itinerary-edit-title" className="text-2xl font-black">{editingModal.activitySyncId ? "編輯計畫" : "新增計畫"}</h3>
               </div>
               <button onClick={closeEditingModal} data-autofocus aria-label="關閉行程編輯" className="w-11 h-11 inline-flex items-center justify-center hover:bg-white/20 rounded-full transition-colors">
                 <X className="w-6 h-6" />
@@ -796,6 +891,11 @@ export function Itinerary({ onNavigate }: { onNavigate?: (tab: string) => void }
               }}
               className="p-6 md:p-10 space-y-6 overflow-y-auto overscroll-contain"
             >
+              {formErrors.conflict && (
+                <div id="itinerary-edit-conflict" role="alert" className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm font-black leading-relaxed text-amber-950 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-100">
+                  {formErrors.conflict}
+                </div>
+              )}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <label htmlFor="itinerary-time" className="text-[10px] sm:text-xs font-black text-gray-400 uppercase tracking-widest ml-1">抵達時間 <span aria-hidden="true">*</span></label>
@@ -908,18 +1008,28 @@ export function Itinerary({ onNavigate }: { onNavigate?: (tab: string) => void }
                 />
               </div>
               <div className="space-y-2">
-                <label htmlFor="itinerary-budget-amount" className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">金額（日圓 ¥）</label>
+                <label htmlFor="itinerary-budget-amount" className="text-[10px] font-black text-gray-600 dark:text-gray-300 uppercase tracking-widest ml-1">金額（日圓 ¥，最低 ¥1）</label>
                 <input
+                  ref={budgetAmountInputRef}
                   id="itinerary-budget-amount"
                   type="number"
                   inputMode="numeric"
-                  min={0}
+                  min={1}
+                  max={MAX_BUDGET_ITEM_AMOUNT}
+                  step={1}
                   placeholder="例如 1200"
                   value={budgetModal.amount}
-                  onChange={(e) => setBudgetModal({ ...budgetModal, amount: e.target.value })}
+                  onChange={(e) => {
+                    setBudgetModal({ ...budgetModal, amount: e.target.value });
+                    setBudgetError("");
+                  }}
+                  aria-invalid={Boolean(budgetError)}
+                  aria-describedby={budgetError ? "itinerary-budget-error" : "itinerary-budget-hint"}
                   className="w-full p-4 rounded-2xl border-2 border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 focus:border-emerald-500 focus:outline-none transition-all font-black text-xl tabular-nums"
                   autoFocus
                 />
+                <p id="itinerary-budget-hint" className="text-xs font-bold text-gray-600 dark:text-gray-300">已依活動類別帶入建議金額，可按實際費用修改。</p>
+                {budgetError && <p id="itinerary-budget-error" role="alert" className="text-sm font-black text-red-700 dark:text-red-300">{budgetError}</p>}
               </div>
               <div className="space-y-2">
                 <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">類別</label>
@@ -928,7 +1038,17 @@ export function Itinerary({ onNavigate }: { onNavigate?: (tab: string) => void }
                     <button
                       key={key}
                       type="button"
-                      onClick={() => setBudgetModal({ ...budgetModal, category: key })}
+                      onClick={() => {
+                        const oldSuggestion = BUDGET_SUGGESTED_AMOUNTS[budgetModal.category];
+                        setBudgetModal({
+                          ...budgetModal,
+                          category: key,
+                          amount: Number(budgetModal.amount) === oldSuggestion
+                            ? String(BUDGET_SUGGESTED_AMOUNTS[key] ?? BUDGET_SUGGESTED_AMOUNTS.other)
+                            : budgetModal.amount,
+                        });
+                        setBudgetError("");
+                      }}
                       className={`p-3 rounded-2xl border-2 text-sm font-bold transition-all ${budgetModal.category === key
                         ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300"
                         : "border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 text-gray-500"

@@ -99,9 +99,9 @@ export function getAircraftInfo(icao: string | null | undefined): AircraftInfo |
 }
 
 /**
- * 預定機型表 — 以星宇航空官網公佈為準。
- * 僅作為 hardcode 基準值，去程會被 TDX FIDS 即時 AcType 覆蓋（若有）。
- * 回程因 AviationStack 免費方案不提供機型欄位，故全程使用此 hardcode。
+ * 本次訂位的預定機型表。
+ * JX800 / JX805 是旅客已確認的訂位資料，不讓第三方 FIDS 的錯誤或舊
+ * AcType 靜默覆蓋；當日實際調度仍以航空公司公告為準。
  */
 export const SCHEDULED_AIRCRAFT: Record<string, string> = {
   JX800: "A35K", // 本次去程 JX800（TPE→NRT）預定機型：A350-1000
@@ -130,18 +130,25 @@ export function resolveAircraft(
   liveIcao: string | null | undefined,
   flight: string
 ): { icao: string; modelZh: string; modelEn: string; tags: string[]; live: boolean } | null {
-  // 優先採用 live 資料（去程 TDX），但僅當 mapping 命中時才採用
+  const scheduled = getScheduledAircraft(flight);
+
+  // 對已有訂位機型的航班，live feed 只有在型號一致時才可把標示升級為
+  // LIVE；不同型號可能是 FIDS 舊資料，不能再次把 JX800/JX805 顯示錯。
+  if (scheduled) {
+    const liveCode = liveIcao?.trim().toUpperCase();
+    return {
+      ...scheduled,
+      live: Boolean(liveCode && AIRCRAFT_MAP[liveCode]?.icao === scheduled.icao),
+    };
+  }
+
+  // 沒有訂位基準的其他航班，才直接採用可識別的即時資料。
   if (liveIcao && liveIcao.trim()) {
     const code = liveIcao.trim().toUpperCase();
     const info = AIRCRAFT_MAP[code];
     if (info) {
       return { ...info, live: true };
     }
-  }
-  // 回 fallback：hardcode 預定機型
-  const fallback = getScheduledAircraft(flight);
-  if (fallback) {
-    return { ...fallback, live: false };
   }
   return null;
 }

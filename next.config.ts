@@ -17,6 +17,40 @@ const withPWA = withPWAInit({
   },
   runtimeCaching: [
     {
+      // The app is a client-side tab shell. Cache the verified root document
+      // once and ignore the ?tab=... search parameter so every category can
+      // cold-start offline after the user updates the offline travel pack.
+      urlPattern: /^https?:\/\/[^/]+\/(?:\?[^#]*)?$/i,
+      handler: "NetworkFirst",
+      options: {
+        // Keep in sync with OFFLINE_NAVIGATION_CACHE_NAME in offline-pack.ts.
+        cacheName: "tokyo-navigation-pages",
+        matchOptions: { ignoreSearch: true },
+        expiration: { maxEntries: 4, maxAgeSeconds: 60 * 60 * 24 * 30 },
+        networkTimeoutSeconds: 5,
+      },
+    },
+    {
+      // 旅行中優先取即時資料；斷線時回傳上次成功的天氣，供離線旅行包使用。
+      urlPattern: /^https?:\/\/[^/]+\/api\/weather(?:\?.*)?$/i,
+      handler: "NetworkFirst",
+      options: {
+        cacheName: "tokyo-weather-api",
+        expiration: { maxEntries: 10, maxAgeSeconds: 60 * 60 * 12 },
+        networkTimeoutSeconds: 8,
+      },
+    },
+    {
+      // 航班頁保留最後成功結果，但 UI 仍標示資料時間與是否為 LIVE。
+      urlPattern: /^https?:\/\/[^/]+\/api\/flight-info(?:\?.*)?$/i,
+      handler: "NetworkFirst",
+      options: {
+        cacheName: "tokyo-flight-api",
+        expiration: { maxEntries: 20, maxAgeSeconds: 60 * 60 * 24 },
+        networkTimeoutSeconds: 8,
+      },
+    },
+    {
       // open.er-api.com 是 currency/route.ts 用的匯率 API；offline 時 SWR 給上次快取
       urlPattern: /^https:\/\/open\.er-api\.com\/.*/i,
       handler: "StaleWhileRevalidate",
@@ -32,14 +66,6 @@ const withPWA = withPWAInit({
         cacheName: "transport-api",
         expiration: { maxEntries: 30, maxAgeSeconds: 60 * 10 },
         networkTimeoutSeconds: 10,
-      },
-    },
-    {
-      urlPattern: /^https:\/\/.*\.tile\.openstreetmap\.org\/.*/i,
-      handler: "CacheFirst",
-      options: {
-        cacheName: "map-tiles",
-        expiration: { maxEntries: 200, maxAgeSeconds: 60 * 60 * 24 * 7 },
       },
     },
     {

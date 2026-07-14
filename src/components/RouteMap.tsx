@@ -219,7 +219,10 @@ export function RouteMap() {
                         {itineraryPlaces.length > 0 && (
                             <div className="mt-6 pt-6 border-t border-gray-100 dark:border-slate-700">
                                 <button
+                                    type="button"
                                     onClick={() => setShowItineraryRoutes(!showItineraryRoutes)}
+                                    aria-expanded={showItineraryRoutes}
+                                    aria-controls="itinerary-route-shortcuts"
                                     className="w-full flex items-center justify-between p-3 bg-gray-50 dark:bg-slate-900 rounded-2xl hover:bg-primary/5 transition-all"
                                 >
                                     <span className="flex items-center gap-2 font-black text-sm">
@@ -228,8 +231,11 @@ export function RouteMap() {
                                     <span className="text-xs text-gray-400">{showItineraryRoutes ? "收起" : "展開"}</span>
                                 </button>
 
-                                {showItineraryRoutes && (
-                                    <div className="mt-4 space-y-3 animate-in fade-in slide-in-from-top-2 duration-300">
+                                <div
+                                    id="itinerary-route-shortcuts"
+                                    hidden={!showItineraryRoutes}
+                                    className="mt-4 space-y-3 animate-in fade-in slide-in-from-top-2 duration-300"
+                                >
                                         {itineraryPlaces.map(day => (
                                             <div key={day.dayKey} className="bg-gray-50 dark:bg-slate-900 rounded-2xl p-3">
                                                 <div className="text-xs font-black text-primary mb-2">{day.title}</div>
@@ -246,8 +252,7 @@ export function RouteMap() {
                                                 </div>
                                             </div>
                                         ))}
-                                    </div>
-                                )}
+                                </div>
                             </div>
                         )}
                     </div>
@@ -275,11 +280,11 @@ export function RouteMap() {
                             <div className="p-6 md:p-8 bg-gray-50 dark:bg-slate-900 border-t border-gray-100 dark:border-slate-800 shrink-0">
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
                                     <div className="flex items-start gap-4">
-                                        <div className="bg-orange-500/10 p-3 rounded-2xl text-orange-500 shrink-0">
+                                        <div className="bg-orange-500/10 p-3 rounded-2xl text-orange-700 dark:text-orange-300 shrink-0">
                                             <Wallet className="w-6 h-6" />
                                         </div>
                                         <div>
-                                            <h5 className="font-black text-base mb-1 text-orange-600 uppercase tracking-widest">車資預估</h5>
+                                            <h3 className="font-black text-base mb-1 text-orange-700 dark:text-orange-300 uppercase tracking-widest">車資預估</h3>
                                             <p className="text-sm text-gray-500 leading-relaxed font-bold">
                                                 {(() => {
                                                     if (!hasHotelFareBasis) {
@@ -292,7 +297,7 @@ export function RouteMap() {
                                                     return <>一般電車單程約 <span className="text-primary font-black">¥180 ~ ¥430</span>，實際票價依路線而定</>;
                                                 })()}
                                                 <br />
-                                                <span className="text-xs opacity-70">從 {submittedRoute.origin} 出發，使用 Suica/PASMO 搭乘電車</span>
+                                                <span className="text-xs text-gray-600 dark:text-gray-300">從 {submittedRoute.origin} 出發，使用 Suica/PASMO 搭乘電車</span>
                                             </p>
                                         </div>
                                     </div>
@@ -323,9 +328,9 @@ export function RouteMap() {
                             {[
                                 { from: "錦糸町", to: "澀谷", fare: "約 ¥260（Metro）", color: "text-blue-600" },
                                 { from: "錦糸町", to: "新宿", fare: "約 ¥230~260", color: "text-blue-600" },
-                                { from: "錦糸町", to: "淺草", fare: "約 ¥210~300", color: "text-green-600" },
-                                { from: "淺草", to: "晴空塔", fare: "約 ¥180~220", color: "text-green-600" },
-                                { from: "押上", to: "淺草", fare: "約 ¥180", color: "text-green-600" },
+                                { from: "錦糸町", to: "淺草", fare: "約 ¥210~300", color: "text-green-700 dark:text-green-300" },
+                                { from: "淺草", to: "晴空塔", fare: "約 ¥180~220", color: "text-green-700 dark:text-green-300" },
+                                { from: "押上", to: "淺草", fare: "約 ¥180", color: "text-green-700 dark:text-green-300" },
                             ].map((f, i) => (
                                 <div key={i} className="bg-white dark:bg-slate-900 rounded-xl p-3 text-center shadow-sm">
                                     <div className="text-xs text-gray-400 font-bold mb-1">{f.from} → {f.to}</div>
@@ -359,19 +364,19 @@ export function RouteMap() {
                             <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 rounded-2xl p-5">
                                 <div className="flex items-center gap-3 mb-3">
                                     <span className="text-2xl">💳</span>
-                                    <h3 className="font-black text-lg text-blue-600 dark:text-blue-400">Suica（推薦首都圈）</h3>
+                                    <h4 className="font-black text-lg text-blue-700 dark:text-blue-300">Suica（推薦首都圈）</h4>
                                 </div>
                                 <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed mb-2">
                                     可用於支援交通 IC 的東京 Metro、都營地鐵、JR 東日本路線，以及便利商店、自動販賣機
                                 </p>
-                                <p className="text-xs font-bold text-blue-600 dark:text-blue-400 bg-white/60 dark:bg-transparent px-2 py-1 rounded-lg inline-block">
+                                <p className="text-xs font-bold text-blue-700 dark:text-blue-300 bg-white/60 dark:bg-transparent px-2 py-1 rounded-lg inline-block">
                                     💡 建議首次儲值 ¥5,000
                                 </p>
                             </div>
                             <div className="bg-green-50 dark:bg-green-900/20 border border-green-100 dark:border-green-800 rounded-2xl p-5">
                                 <div className="flex items-center gap-3 mb-3">
                                     <span className="text-2xl">📱</span>
-                                    <h3 className="font-black text-lg text-green-600 dark:text-green-400">手機 Suica（裝置有限制）</h3>
+                                    <h4 className="font-black text-lg text-green-800 dark:text-green-200">手機 Suica（裝置有限制）</h4>
                                 </div>
                                 <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed mb-2">
                                     Welcome Suica Mobile 官方服務支援 Apple Pay 相容 iPhone，並以 Apple Pay 信用卡手動加值。
@@ -398,7 +403,7 @@ export function RouteMap() {
                             <Info className="w-6 h-6 text-blue-500" />
                             <h3 className="text-xl font-black text-blue-600">使用提示</h3>
                         </div>
-                        <ul className="text-sm text-blue-500/80 space-y-2 font-bold leading-relaxed">
+                        <ul className="text-sm text-blue-800 dark:text-blue-200 space-y-2 font-bold leading-relaxed">
                             <li>• 輸入起點與目的地即可在頁面內預覽路線規劃</li>
                             <li>• 點擊快速標籤可預覽常用景點車資</li>
                             <li>• 展開「依行程查詢路線」可快速查看各景點交通</li>

@@ -7,6 +7,7 @@ import { OfflineIndicator } from "@/components/OfflineIndicator";
 import { PushSubscriptionPrompt } from "@/components/PushSubscriptionPrompt";
 import { SectionAnchors } from "@/components/SectionAnchors";
 import { TodayFocus } from "@/components/TodayFocus";
+import { TravelModeDock } from "@/components/TravelModeDock";
 import { useTrip } from "@/context/TripContext";
 
 const VALID_TABS = new Set([
@@ -95,6 +96,12 @@ const EmergencyContacts = lazyNamed(() =>
 const PackingList = lazyNamed(() =>
   import("@/components/PackingList").then((m) => m.PackingList),
 );
+const ReservationChecklist = lazyNamed(() =>
+  import("@/components/ReservationChecklist").then((m) => m.ReservationChecklist),
+);
+const TravelToolkit = lazyNamed(() =>
+  import("@/components/TravelToolkit").then((m) => m.TravelToolkit),
+);
 const JapanesePhrases = lazyNamed(() =>
   import("@/components/JapanesePhrases").then((m) => m.JapanesePhrases),
 );
@@ -180,10 +187,14 @@ function HomeContent() {
             <SectionAnchors
               items={[
                 { id: "weather", label: "天氣", emoji: "🌤️" },
+                { id: "reservations", label: "預約", emoji: "🎟️" },
+                { id: "travel-kit", label: "離線與備案", emoji: "🛡️" },
                 { id: "packing", label: "行李", emoji: "🧳" },
               ]}
             />
             <WeatherForecast />
+            <ReservationChecklist />
+            <TravelToolkit />
             <div className="mt-2">
               <PackingList />
             </div>
@@ -250,8 +261,9 @@ function HomeContent() {
   };
 
   return (
-    <main className="flex flex-col min-h-dvh pt-[calc(4rem+var(--sat))] transition-all duration-500">
+    <main className="flex flex-col min-h-dvh pt-[calc(4rem+var(--sat))] pb-[calc(4.25rem+var(--sab))] lg:pb-0 transition-all duration-500">
       <Navigation activeTab={activeTab} setActiveTab={handleSetActiveTab} />
+      <TravelModeDock onNavigate={handleSetActiveTab} />
 
       <div
         ref={contentRef}

@@ -1,9 +1,11 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
-import { Loader2, MapPin, Navigation, Plus, Search, Trash2, Utensils, Map, List, Clock, Footprints, Filter, Edit3 } from "lucide-react";
-import { useTripState } from "@/hooks/useTripState";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { Loader2, MapPin, Navigation, Plus, Search, Trash2, Utensils, Map, List, Clock, Footprints, Filter, Edit3, Heart, CalendarPlus, CheckCircle2, X } from "lucide-react";
+import { useTripState, type Activity, type CustomFood } from "@/hooks/useTripState";
 import { useDialog } from "@/context/DialogContext";
+import { activitySyncIdFromSource } from "@/lib/activity-identity";
+import { DEFAULT_ITINERARY } from "@/lib/default-itinerary";
 import {
     GoogleMapsLoadError,
     loadGoogleMaps,
@@ -23,6 +25,42 @@ type FoodItem = {
     lng: number;
     officialUrl?: string;
 };
+
+function foodStatusKey(item: Pick<FoodItem, "name" | "loc">) {
+    return `recommended:${encodeURIComponent(item.name.trim())}:${encodeURIComponent(item.loc.trim())}`;
+}
+
+function customFoodStatusKey(food: Pick<CustomFood, "id" | "syncId">) {
+    const identity = food.syncId || String(food.id);
+    return `custom:${encodeURIComponent(identity)}`;
+}
+
+function legacyCustomFoodStatusKey(id: number) {
+    return `custom:${id}`;
+}
+
+function foodSourceId(statusKey: string) {
+    return `food:${statusKey}`;
+}
+
+function scheduleDayLabel(dayKey: string) {
+    return `D${dayKey.replace(/^day/, "")}`;
+}
+
+function isScheduledFoodActivity(activity: Activity, item: FoodItem, statusKey: string) {
+    if (activity.sourceId) return activity.sourceId === foodSourceId(statusKey);
+    // Backward compatibility for meals scheduled before sourceId existed.
+    // All fields must match so a same-name shop or a hand-written activity is not removed.
+    return activity.name === `用餐：${item.name}`
+        && activity.tag === "美食"
+        && activity.desc === `${item.loc} · ${item.desc}`;
+}
+
+function matchesFoodSearch(item: FoodItem, query: string) {
+    const normalized = query.trim().toLocaleLowerCase("zh-TW");
+    if (!normalized) return true;
+    return `${item.name} ${item.loc} ${item.desc}`.toLocaleLowerCase("zh-TW").includes(normalized);
+}
 
 const FOOD_CATEGORIES = [
     { id: "ramen", label: "拉麵", icon: "🍜" },
@@ -216,7 +254,15 @@ function createInfoWindowNode(opts: {
 }
 
 export function Food() {
-    const { isLoaded, customFoods, updateCustomFoods } = useTripState();
+    const {
+        isLoaded,
+        customFoods,
+        updateCustomFoods,
+        itinerary = {},
+        updateItinerary,
+        foodStatuses = {},
+        updateFoodStatuses,
+    } = useTripState();
     const { confirm, alert: showAlert } = useDialog();
     const [initialFocus] = useState(() => {
         if (typeof window === "undefined") return null;
@@ -231,6 +277,9 @@ export function Food() {
     const [activeDistrict, setActiveDistrict] = useState(
         () => initialFocus?.district && initialFocus.district !== "all" ? initialFocus.district : "all",
     );
+    // 行程帶入的 q 是來源活動名稱（僅供提示），不應當成餐廳搜尋字串，
+    // 否則「晴空塔」等活動會把附近餐廳全部過濾掉。
+    const [searchQuery, setSearchQuery] = useState("");
     const [focusHint, setFocusHint] = useState<string | null>(() => {
         if (initialFocus?.district && initialFocus.district !== "all") {
             return initialFocus.q
@@ -255,6 +304,12 @@ export function Food() {
     const [customEmoji, setCustomEmoji] = useState("🍔");
     const [customLabel, setCustomLabel] = useState("");
     const [editingId, setEditingId] = useState<number | null>(null);
+    const [scheduleTarget, setScheduleTarget] = useState<{ item: FoodItem; statusKey: string; legacyStatusKey?: string } | null>(null);
+    const [scheduleDay, setScheduleDay] = useState("day1");
+    const [scheduleTime, setScheduleTime] = useState("12:00");
+    const scheduleSelectRef = useRef<HTMLSelectElement>(null);
+    const scheduleDialogRef = useRef<HTMLDivElement>(null);
+    const scheduleTriggerRef = useRef<HTMLElement | null>(null);
 
     // ── 地圖相關狀態 ──
     const [showMap, setShowMap] = useState(false);
@@ -267,6 +322,135 @@ export function Food() {
     const googleMapRef = useRef<google.maps.Map | null>(null);
     const markersRef = useRef<google.maps.marker.AdvancedMarkerElement[]>([]);
     const infoWindowRef = useRef<google.maps.InfoWindow | null>(null);
+
+    const itinerarySource = useMemo(
+        () => Object.keys(itinerary).length > 0 ? itinerary : DEFAULT_ITINERARY,
+        [itinerary],
+    );
+
+    const getPlannedFoodDays = useCallback((item: FoodItem, statusKey: string) => (
+        Object.entries(itinerarySource)
+            .filter(([, day]) => day.activities.some(
+                (activity) => isScheduledFoodActivity(activity, item, statusKey),
+            ))
+            .map(([dayKey]) => dayKey)
+            .sort((left, right) => left.localeCompare(right, "en", { numeric: true }))
+    ), [itinerarySource]);
+
+    useEffect(() => {
+        if (!scheduleTarget) return;
+        const trigger = scheduleTriggerRef.current;
+        const originalOverflow = document.body.style.overflow;
+        document.body.style.overflow = "hidden";
+        scheduleSelectRef.current?.focus();
+        const handleDialogKeyDown = (event: KeyboardEvent) => {
+            if (event.key === "Escape") {
+                event.preventDefault();
+                setScheduleTarget(null);
+                return;
+            }
+            if (event.key !== "Tab" || !scheduleDialogRef.current) return;
+            const focusable = Array.from(scheduleDialogRef.current.querySelectorAll<HTMLElement>(
+                'button:not([disabled]), input:not([disabled]), select:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])',
+            )).filter((element) => !element.hasAttribute("hidden"));
+            if (focusable.length === 0) {
+                event.preventDefault();
+                scheduleDialogRef.current.focus();
+                return;
+            }
+            const first = focusable[0];
+            const last = focusable[focusable.length - 1];
+            if (event.shiftKey && document.activeElement === first) {
+                event.preventDefault();
+                last.focus();
+            } else if (!event.shiftKey && document.activeElement === last) {
+                event.preventDefault();
+                first.focus();
+            }
+        };
+        document.addEventListener("keydown", handleDialogKeyDown);
+        return () => {
+            document.body.style.overflow = originalOverflow;
+            document.removeEventListener("keydown", handleDialogKeyDown);
+            trigger?.focus();
+            scheduleTriggerRef.current = null;
+        };
+    }, [scheduleTarget]);
+
+    const setFoodStatus = (key: string, status: "wishlist" | "visited", legacyKey?: string) => {
+        updateFoodStatuses?.((prev) => {
+            const next = { ...prev };
+            const current = next[key] ?? (legacyKey ? next[legacyKey] : undefined);
+            if (current === status) delete next[key];
+            else next[key] = status;
+            if (legacyKey && legacyKey !== key) delete next[legacyKey];
+            return next;
+        });
+    };
+
+    const openScheduleDialog = (item: FoodItem, statusKey: string, trigger: HTMLElement, legacyStatusKey?: string) => {
+        scheduleTriggerRef.current = trigger;
+        const existingDay = getPlannedFoodDays(item, statusKey)[0];
+        setScheduleDay(existingDay ?? "day1");
+        setScheduleTime("12:00");
+        setScheduleTarget({ item, statusKey, legacyStatusKey });
+    };
+
+    const addFoodToItinerary = () => {
+        if (!scheduleTarget || !updateItinerary) return;
+        const { item, statusKey, legacyStatusKey } = scheduleTarget;
+        updateItinerary((prev) => {
+            const source = Object.keys(prev).length > 0 ? prev : DEFAULT_ITINERARY;
+            const sourceId = foodSourceId(statusKey);
+            const withoutExisting = Object.fromEntries(
+                Object.entries(source).map(([dayKey, day]) => [
+                    dayKey,
+                    {
+                        ...day,
+                        activities: day.activities.filter((activity) => !isScheduledFoodActivity(activity, item, statusKey)),
+                    },
+                ]),
+            );
+            const targetDay = withoutExisting[scheduleDay];
+            if (!targetDay) return source;
+            const activities = [
+                ...targetDay.activities,
+                {
+                    time: scheduleTime,
+                    name: `用餐：${item.name}`,
+                    desc: `${item.loc} · ${item.desc}`,
+                    tag: "美食",
+                    sourceId,
+                    syncId: activitySyncIdFromSource(sourceId),
+                },
+            ].sort((a, b) => a.time.localeCompare(b.time, "zh-TW", { numeric: true }));
+            return {
+                ...withoutExisting,
+                [scheduleDay]: { ...targetDay, activities },
+            };
+        });
+        updateFoodStatuses?.((prev) => {
+            const current = prev[statusKey] ?? (legacyStatusKey ? prev[legacyStatusKey] : undefined);
+            if (current !== "wishlist" && (!legacyStatusKey || !(legacyStatusKey in prev))) return prev;
+            const next = { ...prev };
+            if (current === "wishlist") delete next[statusKey];
+            if (legacyStatusKey) delete next[legacyStatusKey];
+            return next;
+        });
+        setScheduleTarget(null);
+    };
+
+    const removeFoodFromItinerary = () => {
+        if (!scheduleTarget || !updateItinerary) return;
+        const { item, statusKey } = scheduleTarget;
+        updateItinerary((prev) => Object.fromEntries(
+            Object.entries(prev).map(([dayKey, day]) => [
+                dayKey,
+                { ...day, activities: day.activities.filter((activity) => !isScheduledFoodActivity(activity, item, statusKey)) },
+            ]),
+        ));
+        setScheduleTarget(null);
+    };
 
     // ── 載入 Google Maps API ──
 
@@ -282,9 +466,10 @@ export function Food() {
         markersRef.current = [];
 
         const allItems = RECOMMENDED_FOODS[activeCat] || [];
-        const filtered = activeDistrict === "all"
-            ? allItems
-            : allItems.filter(item => item.loc === activeDistrict);
+        const filtered = allItems.filter((item) => (
+            (activeDistrict === "all" || item.loc === activeDistrict)
+            && matchesFoodSearch(item, searchQuery)
+        ));
 
         filtered.forEach((item, index) => {
             const catInfo = FOOD_CATEGORIES.find(c => c.id === activeCat);
@@ -339,7 +524,7 @@ export function Food() {
             filtered.forEach(item => bounds.extend({ lat: item.lat, lng: item.lng }));
             gMap.fitBounds(bounds, 60);
         }
-    }, [activeCat, activeDistrict]);
+    }, [activeCat, activeDistrict, searchQuery]);
 
     // ── 初始化地圖 ──
     const initMap = useCallback(() => {
@@ -604,7 +789,7 @@ export function Food() {
         if (editingId) {
             // 編輯模式：用 functional update 避免與 realtime 同步的 stale closure 互相覆蓋
             updateCustomFoods((prev) =>
-                prev.map((f) => (f.id === editingId ? { ...formData, id: editingId } : f)),
+                prev.map((f) => (f.id === editingId ? { ...f, ...formData, id: editingId, syncId: f.syncId } : f)),
             );
         } else {
             // 新增模式：offset 避免同毫秒連點造成 id 碰撞（與 BudgetTracker.tsx 做法一致）
@@ -632,7 +817,8 @@ export function Food() {
         }
     };
 
-    const handleDelete = async (id: number) => {
+    const handleDelete = async (food: CustomFood) => {
+        const id = food.id;
         const ok = await confirm({
             title: "刪除美食紀錄",
             message: "確定要刪除這筆美食嗎？",
@@ -641,6 +827,15 @@ export function Food() {
         });
         if (!ok) return;
         updateCustomFoods((prev) => prev.filter((f) => f.id !== id));
+        updateFoodStatuses?.((prev) => {
+            const key = customFoodStatusKey(food);
+            const legacyKey = legacyCustomFoodStatusKey(id);
+            if (!(key in prev) && !(legacyKey in prev)) return prev;
+            const next = { ...prev };
+            delete next[key];
+            delete next[legacyKey];
+            return next;
+        });
         // 若刪除的正是正在編輯的項目，重置表單
         if (editingId === id) resetForm();
     };
@@ -659,12 +854,16 @@ export function Food() {
 
     // ── 篩選後的餐廳列表 ──
     const currentFoods = RECOMMENDED_FOODS[activeCat] || [];
-    const filteredFoods = activeDistrict === "all"
-        ? currentFoods
-        : currentFoods.filter(item => item.loc === activeDistrict);
+    const filteredFoods = currentFoods.filter((item) => (
+        (activeDistrict === "all" || item.loc === activeDistrict)
+        && matchesFoodSearch(item, searchQuery)
+    ));
 
     // ── 當前分類可用的區域 ──
     const availableDistricts = DISTRICT_FILTERS.filter(d => d.id === "all" || currentFoods.some(item => item.loc === d.id));
+    const scheduledTargetDays = scheduleTarget
+        ? getPlannedFoodDays(scheduleTarget.item, scheduleTarget.statusKey)
+        : [];
 
     return (
         <section id="food" className="py-4 px-4 md:px-12 max-w-7xl mx-auto">
@@ -696,12 +895,12 @@ export function Food() {
                         <span className="text-lg shrink-0">🍜</span>
                         <div className="min-w-0 flex-1">
                             <p className="text-sm font-bold text-orange-800 dark:text-orange-200">{focusHint}</p>
-                            <p className="text-xs text-orange-600/80 dark:text-orange-300/70 mt-0.5">可改分類或區域繼續瀏覽</p>
+                            <p className="text-xs text-orange-800 dark:text-orange-200 mt-0.5">可改分類或區域繼續瀏覽</p>
                         </div>
                         <button
                             type="button"
                             onClick={() => setFocusHint(null)}
-                            className="min-h-11 shrink-0 text-xs font-black text-orange-600 dark:text-orange-300 px-3 py-1 rounded-lg hover:bg-orange-100 dark:hover:bg-orange-900/40"
+                            className="min-h-11 shrink-0 text-xs font-black text-orange-800 dark:text-orange-200 px-3 py-1 rounded-lg hover:bg-orange-100 dark:hover:bg-orange-900/40"
                             aria-label="關閉提示"
                         >
                             關閉
@@ -709,42 +908,68 @@ export function Food() {
                     </div>
                 )}
 
-                {/* ── 餐廳分類 Tab ── */}
-                <div className="flex gap-2 overflow-x-auto pb-3 no-scrollbar mb-4">
-                    {FOOD_CATEGORIES.map(cat => (
-                        <button
-                            key={cat.id}
-                            onClick={() => { setActiveCat(cat.id); setActiveDistrict("all"); }}
-                            aria-label={cat.label}
-                            aria-pressed={activeCat === cat.id}
-                            className={`flex items-center gap-2 px-6 py-3 rounded-2xl font-black text-base transition-all shrink-0 ${activeCat === cat.id
-                                ? "bg-primary text-white shadow-lg shadow-primary/30 scale-105"
-                                : "bg-gray-50 dark:bg-slate-900 text-gray-500 border border-transparent hover:border-gray-200 dark:hover:border-slate-600"
-                                }`}
-                        >
-                            <span className="text-2xl">{cat.icon}</span> {cat.label}
+                <div className="relative mb-4">
+                    <label htmlFor="food-search" className="sr-only">搜尋目前分類的餐廳</label>
+                    <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-500" aria-hidden="true" />
+                    <input
+                        id="food-search"
+                        type="search"
+                        value={searchQuery}
+                        onChange={(event) => setSearchQuery(event.target.value)}
+                        placeholder={`搜尋${FOOD_CATEGORIES.find((category) => category.id === activeCat)?.label ?? "餐廳"}、區域或特色`}
+                        className="min-h-12 w-full rounded-2xl border border-gray-200 bg-gray-50 py-3 pl-12 pr-12 text-base font-bold text-gray-900 outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                    />
+                    {searchQuery && (
+                        <button type="button" onClick={() => setSearchQuery("")} aria-label="清除美食搜尋" className="absolute right-2 top-1/2 inline-flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-xl text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-slate-800">
+                            <X className="w-4 h-4" />
                         </button>
-                    ))}
+                    )}
+                </div>
+
+                {/* ── 餐廳分類 Tab ── */}
+                <div className="relative mb-4">
+                    <div className="flex snap-x snap-mandatory gap-2 overflow-x-auto pb-3 pr-10 scrollbar-hide">
+                        {FOOD_CATEGORIES.map(cat => (
+                            <button
+                                key={cat.id}
+                                onClick={() => { setActiveCat(cat.id); setActiveDistrict("all"); }}
+                                aria-label={cat.label}
+                                aria-pressed={activeCat === cat.id}
+                                className={`flex snap-start items-center gap-2 px-6 py-3 rounded-2xl font-black text-base transition-all shrink-0 ${activeCat === cat.id
+                                    ? "bg-primary text-white shadow-lg shadow-primary/30 scale-105"
+                                    : "bg-gray-50 dark:bg-slate-900 text-gray-700 dark:text-gray-200 border border-transparent hover:border-gray-200 dark:hover:border-slate-600"
+                                    }`}
+                            >
+                                <span className="text-2xl">{cat.icon}</span> {cat.label}
+                            </button>
+                        ))}
+                    </div>
+                    <div aria-hidden="true" className="pointer-events-none absolute inset-y-0 right-0 w-12 bg-gradient-to-l from-white via-white/90 to-transparent dark:from-slate-800 dark:via-slate-800/90 md:hidden" />
                 </div>
 
                 {/* ── 區域篩選 ── */}
-                <div className="flex gap-1.5 overflow-x-auto pb-2 no-scrollbar mb-6">
-                    <div className="flex items-center gap-1 text-xs font-bold text-gray-400 shrink-0 px-2">
-                        <Filter className="w-3.5 h-3.5" /> 篩選：
+                <p className="mb-1 text-[11px] font-bold text-gray-600 dark:text-gray-300 md:hidden">左右滑動查看更多篩選</p>
+                <div className="relative mb-6">
+                    <div className="flex snap-x snap-mandatory gap-1.5 overflow-x-auto pb-2 pr-10 scrollbar-hide">
+                    <div className="flex items-center gap-1 text-xs font-bold text-gray-600 dark:text-gray-300 shrink-0 px-2">
+                        <Filter className="w-3.5 h-3.5" /> 篩選
                     </div>
                     {availableDistricts.map(d => (
                         <button
                             key={d.id}
                             onClick={() => setActiveDistrict(d.id)}
                             aria-label={d.label}
-                            className={`flex min-h-11 items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-black transition-all shrink-0 ${activeDistrict === d.id
-                                ? "bg-orange-500 text-white shadow-md shadow-orange-500/20"
-                                : "bg-gray-50 dark:bg-slate-900 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 border border-transparent hover:border-gray-200 dark:hover:border-slate-600"
+                            aria-pressed={activeDistrict === d.id}
+                            className={`flex min-h-11 snap-start items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-black transition-all shrink-0 ${activeDistrict === d.id
+                                ? "bg-orange-700 text-white shadow-md shadow-orange-700/20"
+                                : "bg-gray-50 dark:bg-slate-900 text-gray-700 dark:text-gray-200 hover:text-gray-900 dark:hover:text-white border border-transparent hover:border-gray-200 dark:hover:border-slate-600"
                                 }`}
                         >
                             <span>{d.icon}</span> {d.label}
                         </button>
                     ))}
+                    </div>
+                    <div aria-hidden="true" className="pointer-events-none absolute inset-y-0 right-0 w-12 bg-gradient-to-l from-white via-white/90 to-transparent dark:from-slate-800 dark:via-slate-800/90 md:hidden" />
                 </div>
 
                 {/* ── 互動地圖 ── */}
@@ -766,7 +991,7 @@ export function Food() {
                         {mapStatus === "error" && (
                             <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-100/95 dark:bg-slate-900/95 px-6 text-center">
                                 <p className="font-black text-gray-700 dark:text-gray-200 mb-2" role="alert">Google Maps 無法載入</p>
-                                <p className="text-sm text-gray-500 dark:text-gray-400 mb-4 max-w-md">{mapError}</p>
+                                <p className="text-sm text-gray-600 dark:text-gray-300 mb-4 max-w-md">{mapError}</p>
                                 <div className="flex flex-wrap items-center justify-center gap-3">
                                     <button
                                         type="button"
@@ -790,7 +1015,7 @@ export function Food() {
                             </div>
                         )}
                         {mapLoaded && (
-                            <div className="bg-gray-50 dark:bg-slate-900 px-5 py-3 flex items-center justify-between text-xs font-bold text-gray-400">
+                            <div className="bg-gray-50 dark:bg-slate-900 px-5 py-3 flex items-center justify-between text-xs font-bold text-gray-600 dark:text-gray-300">
                                 <span>🏨 紅色標記 = 飯店（起點）· 數字標記 = 餐廳</span>
                                 <span>📍 共 {filteredFoods.length} 家餐廳</span>
                             </div>
@@ -799,10 +1024,15 @@ export function Food() {
                 )}
 
                 {/* ── 餐廳卡片網格 ── */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 mb-10">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-10">
                     {filteredFoods.map((item) => {
                         const dist = haversineDistance(HOTEL_COORDS.lat, HOTEL_COORDS.lng, item.lat, item.lng);
                         const time = estimateTransitTime(dist);
+                        const statusKey = foodStatusKey(item);
+                        const status = foodStatuses[statusKey];
+                        const plannedDays = getPlannedFoodDays(item, statusKey);
+                        const plannedDay = plannedDays[0];
+                        const plannedDayLabels = plannedDays.map(scheduleDayLabel).join("、");
                         return (
                             <div
                                 key={item.name}
@@ -813,7 +1043,13 @@ export function Food() {
                             >
                                 <div>
                                     <div className="flex justify-between items-start mb-2">
-                                        <h3 title={item.name} className="font-black text-base text-gray-900 dark:text-white truncate flex-1 pr-2">{item.name}</h3>
+                                        <h3 title={item.name} className="font-black text-base text-gray-900 dark:text-white line-clamp-2 min-h-12 flex-1 pr-2">{item.name}</h3>
+                                    </div>
+                                    <div className="flex flex-wrap gap-1.5 mb-2">
+                                        {status === "wishlist" && <span className="rounded-full bg-pink-100 dark:bg-pink-900/30 px-2 py-0.5 text-[11px] font-black text-pink-800 dark:text-pink-200">想吃</span>}
+                                        {plannedDays.length === 1 && <span className="rounded-full bg-blue-100 dark:bg-blue-900/30 px-2 py-0.5 text-[11px] font-black text-blue-800 dark:text-blue-200">已排 {plannedDayLabels}</span>}
+                                        {plannedDays.length > 1 && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-black text-amber-900 dark:bg-amber-900/30 dark:text-amber-200">重複安排 {plannedDayLabels}</span>}
+                                        {status === "visited" && <span className="rounded-full bg-emerald-100 dark:bg-emerald-900/30 px-2 py-0.5 text-[11px] font-black text-emerald-800 dark:text-emerald-200">去過</span>}
                                     </div>
                                     <div className="text-sm font-bold text-primary flex items-center gap-1 mb-1">
                                         <MapPin className="w-2.5 h-2.5" /> {item.loc}
@@ -834,6 +1070,35 @@ export function Food() {
                                         <span className="text-xs font-bold px-2 py-1 bg-gray-100 text-gray-600 dark:bg-slate-800 dark:text-gray-300 rounded-full">
                                             營業時間請以店家公告為準
                                         </span>
+                                    </div>
+                                    <div className="grid grid-cols-3 gap-1.5 mb-3">
+                                        <button
+                                            type="button"
+                                            aria-pressed={status === "wishlist"}
+                                            aria-label={`將「${item.name}」標記為想吃`}
+                                            onClick={() => setFoodStatus(statusKey, "wishlist")}
+                                            className={`inline-flex min-h-11 items-center justify-center gap-1 rounded-xl border px-2 text-xs font-black ${status === "wishlist" ? "border-pink-600 bg-pink-600 text-white" : "border-gray-200 bg-white text-gray-700 dark:border-slate-700 dark:bg-slate-800 dark:text-gray-200"}`}
+                                        >
+                                            <Heart className={`w-4 h-4 ${status === "wishlist" ? "fill-current" : ""}`} /> 想吃
+                                        </button>
+                                        <button
+                                            type="button"
+                                            aria-pressed={plannedDays.length > 0}
+                                            aria-label={plannedDays.length > 1 ? `「${item.name}」目前重複排在 ${plannedDayLabels}；調整行程` : `將「${item.name}」排入行程`}
+                                            onClick={(event) => openScheduleDialog(item, statusKey, event.currentTarget)}
+                                            className={`inline-flex min-h-11 items-center justify-center gap-1 rounded-xl border px-2 text-xs font-black ${plannedDay ? "border-blue-700 bg-blue-700 text-white" : "border-gray-200 bg-white text-gray-700 dark:border-slate-700 dark:bg-slate-800 dark:text-gray-200"}`}
+                                        >
+                                            <CalendarPlus className="w-4 h-4" /> {plannedDays.length > 1 ? `${plannedDays.length} 日重複` : plannedDay ? scheduleDayLabel(plannedDay) : "排入"}
+                                        </button>
+                                        <button
+                                            type="button"
+                                            aria-pressed={status === "visited"}
+                                            aria-label={`將「${item.name}」標記為去過`}
+                                            onClick={() => setFoodStatus(statusKey, "visited")}
+                                            className={`inline-flex min-h-11 items-center justify-center gap-1 rounded-xl border px-2 text-xs font-black ${status === "visited" ? "border-emerald-700 bg-emerald-700 text-white" : "border-gray-200 bg-white text-gray-700 dark:border-slate-700 dark:bg-slate-800 dark:text-gray-200"}`}
+                                        >
+                                            <CheckCircle2 className="w-4 h-4" /> 去過
+                                        </button>
                                     </div>
                                     <div className="flex gap-2">
                                         <button
@@ -856,12 +1121,18 @@ export function Food() {
                             </div>
                         );
                     })}
+                    {filteredFoods.length === 0 && (
+                        <div className="sm:col-span-2 lg:col-span-4 rounded-3xl border-2 border-dashed border-gray-200 dark:border-slate-700 px-6 py-12 text-center">
+                            <p className="font-black text-gray-700 dark:text-gray-200">找不到符合條件的餐廳</p>
+                            <button type="button" onClick={() => { setSearchQuery(""); setActiveDistrict("all"); }} className="mt-3 inline-flex min-h-11 items-center rounded-xl px-4 font-black text-primary underline underline-offset-4">清除搜尋與區域篩選</button>
+                        </div>
+                    )}
                 </div>
 
                 {/* ── 搜尋結果計數 ── */}
-                {activeDistrict !== "all" && (
+                {(activeDistrict !== "all" || searchQuery.trim()) && (
                     <div className="text-center mb-6">
-                        <span className="text-sm font-bold text-gray-400">
+                        <span className="text-sm font-bold text-gray-600 dark:text-gray-300">
                             顯示 <span className="text-primary">{filteredFoods.length}</span> / {currentFoods.length} 家餐廳
                             {filteredFoods.length === 0 && (
                                 <button
@@ -881,7 +1152,7 @@ export function Food() {
                         <Utensils className="text-primary w-5 h-5" /> 我的私藏美食清單
                     </h3>
                     {!isLoaded && (
-                        <div className="mb-6 flex items-center gap-2 text-sm font-bold text-gray-400 dark:text-slate-500 px-1">
+                        <div className="mb-6 flex items-center gap-2 text-sm font-bold text-gray-600 dark:text-slate-300 px-1">
                             <Loader2 className="w-4 h-4 animate-spin" />
                             同步私藏名單中…
                         </div>
@@ -892,13 +1163,13 @@ export function Food() {
                                 <span className="text-sm font-black text-primary flex items-center gap-2">
                                     ✏️ 編輯模式 — 正在修改「{formData.name}」
                                 </span>
-                                <button type="button" onClick={resetForm} className="min-h-11 shrink-0 text-xs font-bold text-gray-400 hover:text-red-500 transition-colors px-3 py-1 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/10">
+                                <button type="button" onClick={resetForm} className="min-h-11 shrink-0 text-xs font-bold text-gray-600 dark:text-gray-300 hover:text-red-700 transition-colors px-3 py-1 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/10">
                                     取消編輯
                                 </button>
                             </div>
                         )}
                         <div className="space-y-2">
-                            <label htmlFor="food-map-url" className="text-xs font-black text-gray-400 uppercase tracking-widest block ml-1">自動解析（選擇性）</label>
+                            <label htmlFor="food-map-url" className="text-xs font-black text-gray-600 dark:text-gray-300 uppercase tracking-widest block ml-1">自動解析（選擇性）</label>
                             <div className="relative group">
                                 <input
                                     id="food-map-url"
@@ -912,13 +1183,13 @@ export function Food() {
                                     onPaste={handleUrlPaste}
                                     className="w-full p-4 pl-12 pr-12 rounded-2xl border-2 border-transparent bg-white dark:bg-slate-800 focus:border-primary outline-none transition-all text-sm font-bold"
                                 />
-                                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600 dark:text-gray-300" />
                                 {isAnalyzing && <Loader2 className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 animate-spin text-primary" />}
                             </div>
                         </div>
 
                         <div className="space-y-2">
-                            <label className="text-xs sm:text-sm font-black text-gray-400 uppercase tracking-widest block ml-1">餐廳類型 (選填/預設 🍣)</label>
+                            <label className="text-xs sm:text-sm font-black text-gray-600 dark:text-gray-300 uppercase tracking-widest block ml-1">餐廳類型 (選填/預設 🍣)</label>
                             <div className="flex flex-wrap gap-2">
                                 {FOOD_CATEGORIES.map(cat => (
                                     <button
@@ -957,7 +1228,7 @@ export function Food() {
                         {isCustomType && (
                             <div className="grid grid-cols-3 gap-2 bg-white dark:bg-slate-800 p-4 rounded-2xl border border-gray-100 dark:border-slate-700 animate-in fade-in slide-in-from-top-2 duration-300">
                                 <div className="space-y-1 col-span-1">
-                                    <label htmlFor="food-custom-emoji" className="text-xs font-black text-gray-400 block ml-1">圖示 Emoji</label>
+                                    <label htmlFor="food-custom-emoji" className="text-xs font-black text-gray-600 dark:text-gray-300 block ml-1">圖示 Emoji</label>
                                     <input
                                         id="food-custom-emoji"
                                         type="text"
@@ -972,7 +1243,7 @@ export function Food() {
                                     />
                                 </div>
                                 <div className="space-y-1 col-span-2">
-                                    <label htmlFor="food-custom-label" className="text-xs font-black text-gray-400 block ml-1">類型名稱</label>
+                                    <label htmlFor="food-custom-label" className="text-xs font-black text-gray-600 dark:text-gray-300 block ml-1">類型名稱</label>
                                     <input
                                         id="food-custom-label"
                                         type="text"
@@ -990,7 +1261,7 @@ export function Food() {
 
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                             <div className="space-y-2">
-                                <label htmlFor="food-name" className="text-xs font-black text-gray-400 uppercase tracking-widest block ml-1">店名</label>
+                                <label htmlFor="food-name" className="text-xs font-black text-gray-600 dark:text-gray-300 uppercase tracking-widest block ml-1">店名</label>
                                 <input
                                     id="food-name"
                                     type="text"
@@ -1002,7 +1273,7 @@ export function Food() {
                                 />
                             </div>
                             <div className="space-y-2">
-                                <label htmlFor="food-location" className="text-xs font-black text-gray-400 uppercase tracking-widest block ml-1">區域/位置 (選填)</label>
+                                <label htmlFor="food-location" className="text-xs font-black text-gray-600 dark:text-gray-300 uppercase tracking-widest block ml-1">區域/位置 (選填)</label>
                                 <input
                                     id="food-location"
                                     type="text"
@@ -1043,6 +1314,19 @@ export function Food() {
                             const dist = hasCoords ? haversineDistance(HOTEL_COORDS.lat, HOTEL_COORDS.lng, food.lat!, food.lng!) : null;
                             const time = dist != null ? estimateTransitTime(dist) : null;
                             const isEditing = editingId === food.id;
+                            const statusKey = customFoodStatusKey(food);
+                            const legacyStatusKey = legacyCustomFoodStatusKey(food.id);
+                            const status = foodStatuses[statusKey] ?? foodStatuses[legacyStatusKey];
+                            const scheduleItem: FoodItem = {
+                                name: food.name,
+                                loc: food.location || "東京",
+                                desc: food.desc || "私藏美食",
+                                lat: food.lat ?? HOTEL_COORDS.lat,
+                                lng: food.lng ?? HOTEL_COORDS.lng,
+                            };
+                            const plannedDays = getPlannedFoodDays(scheduleItem, statusKey);
+                            const plannedDay = plannedDays[0];
+                            const plannedDayLabels = plannedDays.map(scheduleDayLabel).join("、");
                             return (
                                 <div key={food.id} className={`bg-white dark:bg-slate-800 p-4 rounded-3xl shadow-sm border transition-all relative group animate-in fade-in zoom-in duration-300 flex flex-col justify-between ${isEditing
                                     ? "border-primary ring-2 ring-primary/20 shadow-lg shadow-primary/5"
@@ -1054,7 +1338,7 @@ export function Food() {
                                             <div className="flex items-center gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
                                                 <button
                                                     onClick={() => handleEdit(food)}
-                                                    className="w-11 h-11 inline-flex items-center justify-center rounded-xl text-gray-400 hover:text-primary hover:bg-primary/10 transition-colors"
+                                                    className="w-11 h-11 inline-flex items-center justify-center rounded-xl text-gray-600 dark:text-gray-300 hover:text-primary hover:bg-primary/10 transition-colors"
                                                     aria-label={`編輯「${food.name}」`}
                                                     title="編輯"
                                                 >
@@ -1062,24 +1346,41 @@ export function Food() {
                                                 </button>
                                             </div>
                                         </div>
-                                        <p className="text-base font-black mb-1 truncate">{food.name}</p>
-                                        <div className="text-sm text-gray-400 flex items-center gap-1 mb-1">
+                                        <p className="text-base font-black mb-1 line-clamp-2 min-h-12">{food.name}</p>
+                                        <div className="flex flex-wrap gap-1.5 mb-2">
+                                            {status === "wishlist" && <span className="rounded-full bg-pink-100 dark:bg-pink-900/30 px-2 py-0.5 text-[11px] font-black text-pink-800 dark:text-pink-200">想吃</span>}
+                                            {plannedDays.length === 1 && <span className="rounded-full bg-blue-100 dark:bg-blue-900/30 px-2 py-0.5 text-[11px] font-black text-blue-800 dark:text-blue-200">已排 {plannedDayLabels}</span>}
+                                            {plannedDays.length > 1 && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-black text-amber-900 dark:bg-amber-900/30 dark:text-amber-200">重複安排 {plannedDayLabels}</span>}
+                                            {status === "visited" && <span className="rounded-full bg-emerald-100 dark:bg-emerald-900/30 px-2 py-0.5 text-[11px] font-black text-emerald-800 dark:text-emerald-200">去過</span>}
+                                        </div>
+                                        <div className="text-sm text-gray-600 dark:text-gray-300 flex items-center gap-1 mb-1">
                                             <MapPin className="w-3 h-3" /> {food.location || "未設定"}
                                         </div>
                                         {/* ── 距離與時間（有座標才顯示）── */}
                                         {hasCoords && dist != null && (
                                             <div className="flex items-center gap-3 mb-2">
-                                                <span className="inline-flex items-center gap-1 text-xs font-bold text-gray-400">
+                                                <span className="inline-flex items-center gap-1 text-xs font-bold text-gray-600 dark:text-gray-300">
                                                     <Footprints className="w-3 h-3" /> {dist.toFixed(1)}km
                                                 </span>
-                                                <span className="inline-flex items-center gap-1 text-xs font-bold text-orange-500">
+                                                <span className="inline-flex items-center gap-1 text-xs font-bold text-orange-700 dark:text-orange-300">
                                                     <Clock className="w-3 h-3" /> {time}
                                                 </span>
                                             </div>
                                         )}
                                         {food.desc && (
-                                            <p className="text-xs text-gray-400 leading-tight line-clamp-1 italic mb-3">{food.desc}</p>
+                                            <p className="text-xs text-gray-600 dark:text-gray-300 leading-tight line-clamp-2 italic mb-3">{food.desc}</p>
                                         )}
+                                    </div>
+                                    <div className="grid grid-cols-3 gap-1.5 mb-2">
+                                        <button type="button" aria-pressed={status === "wishlist"} onClick={() => setFoodStatus(statusKey, "wishlist", legacyStatusKey)} className={`inline-flex min-h-11 items-center justify-center rounded-xl border text-xs font-black ${status === "wishlist" ? "border-pink-600 bg-pink-600 text-white" : "border-gray-200 bg-gray-50 text-gray-700 dark:border-slate-700 dark:bg-slate-900 dark:text-gray-200"}`} aria-label={`標記「${food.name}」為想吃`}>
+                                            <Heart className={`w-4 h-4 ${status === "wishlist" ? "fill-current" : ""}`} />
+                                        </button>
+                                        <button type="button" aria-pressed={plannedDays.length > 0} onClick={(event) => openScheduleDialog(scheduleItem, statusKey, event.currentTarget, legacyStatusKey)} className={`inline-flex min-h-11 items-center justify-center gap-1 rounded-xl border text-xs font-black ${plannedDay ? "border-blue-700 bg-blue-700 text-white" : "border-gray-200 bg-gray-50 text-gray-700 dark:border-slate-700 dark:bg-slate-900 dark:text-gray-200"}`} aria-label={plannedDays.length > 1 ? `「${food.name}」目前重複排在 ${plannedDayLabels}；調整行程` : `將「${food.name}」排入行程`}>
+                                            <CalendarPlus className="w-4 h-4" /> {plannedDays.length > 1 ? `${plannedDays.length} 日重複` : plannedDay ? scheduleDayLabel(plannedDay) : "排入"}
+                                        </button>
+                                        <button type="button" aria-pressed={status === "visited"} onClick={() => setFoodStatus(statusKey, "visited", legacyStatusKey)} className={`inline-flex min-h-11 items-center justify-center rounded-xl border text-xs font-black ${status === "visited" ? "border-emerald-700 bg-emerald-700 text-white" : "border-gray-200 bg-gray-50 text-gray-700 dark:border-slate-700 dark:bg-slate-900 dark:text-gray-200"}`} aria-label={`標記「${food.name}」為去過`}>
+                                            <CheckCircle2 className="w-4 h-4" />
+                                        </button>
                                     </div>
                                     <div className="flex gap-2">
                                         <button
@@ -1088,7 +1389,7 @@ export function Food() {
                                         >
                                             <Navigation className="w-3 h-3" /> {hasCoords ? "導航" : "GO"}
                                         </button>
-                                        <button onClick={() => handleDelete(food.id)} aria-label={`刪除「${food.name}」`} className="w-11 h-11 shrink-0 bg-red-50 dark:bg-red-900/10 rounded-xl text-red-400 hover:text-red-500 flex items-center justify-center transition-colors"><Trash2 className="w-3 h-3" /></button>
+                                        <button onClick={() => handleDelete(food)} aria-label={`刪除「${food.name}」`} className="w-11 h-11 shrink-0 bg-red-50 dark:bg-red-900/10 rounded-xl text-red-400 hover:text-red-500 flex items-center justify-center transition-colors"><Trash2 className="w-3 h-3" /></button>
                                     </div>
                                 </div>
                             );
@@ -1096,6 +1397,58 @@ export function Food() {
                     </div>
                 </div>
             </div>
+
+            {scheduleTarget && (
+                <div className="fixed inset-0 z-[110] flex items-end justify-center bg-black/60 p-0 sm:items-center sm:p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) setScheduleTarget(null); }}>
+                    <div
+                        ref={scheduleDialogRef}
+                        role="dialog"
+                        aria-modal="true"
+                        aria-labelledby="food-schedule-title"
+                        aria-describedby="food-schedule-description"
+                        tabIndex={-1}
+                        className="w-full max-w-lg rounded-t-[2rem] bg-white p-6 shadow-2xl outline-none dark:bg-slate-800 sm:rounded-[2rem]"
+                    >
+                        <div className="flex items-start justify-between gap-3 mb-5">
+                            <div>
+                                <p className="text-xs font-black uppercase tracking-widest text-primary">加入既有行程</p>
+                                <h3 id="food-schedule-title" className="mt-1 text-xl font-black text-gray-900 dark:text-white">{scheduleTarget.item.name}</h3>
+                                <p className="mt-1 text-sm font-bold text-gray-600 dark:text-gray-300">{scheduleTarget.item.loc}</p>
+                            </div>
+                            <button type="button" onClick={() => setScheduleTarget(null)} aria-label="關閉排入行程視窗" className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gray-100 text-gray-700 dark:bg-slate-700 dark:text-gray-200">
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label htmlFor="food-schedule-day" className="mb-1.5 block text-sm font-black text-gray-700 dark:text-gray-200">安排日期</label>
+                                <select ref={scheduleSelectRef} id="food-schedule-day" value={scheduleDay} onChange={(event) => setScheduleDay(event.target.value)} className="min-h-12 w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 font-bold dark:border-slate-700 dark:bg-slate-900">
+                                    {Object.entries(itinerarySource).map(([dayKey, day], index) => (
+                                        <option key={dayKey} value={dayKey}>Day {index + 1} · {day.date}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div>
+                                <label htmlFor="food-schedule-time" className="mb-1.5 block text-sm font-black text-gray-700 dark:text-gray-200">用餐時間</label>
+                                <input id="food-schedule-time" type="time" value={scheduleTime} onChange={(event) => setScheduleTime(event.target.value)} className="min-h-12 w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 font-bold dark:border-slate-700 dark:bg-slate-900" required />
+                            </div>
+                        </div>
+                        <p id="food-schedule-description" className="mt-4 text-xs font-bold leading-relaxed text-gray-600 dark:text-gray-300">儲存後會直接出現在行程頁，並同步到其他已連結裝置。</p>
+                        {scheduledTargetDays.length > 1 && (
+                            <p role="alert" className="mt-3 rounded-2xl bg-amber-50 px-4 py-3 text-sm font-bold leading-relaxed text-amber-900 dark:bg-amber-900/20 dark:text-amber-200">
+                                目前重複排在 {scheduledTargetDays.map(scheduleDayLabel).join("、")}；儲存會合併為單一安排。
+                            </p>
+                        )}
+                        <div className="mt-5 grid grid-cols-2 gap-3">
+                            <button type="button" onClick={() => setScheduleTarget(null)} className="min-h-12 rounded-2xl border border-gray-200 font-black text-gray-700 dark:border-slate-700 dark:text-gray-200">取消</button>
+                            <button type="button" onClick={addFoodToItinerary} className="min-h-12 rounded-2xl bg-primary font-black text-white shadow-lg shadow-primary/20">{scheduledTargetDays.length > 1 ? "合併為單一安排" : scheduledTargetDays.length === 1 ? "更新安排" : "排入行程"}</button>
+                        </div>
+                        {scheduledTargetDays.length > 0 && (
+                            <button type="button" onClick={removeFoodFromItinerary} className="mt-3 min-h-11 w-full rounded-xl font-black text-red-700 underline underline-offset-4 dark:text-red-300">從行程移除</button>
+                        )}
+                    </div>
+                </div>
+            )}
         </section>
     );
 }

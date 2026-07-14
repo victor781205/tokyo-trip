@@ -13,6 +13,11 @@
 import { z } from "zod";
 
 export const activitySchema = z.object({
+  // Optional, immutable sync identity. Older snapshots did not have this
+  // field, so readers add it lazily instead of rejecting existing trips.
+  syncId: z.string().min(1).max(160).optional(),
+  sourceId: z.string().min(1).max(512).optional(),
+  status: z.enum(["done", "skipped"]).optional(),
   time: z.string().nullish().transform((val) => val ?? ""),
   name: z.string().nullish().transform((val) => val ?? ""),
   desc: z.string().nullish().transform((val) => val ?? ""),
@@ -29,10 +34,13 @@ export const itinerarySchema = z.record(z.string(), dayPlanSchema);
 
 export const budgetItemSchema = z.object({
   id: z.number(),
+  syncId: z.string().min(1).max(160).optional(),
   name: z.string().nullish().transform((val) => val ?? ""),
   amount: z.number().nullish().transform((val) => val ?? 0),
   category: z.string().nullish().transform((val) => val ?? ""),
   date: z.string().nullish().transform((val) => val ?? ""),
+  payer: z.string().max(120).optional(),
+  participants: z.array(z.string().min(1).max(120)).max(32).optional(),
 });
 
 export const budgetItemsSchema = z.array(budgetItemSchema);
@@ -41,6 +49,7 @@ export const budgetLimitSchema = z.number().nonnegative().finite();
 
 export const customFoodSchema = z.object({
   id: z.number(),
+  syncId: z.string().min(1).max(160).optional(),
   emoji: z.string().nullish().transform((val) => val ?? ""),
   name: z.string().nullish().transform((val) => val ?? ""),
   location: z.string().nullish().transform((val) => val ?? ""),
@@ -62,6 +71,11 @@ export const packingItemSchema = z.object({
 });
 
 export const packingListSchema = z.array(packingItemSchema);
+
+export const foodStatusesSchema = z.record(
+  z.string().min(1).max(200),
+  z.enum(["wishlist", "visited"]),
+);
 
 /**
  * 安全 parse helper：parse 失敗回 fallback，不拋例外。

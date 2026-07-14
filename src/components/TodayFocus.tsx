@@ -1,13 +1,18 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Bell,
   CalendarDays,
+  CheckCircle2,
   ChevronRight,
+  Clock3,
   CloudSun,
+  ExternalLink,
   Luggage,
   MapPin,
+  RotateCcw,
+  SkipForward,
   UtensilsCrossed,
   Wallet,
 } from "lucide-react";
@@ -15,6 +20,14 @@ import { useTripState } from "@/hooks/useTripState";
 import { DEFAULT_ITINERARY } from "@/lib/default-itinerary";
 import { getJmaWeatherLabel, parseTokyoForecastResponse } from "@/lib/jma-forecast";
 import { getTripCountdownParts, getTripTimelineState } from "@/lib/trip-dates";
+import {
+  buildGoogleMapsSearchUrl,
+  formatCountdownMinutes,
+  getTravelModeSnapshot,
+  activityProgressKey,
+  travelProgressFromActivities,
+  type TravelProgressStatus,
+} from "@/lib/travel-mode";
 import { isNativePlatform } from "@/lib/platform";
 import {
   PUSH_REGISTRATION_CHANGED_EVENT,
@@ -122,7 +135,7 @@ interface TodayFocusProps {
  * 彙整當日行程、預算餘額、行李進度，一鍵跳轉各 tab。
  */
 export function TodayFocus({ onNavigate }: TodayFocusProps) {
-  const { isLoaded, tripId, itinerary, budgetItems, budgetLimit, packingList } = useTripState();
+  const { isLoaded, tripId, itinerary, updateItinerary, budgetItems, budgetLimit, packingList } = useTripState();
   const [weather, setWeather] = useState<WeatherSnippet | null>(null);
   const [weatherStatus, setWeatherStatus] = useState<"loading" | "ready" | "error">("loading");
   const [pushHint, setPushHint] = useState("確認推播狀態中…");
@@ -177,15 +190,59 @@ export function TodayFocus({ onNavigate }: TodayFocusProps) {
     };
   }, [tripId]);
 
+  const timeline = useMemo(() => getTripTimelineState(now), [now]);
+
+  const updateTravelProgress = useCallback((key: string, status: TravelProgressStatus) => {
+    const dayKey = dayKeyForIndex(timeline.dayNumber - 1);
+    updateItinerary((current) => {
+      const base = { ...DEFAULT_ITINERARY, ...current };
+      const day = base[dayKey];
+      if (!day) return current;
+      return {
+        ...base,
+        [dayKey]: {
+          ...day,
+          activities: day.activities.map((activity, index) => (
+            activityProgressKey(activity, index) === key
+              ? { ...activity, status }
+              : activity
+          )),
+        },
+      };
+    });
+  }, [timeline.dayNumber, updateItinerary]);
+
+  const resetTravelProgress = useCallback(() => {
+    const dayKey = dayKeyForIndex(timeline.dayNumber - 1);
+    updateItinerary((current) => {
+      const base = { ...DEFAULT_ITINERARY, ...current };
+      const day = base[dayKey];
+      if (!day) return current;
+      return {
+        ...base,
+        [dayKey]: {
+          ...day,
+          activities: day.activities.map((activity) => ({ ...activity, status: undefined })),
+        },
+      };
+    });
+  }, [timeline.dayNumber, updateItinerary]);
+
   const snapshot = useMemo(() => {
-    const tripState = getTripTimelineState(now);
+    const tripState = timeline;
     const phase = tripState.phase;
     const dayIndex = tripState.dayNumber - 1;
 
     const key = dayKeyForIndex(dayIndex);
     const source = Object.keys(itinerary || {}).length > 0 ? itinerary : DEFAULT_ITINERARY;
     const dayPlan = source[key] ?? DEFAULT_ITINERARY[key];
-    const activities = dayPlan?.activities?.slice(0, 4) ?? [];
+    const allActivities = dayPlan?.activities ?? [];
+    const travelMode = getTravelModeSnapshot(
+      allActivities,
+      now,
+      travelProgressFromActivities(allActivities),
+    );
+    const activities = allActivities.slice(0, 4);
     const moreCount = Math.max(0, (dayPlan?.activities?.length ?? 0) - activities.length);
 
     const spent = (budgetItems || []).reduce((s, i) => s + (i.amount || 0), 0);
@@ -206,9 +263,10 @@ export function TodayFocus({ onNavigate }: TodayFocusProps) {
       packPct,
       packed,
       packTotal,
+      travelMode,
       daysUntil: getTripCountdownParts(now).days,
     };
-  }, [itinerary, budgetItems, budgetLimit, packingList, now]);
+  }, [itinerary, budgetItems, budgetLimit, packingList, now, timeline]);
 
   if (!isLoaded) {
     return (
@@ -261,6 +319,105 @@ export function TodayFocus({ onNavigate }: TodayFocusProps) {
             <ChevronRight className="w-3.5 h-3.5" />
           </button>
         </div>
+
+        {snapshot.phase === "ongoing" && (
+          <div className="px-5 sm:px-6 pb-4">
+            <div className="rounded-3xl border border-primary/20 bg-gradient-to-br from-primary/10 via-white to-amber-50 dark:from-primary/20 dark:via-slate-900 dark:to-amber-950/30 p-4 shadow-sm">
+              <div className="flex items-center justify-between gap-3 mb-3">
+                <div>
+                  <div className="flex items-center gap-1.5 text-[11px] font-black uppercase tracking-wider text-primary">
+                    <Clock3 className="w-4 h-4" aria-hidden="true" />
+                    現在／下一站
+                  </div>
+                  <p className="mt-1 text-xs font-bold text-slate-600 dark:text-slate-300">
+                    已處理 {snapshot.travelMode.completedCount} 項 · 尚有 {snapshot.travelMode.remainingCount} 項
+                  </p>
+                </div>
+                {snapshot.travelMode.completedCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={resetTravelProgress}
+                    className="min-h-11 inline-flex items-center gap-1 rounded-xl px-3 text-xs font-black text-slate-700 dark:text-slate-200 hover:bg-black/5 dark:hover:bg-white/10"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" aria-hidden="true" />
+                    重設
+                  </button>
+                )}
+              </div>
+
+              {snapshot.travelMode.current ? (
+                <div className="rounded-2xl bg-white/80 dark:bg-slate-800/80 border border-white dark:border-slate-700 p-3 mb-2">
+                  <div className="text-[10px] font-black tracking-widest text-slate-600 dark:text-slate-300 uppercase mb-1">目前行程</div>
+                  <div className="flex items-start gap-3">
+                    <span className="font-mono font-black text-primary text-sm tabular-nums">
+                      {snapshot.travelMode.current.activity.time}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="font-black text-sm text-slate-900 dark:text-white">
+                        {snapshot.travelMode.current.activity.name}
+                      </div>
+                      {snapshot.travelMode.current.activity.desc && (
+                        <p className="text-xs text-slate-600 dark:text-slate-300 mt-0.5 line-clamp-2">
+                          {snapshot.travelMode.current.activity.desc}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 mt-3">
+                    <button
+                      type="button"
+                      onClick={() => updateTravelProgress(snapshot.travelMode.current!.key, "done")}
+                      className="min-h-11 inline-flex items-center justify-center gap-1.5 rounded-xl bg-emerald-600 text-white text-xs font-black hover:bg-emerald-700 active:scale-[0.98]"
+                    >
+                      <CheckCircle2 className="w-4 h-4" aria-hidden="true" />
+                      標記完成
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => updateTravelProgress(snapshot.travelMode.current!.key, "skipped")}
+                      className="min-h-11 inline-flex items-center justify-center gap-1.5 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-100 text-xs font-black active:scale-[0.98]"
+                    >
+                      <SkipForward className="w-4 h-4" aria-hidden="true" />
+                      略過
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <p className="rounded-2xl bg-white/70 dark:bg-slate-800/70 px-3 py-2 text-xs font-bold text-slate-600 dark:text-slate-300 mb-2">
+                  {snapshot.travelMode.next ? "下一站尚未開始，可以先確認路線。" : "今天的排定行程都已處理。"}
+                </p>
+              )}
+
+              {snapshot.travelMode.next && (
+                <div className="rounded-2xl bg-slate-900 dark:bg-black/30 text-white p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="text-[10px] font-black tracking-widest text-slate-300 uppercase">下一站</div>
+                      <div className="font-black text-sm mt-0.5 truncate">
+                        {snapshot.travelMode.next.activity.time} · {snapshot.travelMode.next.activity.name}
+                      </div>
+                    </div>
+                    <a
+                      href={buildGoogleMapsSearchUrl(snapshot.travelMode.next.activity)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="min-w-11 min-h-11 inline-flex items-center justify-center rounded-xl bg-white text-slate-900"
+                      aria-label={`導航至 ${snapshot.travelMode.next.activity.name}`}
+                    >
+                      <ExternalLink className="w-4 h-4" aria-hidden="true" />
+                    </a>
+                  </div>
+                  <p className="text-xs text-slate-200 mt-2">
+                    {formatCountdownMinutes(snapshot.travelMode.minutesUntilNext)}
+                    {snapshot.travelMode.latestDeparture
+                      ? ` · 建議最晚 ${snapshot.travelMode.latestDeparture} 出發（預留 30 分鐘）`
+                      : ""}
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* 活動預覽 */}
         <div className="px-5 sm:px-6 pb-4 space-y-2">

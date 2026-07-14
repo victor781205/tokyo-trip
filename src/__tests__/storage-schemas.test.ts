@@ -4,6 +4,7 @@ import {
   packingListSchema,
   safeParse,
   customFoodsSchema,
+  itinerarySchema,
 } from "@/lib/storage-schemas";
 
 describe("storage-schemas safeParse", () => {
@@ -35,6 +36,24 @@ describe("storage-schemas safeParse", () => {
     ]);
     const result = safeParse(budgetItemsSchema, raw, []);
     expect(result[0].amount).toBe(1200);
+  });
+
+  it("preserves a food source id on scheduled itinerary activities", () => {
+    const parsed = itinerarySchema.parse({
+      day1: {
+        title: "Day 1",
+        date: "9/1",
+        activities: [{
+          time: "12:00",
+          name: "用餐：一蘭",
+          desc: "澀谷 · 拉麵",
+          tag: "美食",
+          sourceId: "food:recommended:%E4%B8%80%E8%98%AD:%E6%BE%80%E8%B0%B7",
+        }],
+      },
+    });
+
+    expect(parsed.day1.activities[0].sourceId).toMatch(/^food:recommended:/);
   });
 
   it("rejects negative budget amounts via schema fail → fallback", () => {

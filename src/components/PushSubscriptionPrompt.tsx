@@ -110,6 +110,24 @@ export function PushSubscriptionPrompt({ tripId, tripSecret }: Props) {
     );
   }
 
+  if (push.permission === "denied") {
+    const guidance = push.current === "native"
+      ? "請到手機「設定」→「通知」→ 找到 Tokyo Trip，開啟允許通知，再回到 App。"
+      : isIOSBrowser() && isStandaloneWebApp()
+        ? "請到 iPhone「設定」→「通知」→ 找到這個主畫面 App，開啟允許通知，再回來重新整理。"
+        : "請點網址列左側的網站資訊圖示，進入網站設定，把「通知」改為允許，再重新整理本頁。";
+
+    return (
+      <div role="note" className="max-w-md rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-left dark:border-amber-800 dark:bg-amber-950/30">
+        <div className="flex items-center gap-2 text-sm font-black text-amber-900 dark:text-amber-200">
+          <BellOff aria-hidden="true" className="w-4 h-4 shrink-0" />
+          推播權限已被封鎖
+        </div>
+        <p className="mt-1 text-xs leading-relaxed text-amber-900 dark:text-amber-100">{guidance}</p>
+      </div>
+    );
+  }
+
   if (push.permission === "granted" && push.registered) {
     return (
       <div className="flex flex-col items-center gap-2">
@@ -135,7 +153,7 @@ export function PushSubscriptionPrompt({ tripId, tripSecret }: Props) {
           {unregistering ? <Loader2 className="w-4 h-4 animate-spin" /> : <BellOff className="w-4 h-4" />}
           {unregistering ? "關閉中…" : "關閉這台裝置推播"}
         </button>
-        {hint && <span className="text-xs text-gray-500 dark:text-gray-400">{hint}</span>}
+        {hint && <span role="status" className="text-xs text-gray-500 dark:text-gray-400">{hint}</span>}
       </div>
     );
   }
@@ -151,12 +169,7 @@ export function PushSubscriptionPrompt({ tripId, tripSecret }: Props) {
         {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Bell className="w-4 h-4" />}
         {loading ? "啟用中…" : "開啟行程推播提醒"}
       </button>
-      {hint && <span className="text-xs text-gray-500 dark:text-gray-400">{hint}</span>}
-      {push.permission === "denied" && (
-        <span className="text-xs text-red-500">
-          推播權限被拒絕，請到系統設定重新允許此 App 的通知。
-        </span>
-      )}
+      {hint && <span role="status" className="text-xs text-gray-500 dark:text-gray-400">{hint}</span>}
     </div>
   );
 }

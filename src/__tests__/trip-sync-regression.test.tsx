@@ -33,7 +33,7 @@ vi.mock("@supabase/supabase-js", () => {
           selectedColumns.push(columns);
           return ({
           eq: vi.fn((_column: string, value: string) => ({
-            maybeSingle: () => mockMaybeSingle(value, columns),
+            maybeSingle: () => mockMaybeSingle(value, columns, options?.global?.headers ?? {}),
           })),
           });
         }),
@@ -251,7 +251,7 @@ describe("TripContext Sync Regression Tests", () => {
     }, { timeout: 4000 });
 
     expect(mockRpc).toHaveBeenCalledWith(
-      "sync_trip_slices",
+      "sync_trip_slices_v2",
       expect.objectContaining({
         p_trip_id: "test-trip-id",
         p_trip_secret: "wrong-trip-secret",
@@ -293,7 +293,7 @@ describe("TripContext Sync Regression Tests", () => {
     }, { timeout: 4000 });
 
     expect(mockRpc).toHaveBeenCalledWith(
-      "sync_trip_slices",
+      "sync_trip_slices_v2",
       expect.objectContaining({
         p_trip_id: "test-trip-id-ok",
         p_trip_secret: "test-trip-secret-ok",
@@ -304,7 +304,7 @@ describe("TripContext Sync Regression Tests", () => {
         ]),
       }),
     );
-    const rpcArgs = mockRpc.mock.calls.find(([name]) => name === "sync_trip_slices")?.[1];
+    const rpcArgs = mockRpc.mock.calls.find(([name]) => name === "sync_trip_slices_v2")?.[1];
     expect(rpcArgs).not.toHaveProperty("p_itinerary");
     expect(rpcArgs).not.toHaveProperty("p_budget_items");
     expect(rpcArgs).not.toHaveProperty("p_updated_at");
@@ -346,7 +346,7 @@ describe("TripContext Sync Regression Tests", () => {
       expect(contextRef?.syncError).toMatch(/安全升級|停止寫入/);
     }, { timeout: 4000 });
     expect(mockRpc).toHaveBeenCalledWith(
-      "sync_trip_slices",
+      "sync_trip_slices_v2",
       expect.objectContaining({ p_expected_revision: 0 }),
     );
   });
@@ -504,7 +504,7 @@ describe("TripContext Sync Regression Tests", () => {
 
     await waitFor(() => {
       expect(mockRpc).toHaveBeenCalledWith(
-        "sync_trip_slices",
+        "sync_trip_slices_v2",
         expect.objectContaining({
           p_trip_id: "trip-a",
           p_trip_secret: "secret-a",
@@ -674,7 +674,7 @@ describe("TripContext Sync Regression Tests", () => {
       error: null,
     }));
     mockRpc.mockImplementation(async (name: string, rawArgs: Record<string, unknown>) => {
-      expect(name).toBe("sync_trip_slices");
+      expect(name).toBe("sync_trip_slices_v2");
       const expected = Number(rawArgs.p_expected_revision);
       const slices = rawArgs.p_dirty_slices as string[];
       attempts.push({
@@ -761,6 +761,186 @@ describe("TripContext Sync Regression Tests", () => {
     });
   });
 
+  it("recovers a committed secret rotation when the RPC resolves with an ambiguous network error", async () => {
+    localStorage.setItem("tokyoTripId", "rotate-trip");
+    localStorage.setItem("tokyoTripSecret", "old-secret");
+    let serverSecret = "old-secret";
+    let serverRevision = 1;
+    const remoteRecord = () => ({
+      trip_id: "rotate-trip",
+      revision: serverRevision,
+      updated_at: new Date(serverRevision * 1000).toISOString(),
+      itinerary: {},
+      budget_limit: 100000,
+      budget_items: [],
+      custom_foods: [],
+      packing_list: [],
+      food_statuses: {},
+    });
+    mockMaybeSingle.mockImplementation(async (
+      id: string,
+      _columns: string,
+      headers: Record<string, string>,
+    ) => ({
+      data: id === "rotate-trip" && headers["x-trip-secret"] === serverSecret
+        ? remoteRecord()
+        : null,
+      error: null,
+    }));
+    mockRpc.mockImplementation(async (name: string, args: Record<string, unknown>) => {
+      expect(name).toBe("rotate_trip_secret");
+      serverSecret = String(args.p_new_secret);
+      serverRevision += 1;
+      return { data: null, error: { message: "TypeError: Failed to fetch" } };
+    });
+
+    let contextRef: ReturnType<typeof useTrip> | undefined;
+    render(
+      <TripProvider>
+        <TestConsumer onLoad={(ctx) => (contextRef = ctx)} />
+      </TripProvider>,
+    );
+    await waitFor(() => expect(contextRef?.syncStatus).toBe("online"));
+
+    let result: Awaited<ReturnType<NonNullable<typeof contextRef>["rotateTripSecret"]>> | undefined;
+    await act(async () => {
+      result = await contextRef?.rotateTripSecret();
+    });
+
+    expect(result).toMatchObject({ ok: true, newSecret: serverSecret });
+    expect(contextRef?.tripSecret).toBe(serverSecret);
+    expect(localStorage.getItem("tokyoTripSecret")).toBe(serverSecret);
+    expect(localStorage.getItem("tokyoTripPendingRotation:v1")).toBeNull();
+  });
+
+  it("keeps the rotation recovery marker when the new secret cannot be read back from storage", async () => {
+    localStorage.setItem("tokyoTripId", "rotate-storage-trip");
+    localStorage.setItem("tokyoTripSecret", "old-secret");
+    let serverSecret = "old-secret";
+    let serverRevision = 1;
+    mockMaybeSingle.mockImplementation(async (
+      id: string,
+      _columns: string,
+      headers: Record<string, string>,
+    ) => ({
+      data: id === "rotate-storage-trip" && headers["x-trip-secret"] === serverSecret
+        ? {
+          trip_id: id,
+          revision: serverRevision,
+          updated_at: new Date(serverRevision * 1000).toISOString(),
+          itinerary: {},
+          budget_limit: 100000,
+          budget_items: [],
+          custom_foods: [],
+          packing_list: [],
+          food_statuses: {},
+        }
+        : null,
+      error: null,
+    }));
+    mockRpc.mockImplementation(async (_name: string, args: Record<string, unknown>) => {
+      serverSecret = String(args.p_new_secret);
+      serverRevision += 1;
+      return { data: { ok: true, revision: serverRevision }, error: null };
+    });
+
+    let contextRef: ReturnType<typeof useTrip> | undefined;
+    render(
+      <TripProvider>
+        <TestConsumer onLoad={(ctx) => (contextRef = ctx)} />
+      </TripProvider>,
+    );
+    await waitFor(() => expect(contextRef?.syncStatus).toBe("online"));
+
+    const originalSetItem = Storage.prototype.setItem;
+    const storageSpy = vi.spyOn(Storage.prototype, "setItem").mockImplementation(function (this: Storage, key, value) {
+      if (key === "tokyoTripSecret" && value !== "old-secret") {
+        throw new DOMException("quota", "QuotaExceededError");
+      }
+      return originalSetItem.call(this, key, value);
+    });
+    try {
+      await act(async () => {
+        expect(await contextRef?.rotateTripSecret()).toMatchObject({ ok: true });
+      });
+      expect(contextRef?.tripSecret).toBe(serverSecret);
+      expect(localStorage.getItem("tokyoTripSecret")).toBe("old-secret");
+      expect(localStorage.getItem("tokyoTripPendingRotation:v1")).not.toBeNull();
+      expect(contextRef?.storageError).toMatch(/無法持久保存|復原點/);
+    } finally {
+      storageSpy.mockRestore();
+    }
+  });
+
+  it("clears rollback candidates after catching up and when switching trips", async () => {
+    localStorage.setItem("tokyoTripId", "rollback-a");
+    localStorage.setItem("tokyoTripSecret", "secret-a");
+    writeTripCache(localStorage, "rollback-a", {
+      snapshot: { ...EMPTY_TRIP_SNAPSHOT, budgetLimit: 111000 },
+      dirtySlices: [],
+      remoteRevision: 5,
+      remoteUpdatedAt: 5000,
+      localUpdatedAt: 0,
+      legacyMigration: false,
+    });
+    let revisionA = 4;
+    mockMaybeSingle.mockImplementation(async (id: string) => ({
+      data: id === "rollback-a"
+        ? {
+          trip_id: id,
+          revision: revisionA,
+          updated_at: new Date(revisionA * 1000).toISOString(),
+          itinerary: {},
+          budget_limit: revisionA * 1000,
+          budget_items: [],
+          custom_foods: [],
+          packing_list: [],
+          food_statuses: {},
+        }
+        : {
+          trip_id: "rollback-b",
+          revision: 1,
+          updated_at: new Date(1000).toISOString(),
+          itinerary: {},
+          budget_limit: 222000,
+          budget_items: [],
+          custom_foods: [],
+          packing_list: [],
+          food_statuses: {},
+        },
+      error: null,
+    }));
+
+    let contextRef: ReturnType<typeof useTrip> | undefined;
+    render(
+      <TripProvider>
+        <TestConsumer onLoad={(ctx) => (contextRef = ctx)} />
+      </TripProvider>,
+    );
+    await waitFor(() => expect(contextRef?.hasRevisionRollback).toBe(true));
+
+    revisionA = 6;
+    await act(async () => {
+      expect(await contextRef?.retrySync()).toBe(true);
+    });
+    await waitFor(() => expect(contextRef?.hasRevisionRollback).toBe(false));
+    expect(contextRef?.budgetLimit).toBe(6000);
+
+    revisionA = 5;
+    await act(async () => {
+      expect(await contextRef?.retrySync()).toBe(false);
+    });
+    await waitFor(() => expect(contextRef?.hasRevisionRollback).toBe(true));
+
+    await act(async () => {
+      expect(await contextRef?.loginToTrip("rollback-b", "secret-b")).toBe(true);
+    });
+    expect(contextRef?.hasRevisionRollback).toBe(false);
+    expect(contextRef?.applyAuthoritativeRollback()).toBe(false);
+    expect(contextRef?.tripId).toBe("rollback-b");
+    expect(contextRef?.budgetLimit).toBe(222000);
+  });
+
   it("does not mark a new empty trip shareable until its first cloud write succeeds", async () => {
     localStorage.setItem("tokyoTripId", "trip_ABCDEFGHIJKLMNOPQRSTUV");
     localStorage.setItem("tokyoTripSecret", "sec_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef");
@@ -786,7 +966,7 @@ describe("TripContext Sync Regression Tests", () => {
     expect(contextRef?.isShareReady).toBe(false);
     await waitFor(() => expect(contextRef?.isShareReady).toBe(true), { timeout: 4000 });
     expect(mockRpc).toHaveBeenCalledWith(
-      "sync_trip_slices",
+      "sync_trip_slices_v2",
       expect.objectContaining({
         p_expected_revision: 0,
         p_dirty_slices: [],

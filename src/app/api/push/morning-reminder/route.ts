@@ -3,6 +3,7 @@ import { createHash, timingSafeEqual } from "node:crypto";
 import { DEFAULT_ITINERARY } from "@/lib/default-itinerary";
 import { createServerSupabase } from "@/lib/supabase-server";
 import { TRIP_OUTBOUND_DATE } from "@/lib/trip-dates";
+import { buildMorningReminderBody } from "@/lib/morning-reminder";
 
 /**
  * POST/GET /api/push/morning-reminder
@@ -121,13 +122,8 @@ async function handle(req: NextRequest) {
       );
     }
 
-    const summary = activities
-      .slice(0, 5)
-      .map((a: { time: string; name: string }) => `${a.time} ${a.name}`)
-      .join("、");
-
     const title = `🗼 今日東京行程：${todayPlan?.title ?? "Day"}`;
-    const body = `共 ${activities.length} 個活動：${summary}`;
+    const body = buildMorningReminderBody(activities);
 
     try {
       const res = await fetch(`${SELF_URL}/api/push/send`, {

@@ -102,4 +102,67 @@ describe("BudgetTracker", () => {
 
     expect(screen.getByText("預計總支出").parentElement).toHaveTextContent("¥900");
   });
+
+  it("adds an expense with an actual trip date and split metadata", () => {
+    const updateBudgetItems = vi.fn();
+    setTripState({ updateBudgetItems });
+    render(<BudgetTracker />);
+
+    fireEvent.change(screen.getByLabelText("項目名稱"), { target: { value: "兩人晚餐" } });
+    fireEvent.change(screen.getByLabelText("金額（日圓）"), { target: { value: "4600" } });
+    fireEvent.click(screen.getByRole("button", { name: "D2" }));
+    fireEvent.change(screen.getByLabelText("付款人"), { target: { value: "毓寧" } });
+    fireEvent.submit(screen.getByLabelText("金額（日圓）").closest("form")!);
+
+    const updater = updateBudgetItems.mock.calls[0][0] as (items: unknown[]) => Array<Record<string, unknown>>;
+    expect(updater([])[0]).toEqual(expect.objectContaining({
+      name: "兩人晚餐",
+      amount: 4600,
+      date: "2026-09-02",
+      payer: "毓寧",
+      participants: ["Victor", "毓寧"],
+    }));
+  });
+
+  it("edits an existing expense without changing its id", () => {
+    const updateBudgetItems = vi.fn();
+    const item = { id: 9, syncId: "budget-stable-9", name: "拉麵", amount: 1200, category: "food", date: "2026-09-01" };
+    setTripState({ budgetItems: [item], updateBudgetItems });
+    render(<BudgetTracker />);
+
+    fireEvent.click(screen.getByRole("button", { name: "編輯「拉麵」" }));
+    fireEvent.change(screen.getByLabelText("金額（日圓）"), { target: { value: "1500" } });
+    fireEvent.click(screen.getByRole("button", { name: "儲存支出變更" }));
+
+    const updater = updateBudgetItems.mock.calls[0][0] as (items: typeof item[]) => typeof item[];
+    expect(updater([item])[0]).toEqual(expect.objectContaining({ id: 9, syncId: "budget-stable-9", amount: 1500 }));
+  });
+
+  it("offers undo after deletion", async () => {
+    const updateBudgetItems = vi.fn();
+    const item = { id: 3, name: "車票", amount: 500, category: "transport", date: "2026-09-01" };
+    setTripState({ budgetItems: [item], updateBudgetItems });
+    render(<BudgetTracker />);
+
+    fireEvent.click(screen.getByRole("button", { name: "刪除「車票」" }));
+    expect(await screen.findByRole("status")).toHaveTextContent("已刪除「車票」");
+    fireEvent.click(screen.getByRole("button", { name: "復原" }));
+
+    expect(updateBudgetItems).toHaveBeenCalledTimes(2);
+    const restore = updateBudgetItems.mock.calls[1][0] as (items: typeof item[]) => typeof item[];
+    expect(restore([])).toEqual([item]);
+  });
+
+  it("calculates a settlement only from expenses with explicit split metadata", () => {
+    setTripState({
+      budgetItems: [
+        { id: 1, name: "兩人晚餐", amount: 4000, category: "food", date: "2026-09-01", payer: "Victor", participants: ["Victor", "毓寧"] },
+        { id: 2, name: "舊資料", amount: 999, category: "other", date: "2026-09-01" },
+      ],
+    });
+    render(<BudgetTracker />);
+
+    expect(screen.getByText("毓寧 → Victor").parentElement).toHaveTextContent("¥2,000");
+    expect(screen.getByText("未設定分攤")).toBeInTheDocument();
+  });
 });

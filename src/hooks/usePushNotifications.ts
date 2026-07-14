@@ -61,6 +61,12 @@ type Deferred<T> = {
   settled: boolean;
 };
 
+type PushCredentials = {
+  tripId: string;
+  tripSecret: string;
+  generation: number;
+};
+
 function createDeferred<T>(): Deferred<T> {
   let resolvePromise!: (value: T) => void;
   let rejectPromise!: (reason: unknown) => void;
@@ -102,17 +108,21 @@ export function usePushNotifications(tripId?: string, tripSecret?: string): UseP
   const clickCbRef = useRef<((p: PushNotificationPayload) => void) | null>(null);
   const tripIdRef = useRef<string | undefined>(tripId);
   const tripSecretRef = useRef<string | undefined>(tripSecret);
+  const credentialsGenerationRef = useRef(0);
   const nativeSetupPromiseRef = useRef<Promise<void> | null>(null);
   const nativeRegistrationRef = useRef<Deferred<PushRegisterResult> | null>(null);
-  const nativeRegisterInFlightRef = useRef<Promise<PushRegisterResult | null> | null>(null);
+  const nativeRegistrationCredentialsRef = useRef<PushCredentials | null>(null);
+  const nativeRegisterInFlightRef = useRef<{
+    key: string;
+    promise: Promise<PushRegisterResult | null>;
+  } | null>(null);
+  const markerRevalidationRef = useRef(new Map<string, Promise<void>>());
 
   useEffect(() => {
     tripIdRef.current = tripId;
-  }, [tripId]);
-
-  useEffect(() => {
     tripSecretRef.current = tripSecret;
-  }, [tripSecret]);
+    credentialsGenerationRef.current += 1;
+  }, [tripId, tripSecret]);
 
   useEffect(() => {
     let cancelled = false;
@@ -124,7 +134,9 @@ export function usePushNotifications(tripId?: string, tripSecret?: string): UseP
       queueMicrotask(() => {
         if (cancelled) return;
         setToken(marker && marker.platform !== "web" ? marker.token : null);
-        setRegistered(Boolean(marker && marker.platform !== "web"));
+        // A local marker is only a hint. Startup revalidation below confirms
+        // that the token still exists for the current trip credential.
+        setRegistered(false);
       });
       return () => {
         cancelled = true;
@@ -139,7 +151,7 @@ export function usePushNotifications(tripId?: string, tripSecret?: string): UseP
         setToken(sub?.endpoint ?? null);
         // A browser permission or subscription alone is not enough: only a
         // successful subscribe API response writes this trip-scoped marker.
-        setRegistered(Boolean(sub && marker?.platform === "web" && marker.token === sub.endpoint));
+        setRegistered(false);
       })
       .catch(() => {
         if (!cancelled) setRegistered(false);
@@ -152,11 +164,20 @@ export function usePushNotifications(tripId?: string, tripSecret?: string): UseP
 
   /** 把訂閱/token 回報給後端；web 平台才需要傳 keys */
   const reportSubscriptionToBackend = useCallback(
-    async (result: PushRegisterResult, keys?: { p256dh?: string; auth?: string }) => {
-      if (!tripIdRef.current) {
+    async (
+      result: PushRegisterResult,
+      keys?: { p256dh?: string; auth?: string },
+      explicitCredentials?: PushCredentials,
+    ) => {
+      const credentials = explicitCredentials ?? {
+        tripId: tripIdRef.current ?? "",
+        tripSecret: tripSecretRef.current ?? "",
+        generation: credentialsGenerationRef.current,
+      };
+      if (!credentials.tripId) {
         throw new PushRegistrationError("missing-trip-id", "尚未取得行程代號，請稍後再試。");
       }
-      if (!tripSecretRef.current) {
+      if (!credentials.tripSecret) {
         throw new PushRegistrationError("missing-trip-secret", "尚未取得行程密碼，請稍後再試。");
       }
       const res = await fetch(SUBSCRIBE_API, {
@@ -175,7 +196,7 @@ export function usePushNotifications(tripId?: string, tripSecret?: string): UseP
         throw new PushRegistrationError("subscribe-api", `推播訂閱寫入後端失敗 (${res.status})${detail ? `：${detail.slice(0, 120)}` : ""}`);
       }
       try {
-        writePushRegistrationMarker(window.localStorage, tripIdRef.current, {
+        writePushRegistrationMarker(window.localStorage, credentials.tripId, {
           token: result.token,
           platform: result.platform,
         });
@@ -183,28 +204,124 @@ export function usePushNotifications(tripId?: string, tripSecret?: string): UseP
         // The backend registration succeeded; private storage restrictions
         // must not turn that success into a failed subscription.
       }
-      setRegistered(true);
+      if (
+        credentialsGenerationRef.current === credentials.generation
+        && tripIdRef.current === credentials.tripId
+        && tripSecretRef.current === credentials.tripSecret
+      ) {
+        setRegistered(true);
+      }
     },
     [],
   );
 
+  useEffect(() => {
+    if (!tripId || !tripSecret || current === "unsupported") return;
+    let stopped = false;
+    const credentials: PushCredentials = {
+      tripId,
+      tripSecret,
+      generation: credentialsGenerationRef.current,
+    };
+    const isCurrent = () => Boolean(
+      !stopped
+      && credentialsGenerationRef.current === credentials.generation
+      && tripIdRef.current === credentials.tripId
+      && tripSecretRef.current === credentials.tripSecret
+    );
+
+    const revalidate = async () => {
+      const marker = readPushRegistrationMarker(window.localStorage, credentials.tripId);
+      if (!marker) return;
+      const key = [
+        credentials.generation,
+        credentials.tripId,
+        credentials.tripSecret,
+        marker.platform,
+        marker.token,
+      ].join("\u0000");
+      const existing = markerRevalidationRef.current.get(key);
+      if (existing) return existing;
+      const attempt = (async () => {
+        if (current === "native") {
+          if (marker.platform === "web") return;
+          await reportSubscriptionToBackend(
+            { token: marker.token, platform: marker.platform },
+            undefined,
+            credentials,
+          );
+          if (isCurrent()) setToken(marker.token);
+          return;
+        }
+        if (marker.platform !== "web") return;
+        const registration = await getActiveServiceWorker();
+        const subscription = await registration?.pushManager.getSubscription();
+        if (!subscription || subscription.endpoint !== marker.token) {
+          clearPushRegistrationMarker(window.localStorage, credentials.tripId);
+          if (isCurrent()) {
+            setRegistered(false);
+            setToken(subscription?.endpoint ?? null);
+          }
+          return;
+        }
+        const keys = subscription.toJSON().keys;
+        await reportSubscriptionToBackend(
+          { token: subscription.endpoint, platform: "web" },
+          keys ? { p256dh: keys.p256dh, auth: keys.auth } : undefined,
+          credentials,
+        );
+        if (isCurrent()) setToken(subscription.endpoint);
+      })()
+        .catch((error) => {
+          if (isCurrent()) setRegistered(false);
+          console.warn("[push] marker revalidation failed", error);
+        })
+        .finally(() => {
+          if (markerRevalidationRef.current.get(key) === attempt) {
+            markerRevalidationRef.current.delete(key);
+          }
+        });
+      markerRevalidationRef.current.set(key, attempt);
+      return attempt;
+    };
+
+    void revalidate();
+    const retry = () => void revalidate();
+    window.addEventListener("online", retry);
+    window.addEventListener("focus", retry);
+    return () => {
+      stopped = true;
+      window.removeEventListener("online", retry);
+      window.removeEventListener("focus", retry);
+    };
+  }, [current, reportSubscriptionToBackend, tripId, tripSecret]);
+
   const unregister = useCallback(async () => {
+    const credentials: PushCredentials = {
+      tripId: tripId ?? "",
+      tripSecret: tripSecret ?? "",
+      generation: credentialsGenerationRef.current,
+    };
+    let backendError: PushRegistrationError | null = null;
     if (token) {
-      if (!tripIdRef.current || !tripSecretRef.current) {
+      if (!credentials.tripId || !credentials.tripSecret) {
         throw new PushRegistrationError("missing-trip-credentials", "缺少行程代號或密碼，無法取消推播。");
       }
       const response = await fetch(SUBSCRIBE_API, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          trip_id: tripIdRef.current,
-          trip_secret: tripSecretRef.current,
+          trip_id: credentials.tripId,
+          trip_secret: credentials.tripSecret,
           token,
         }),
       });
       if (!response.ok) {
         const detail = await response.text().catch(() => "");
-        throw new PushRegistrationError(
+        // 403 commonly means the trip secret was rotated. Rotation already
+        // revoked every remote token, so the device must still be allowed to
+        // remove its browser subscription and stale local marker.
+        if (response.status !== 403) backendError = new PushRegistrationError(
           "unsubscribe-api",
           "取消推播失敗 (" + response.status + ")" + (detail ? "：" + detail.slice(0, 120) : ""),
         );
@@ -223,13 +340,20 @@ export function usePushNotifications(tripId?: string, tripSecret?: string): UseP
     }
     // Native 沒有可靠的 OS token revoke；後端刪除後即不再列入發送名單。
     try {
-      clearPushRegistrationMarker(window.localStorage, tripIdRef.current);
+      clearPushRegistrationMarker(window.localStorage, credentials.tripId);
     } catch {
       // ignore storage restrictions
     }
-    setRegistered(false);
-    setToken(null);
-  }, [current, token]);
+    if (
+      credentialsGenerationRef.current === credentials.generation
+      && tripIdRef.current === credentials.tripId
+      && tripSecretRef.current === credentials.tripSecret
+    ) {
+      setRegistered(false);
+      setToken(null);
+    }
+    if (backendError) throw backendError;
+  }, [current, token, tripId, tripSecret]);
 
   const onNotification = useCallback((cb: (p: PushNotificationPayload) => void) => {
     notifyCbRef.current = cb;
@@ -269,20 +393,44 @@ export function usePushNotifications(tripId?: string, tripSecret?: string): UseP
               }
               const plat = platform() === "ios" ? "ios" : "android";
               const result: PushRegisterResult = { token: t.value, platform: plat };
-              await reportSubscriptionToBackend(result);
+              const credentials = nativeRegistrationCredentialsRef.current ?? {
+                tripId: tripIdRef.current ?? "",
+                tripSecret: tripSecretRef.current ?? "",
+                generation: credentialsGenerationRef.current,
+              };
+              await reportSubscriptionToBackend(result, undefined, credentials);
               if (stopped) return;
-              setToken(t.value);
-              setPermission("granted");
+              if (
+                credentialsGenerationRef.current === credentials.generation
+                && tripIdRef.current === credentials.tripId
+                && tripSecretRef.current === credentials.tripSecret
+              ) {
+                setToken(t.value);
+                setPermission("granted");
+              }
               nativeRegistrationRef.current?.resolve(result);
             } catch (error) {
               if (stopped) return;
+              const credentials = nativeRegistrationCredentialsRef.current;
               try {
-                clearPushRegistrationMarker(window.localStorage, tripIdRef.current);
+                clearPushRegistrationMarker(
+                  window.localStorage,
+                  credentials?.tripId ?? tripIdRef.current,
+                );
               } catch {
                 // ignore storage restrictions
               }
-              setRegistered(false);
-              setToken(null);
+              if (
+                !credentials
+                || (
+                  credentialsGenerationRef.current === credentials.generation
+                  && tripIdRef.current === credentials.tripId
+                  && tripSecretRef.current === credentials.tripSecret
+                )
+              ) {
+                setRegistered(false);
+                setToken(null);
+              }
               rejectPendingRegistration(
                 error instanceof Error
                   ? error
@@ -349,9 +497,23 @@ export function usePushNotifications(tripId?: string, tripSecret?: string): UseP
 
   /** 註冊（native 走 Capacitor；web 走 Web Push + VAPID） */
   const register = useCallback(async (): Promise<PushRegisterResult | null> => {
+    const credentials: PushCredentials = {
+      tripId: tripId ?? "",
+      tripSecret: tripSecret ?? "",
+      generation: credentialsGenerationRef.current,
+    };
+    const credentialKey = `${credentials.generation}\u0000${credentials.tripId}\u0000${credentials.tripSecret}`;
     if (current === "native") {
       if (nativeRegisterInFlightRef.current) {
-        return nativeRegisterInFlightRef.current;
+        if (nativeRegisterInFlightRef.current.key === credentialKey) {
+          return nativeRegisterInFlightRef.current.promise;
+        }
+        // Native exposes one registration callback stream. Finish/cancel the
+        // previous credential's attempt before assigning the stream to another.
+        nativeRegistrationRef.current?.reject(
+          new PushRegistrationError("trip-changed", "行程已切換，已取消前一趟行程的推播註冊。"),
+        );
+        await nativeRegisterInFlightRef.current.promise.catch(() => null);
       }
 
       const attempt = (async () => {
@@ -371,6 +533,7 @@ export function usePushNotifications(tripId?: string, tripSecret?: string): UseP
         // 先掛上 rejection handler，避免原生同步事件形成 unhandled rejection。
         void pending.promise.catch(() => undefined);
         nativeRegistrationRef.current = pending;
+        nativeRegistrationCredentialsRef.current = credentials;
         try {
           try {
             await PushNotifications.register();
@@ -391,24 +554,36 @@ export function usePushNotifications(tripId?: string, tripSecret?: string): UseP
         } finally {
           if (nativeRegistrationRef.current === pending) {
             nativeRegistrationRef.current = null;
+            nativeRegistrationCredentialsRef.current = null;
           }
         }
       })();
 
-      nativeRegisterInFlightRef.current = attempt;
+      nativeRegisterInFlightRef.current = { key: credentialKey, promise: attempt };
       try {
         return await attempt;
       } finally {
-        if (nativeRegisterInFlightRef.current === attempt) {
+        if (nativeRegisterInFlightRef.current?.promise === attempt) {
           nativeRegisterInFlightRef.current = null;
         }
       }
     }
     if (current === "web") {
-      return registerWeb(setPermission, setToken, reportSubscriptionToBackend);
+      const setCurrentToken = (value: string) => {
+        if (
+          credentialsGenerationRef.current === credentials.generation
+          && tripIdRef.current === credentials.tripId
+          && tripSecretRef.current === credentials.tripSecret
+        ) setToken(value);
+      };
+      return registerWeb(
+        setPermission,
+        setCurrentToken,
+        (result, keys) => reportSubscriptionToBackend(result, keys, credentials),
+      );
     }
     return null;
-  }, [current, reportSubscriptionToBackend]);
+  }, [current, reportSubscriptionToBackend, tripId, tripSecret]);
 
   return {
     current,

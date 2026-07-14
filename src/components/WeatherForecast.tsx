@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Cloud, CloudRain, Sun, Snowflake, Calendar } from "lucide-react";
+import { ChevronDown, Cloud, CloudRain, Sun, Snowflake, Calendar } from "lucide-react";
 import {
   getJmaWeatherKind,
   getJmaWeatherLabel,
@@ -20,6 +20,7 @@ export function WeatherForecast() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [requestKey, setRequestKey] = useState(0);
+  const [showAllForecast, setShowAllForecast] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -55,11 +56,11 @@ export function WeatherForecast() {
 
   const getWeatherIcon = (code: string) => {
     switch (getJmaWeatherKind(code)) {
-      case "sunny": return <Sun className="w-8 h-8 text-yellow-500" />;
-      case "cloudy": return <Cloud className="w-8 h-8 text-gray-400" />;
-      case "rain": return <CloudRain className="w-8 h-8 text-blue-400" />;
-      case "snow": return <Snowflake className="w-8 h-8 text-sky-400" />;
-      default: return <Cloud className="w-8 h-8 text-gray-400" />;
+      case "sunny": return <Sun aria-hidden="true" className="w-8 h-8 text-yellow-600 dark:text-yellow-300" />;
+      case "cloudy": return <Cloud aria-hidden="true" className="w-8 h-8 text-gray-500 dark:text-gray-300" />;
+      case "rain": return <CloudRain aria-hidden="true" className="w-8 h-8 text-blue-600 dark:text-blue-300" />;
+      case "snow": return <Snowflake aria-hidden="true" className="w-8 h-8 text-sky-600 dark:text-sky-300" />;
+      default: return <Cloud aria-hidden="true" className="w-8 h-8 text-gray-500 dark:text-gray-300" />;
     }
   };
 
@@ -133,12 +134,15 @@ export function WeatherForecast() {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-4">
+        <div id="weather-forecast-days" className="grid grid-cols-1 min-[360px]:grid-cols-3 sm:grid-cols-4 lg:grid-cols-7 gap-3 sm:gap-4">
           {forecast.map((day, i) => (
-            <div key={i} className="flex flex-col items-center p-4 bg-gray-50 dark:bg-slate-900/50 rounded-2xl border border-transparent hover:border-primary/30 transition-all">
+            <div
+              key={`${day.date}-${i}`}
+              className={`${i >= 3 && !showAllForecast ? "hidden sm:flex" : "flex"} flex-col items-center p-3 sm:p-4 bg-gray-50 dark:bg-slate-900/50 rounded-2xl border border-transparent hover:border-primary/30 transition-all`}
+            >
               <span className="text-base font-bold text-gray-500 mb-3">{day.date}</span>
-              <div className="mb-3" aria-label={`天氣：${getJmaWeatherLabel(day.weather)}`}>{getWeatherIcon(day.weather)}</div>
-              <div className="flex gap-2 font-black">
+              <div className="mb-3" role="img" aria-label={`天氣：${getJmaWeatherLabel(day.weather)}`}>{getWeatherIcon(day.weather)}</div>
+              <div className="flex flex-col sm:flex-row items-center gap-0.5 sm:gap-2 text-sm sm:text-base font-black">
                 <span className="text-red-700 dark:text-red-300">
                   {day.tempMax === "--" ? "高溫 —" : `${day.tempMax}°`}
                 </span>
@@ -157,6 +161,19 @@ export function WeatherForecast() {
             </div>
           ))}
         </div>
+
+        {forecast.length > 3 && (
+          <button
+            type="button"
+            onClick={() => setShowAllForecast((current) => !current)}
+            aria-expanded={showAllForecast}
+            aria-controls="weather-forecast-days"
+            className="sm:hidden mt-4 min-h-11 w-full inline-flex items-center justify-center gap-2 rounded-2xl border border-gray-200 dark:border-slate-600 bg-gray-50 dark:bg-slate-900 font-black text-sm text-gray-700 dark:text-gray-200"
+          >
+            {showAllForecast ? "收起完整預報" : `查看其餘 ${forecast.length - 3} 天`}
+            <ChevronDown aria-hidden="true" className={`w-4 h-4 transition-transform ${showAllForecast ? "rotate-180" : ""}`} />
+          </button>
+        )}
 
         {/* Outfit Suggestion */}
         {forecast.length > 0 && (() => {

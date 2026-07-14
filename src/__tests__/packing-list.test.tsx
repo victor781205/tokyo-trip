@@ -1,15 +1,16 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { PackingList } from "@/components/PackingList";
+import { createDefaultPackingItems, PackingList } from "@/components/PackingList";
 
 const mocks = vi.hoisted(() => ({
   updatePackingList: vi.fn(),
+  packingList: [] as Array<{ id: string; name: string; packed: boolean; category: string }>,
 }));
 
 vi.mock("@/hooks/useTripState", () => ({
   useTripState: () => ({
     isLoaded: true,
-    packingList: [],
+    packingList: mocks.packingList,
     updatePackingList: mocks.updatePackingList,
   }),
 }));
@@ -17,6 +18,7 @@ vi.mock("@/hooks/useTripState", () => ({
 describe("PackingList empty state", () => {
   beforeEach(() => {
     mocks.updatePackingList.mockReset();
+    mocks.packingList = [];
   });
 
   it("preserves an intentionally empty synced list", () => {
@@ -27,12 +29,22 @@ describe("PackingList empty state", () => {
     expect(mocks.updatePackingList).not.toHaveBeenCalled();
   });
 
+  it("creates the same deterministic identities for defaults on every device", () => {
+    const first = createDefaultPackingItems();
+    const second = createDefaultPackingItems();
+
+    expect(second.map((item) => item.id)).toEqual(first.map((item) => item.id));
+    expect(new Set(first.map((item) => item.id)).size).toBe(first.length);
+    expect(first.every((item) => item.id.startsWith("default:"))).toBe(true);
+  });
+
   it("only restores suggested items after explicit confirmation", () => {
     render(<PackingList />);
 
     fireEvent.click(screen.getByRole("button", { name: "載入建議清單" }));
     expect(mocks.updatePackingList).toHaveBeenCalledTimes(1);
-    expect(mocks.updatePackingList).toHaveBeenCalledWith(
+    const updater = mocks.updatePackingList.mock.calls[0][0] as (items: typeof mocks.packingList) => typeof mocks.packingList;
+    expect(updater([])).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ name: "護照", packed: false, category: "證件" }),
         expect.objectContaining({
@@ -42,6 +54,34 @@ describe("PackingList empty state", () => {
         }),
       ]),
     );
+  });
+
+  it("merges missing suggestions without overwriting reservations or custom items", () => {
+    const reservation = { id: "reservation:ghibli", name: "吉卜力門票", packed: true, category: "預約與門票" };
+    const custom = { id: "custom-note", name: "Victor 的自訂物品", packed: true, category: "其他" };
+    const existingDefault = { id: "existing-passport", name: "護照", packed: true, category: "證件" };
+    mocks.packingList = [reservation, custom, existingDefault];
+    render(<PackingList />);
+
+    fireEvent.click(screen.getByRole("button", { name: /補上建議清單/ }));
+    const updater = mocks.updatePackingList.mock.calls[0][0] as (items: typeof mocks.packingList) => typeof mocks.packingList;
+    const next = updater(mocks.packingList);
+
+    expect(next).toEqual(expect.arrayContaining([reservation, custom, existingDefault]));
+    expect(next.filter((item) => item.name === "護照" && item.category === "證件")).toHaveLength(1);
+    expect(next).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: "行動電源（最多 2 顆、每顆 ≤100Wh；隨身攜帶）" }),
+    ]));
+  });
+
+  it("hides the restore button once every default exists even when custom tasks remain", () => {
+    mocks.packingList = [
+      ...createDefaultPackingItems(),
+      { id: "reservation:teamlab", name: "teamLab 門票", packed: false, category: "預約與門票" },
+    ];
+    render(<PackingList />);
+
+    expect(screen.queryByRole("button", { name: /建議清單/ })).not.toBeInTheDocument();
   });
 
   it("shows season, plug, and lithium-battery guidance without refilling the list", () => {
@@ -55,5 +95,22 @@ describe("PackingList empty state", () => {
       expect.stringContaining("starlux-airlines.com"),
     );
     expect(mocks.updatePackingList).not.toHaveBeenCalled();
+  });
+
+  it("announces whether each packing category is expanded", () => {
+    mocks.packingList = [
+      { id: "passport", name: "護照", packed: false, category: "證件" },
+    ];
+    render(<PackingList />);
+
+    const categoryButton = screen.getByRole("button", { name: /證件/ });
+    const panelId = categoryButton.getAttribute("aria-controls");
+    expect(categoryButton).toHaveAttribute("aria-expanded", "true");
+    expect(panelId).toBeTruthy();
+    expect(document.getElementById(panelId!)).not.toHaveAttribute("hidden");
+
+    fireEvent.click(categoryButton);
+    expect(categoryButton).toHaveAttribute("aria-expanded", "false");
+    expect(document.getElementById(panelId!)).toHaveAttribute("hidden");
   });
 });

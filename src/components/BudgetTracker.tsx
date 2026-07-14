@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useCallback, useEffect, useMemo } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import dynamic from "next/dynamic";
-import { Trash2, Pencil, Check, Plus, PieChart, CreditCard, Wallet, ScanLine, Loader2 } from "lucide-react";
-import { useTripState } from "@/hooks/useTripState";
+import { Trash2, Pencil, Check, Plus, PieChart, CreditCard, Wallet, ScanLine, Loader2, RotateCcw, X } from "lucide-react";
+import { useTripState, type BudgetItem } from "@/hooks/useTripState";
 import { useDialog } from "@/context/DialogContext";
 import {
   getDateInTimeZone,
@@ -50,6 +50,8 @@ const CATEGORIES = {
 } as const;
 
 const MAX_YEN_AMOUNT = 999_999_999;
+const FALLBACK_JPY_PER_TWD = 4.65;
+const TRAVELERS = ["Victor", "毓寧"] as const;
 type CategoryKey = keyof typeof CATEGORIES;
 const DAILY_PACE_CATEGORIES = new Set<CategoryKey>(["food", "transport", "shopping", "other"]);
 
@@ -83,6 +85,21 @@ function addYenSafely(total: number, amount: number): number {
   return Math.min(Number.MAX_SAFE_INTEGER, total + amount);
 }
 
+function getTripDayLabel(date: string): string | null {
+  const normalized = parseLocalDate(date);
+  if (!normalized || normalized < TRIP_OUTBOUND_DATE) return null;
+  const first = Date.parse(`${TRIP_OUTBOUND_DATE}T12:00:00Z`);
+  const current = Date.parse(`${normalized}T12:00:00Z`);
+  const day = Math.floor((current - first) / 86_400_000) + 1;
+  return day >= 1 && day <= TRIP_TOTAL_DAYS ? `Day ${day}` : null;
+}
+
+function tripDateForDay(day: number): string {
+  const date = new Date(`${TRIP_OUTBOUND_DATE}T12:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + day - 1);
+  return date.toISOString().slice(0, 10);
+}
+
 export function BudgetTracker() {
   const { isLoaded, budgetItems, updateBudgetItems, budgetLimit, setBudgetLimit } = useTripState();
   const { confirm } = useDialog();
@@ -90,16 +107,42 @@ export function BudgetTracker() {
   const [name, setName] = useState("");
   const [amount, setAmount] = useState("");
   const [category, setCategory] = useState("food");
+  const [expenseDate, setExpenseDate] = useState(() => getDateInTimeZone(new Date(), "Asia/Tokyo"));
+  const [payer, setPayer] = useState<string>(TRAVELERS[0]);
+  const [participants, setParticipants] = useState<string[]>([...TRAVELERS]);
+  const [editingId, setEditingId] = useState<BudgetItem["id"] | null>(null);
+  const [deletedItem, setDeletedItem] = useState<{ item: BudgetItem; index: number } | null>(null);
+  const [jpyPerTwd, setJpyPerTwd] = useState(FALLBACK_JPY_PER_TWD);
   const [isEditingLimit, setIsEditingLimit] = useState(false);
   const [tempLimit, setTempLimit] = useState("");
   const [limitError, setLimitError] = useState("");
   const [amountError, setAmountError] = useState("");
   const [showScanner, setShowScanner] = useState(false);
   const [now, setNow] = useState(() => Date.now());
+  const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetch("/api/currency")
+      .then(async (response) => {
+        if (!response.ok) throw new Error("rate unavailable");
+        return response.json() as Promise<{ rate?: number }>;
+      })
+      .then((data) => {
+        if (!cancelled && Number.isFinite(data.rate) && Number(data.rate) > 0) {
+          setJpyPerTwd(Number(data.rate));
+        }
+      })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 60_000);
-    return () => window.clearInterval(timer);
+    return () => {
+      window.clearInterval(timer);
+      if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
+    };
   }, []);
 
   const handleScanComplete = useCallback((scannedItems: ReceiptItem[]) => {
@@ -115,8 +158,8 @@ export function BudgetTracker() {
       category: normalizeCategory(item.category),
       date: new Date().toLocaleDateString("zh-TW"),
     }));
-    if (newItems.length > 0) updateBudgetItems([...newItems, ...budgetItems]);
-  }, [budgetItems, updateBudgetItems]);
+    if (newItems.length > 0) updateBudgetItems((prev) => [...newItems, ...prev]);
+  }, [updateBudgetItems]);
 
   // ── 衍生數值（useMemo，避免每次 render 重算）──
   // 注意：hooks 必須在條件 return 之前，故 isLoaded 檢查移到 useMemo 之後
@@ -193,7 +236,47 @@ export function BudgetTracker() {
     return { categoryData: data, grandTotal: data.reduce((sum, c) => addYenSafely(sum, c.total), 0) };
   }, [budgetItems]);
 
+  const splitSummary = useMemo(() => {
+    const balances = Object.fromEntries(TRAVELERS.map((person) => [person, 0])) as Record<string, number>;
+    let trackedItems = 0;
+    for (const item of budgetItems) {
+      const validAmount = normalizeYenAmount(item.amount);
+      const itemParticipants = item.participants?.filter((person) => TRAVELERS.includes(person as (typeof TRAVELERS)[number]));
+      if (validAmount === null || !item.payer || !TRAVELERS.includes(item.payer as (typeof TRAVELERS)[number]) || !itemParticipants?.length) continue;
+      trackedItems += 1;
+      balances[item.payer] += validAmount;
+      const share = validAmount / itemParticipants.length;
+      itemParticipants.forEach((person) => { balances[person] -= share; });
+    }
+    const debtors = Object.entries(balances).filter(([, value]) => value < -0.5).map(([name, value]) => ({ name, amount: -value }));
+    const creditors = Object.entries(balances).filter(([, value]) => value > 0.5).map(([name, value]) => ({ name, amount: value }));
+    const settlements: Array<{ from: string; to: string; amount: number }> = [];
+    for (const debtor of debtors) {
+      for (const creditor of creditors) {
+        if (debtor.amount <= 0.5 || creditor.amount <= 0.5) continue;
+        const amount = Math.min(debtor.amount, creditor.amount);
+        settlements.push({ from: debtor.name, to: creditor.name, amount: Math.round(amount) });
+        debtor.amount -= amount;
+        creditor.amount -= amount;
+      }
+    }
+    return { balances, trackedItems, settlements };
+  }, [budgetItems]);
+
   if (!isLoaded) return null;
+
+  const formatTwd = (yen: number) => `NT$${Math.round(yen / jpyPerTwd).toLocaleString()}`;
+
+  const resetExpenseForm = () => {
+    setName("");
+    setAmount("");
+    setCategory("food");
+    setExpenseDate(getDateInTimeZone(new Date(), "Asia/Tokyo"));
+    setPayer(TRAVELERS[0]);
+    setParticipants([...TRAVELERS]);
+    setEditingId(null);
+    setAmountError("");
+  };
 
   const handleAdd = (e: React.FormEvent) => {
     e.preventDefault();
@@ -203,18 +286,44 @@ export function BudgetTracker() {
       return;
     }
 
-    const newItem = {
-      id: Date.now(),
+    const normalizedDate = parseLocalDate(expenseDate);
+    if (!normalizedDate) {
+      setAmountError("請選擇有效的支出日期");
+      return;
+    }
+    if (participants.length === 0) {
+      setAmountError("請至少選擇一位分攤對象");
+      return;
+    }
+
+    const newItem: BudgetItem = {
+      id: editingId ?? Date.now(),
       name: name.trim(),
       amount: parsedAmount,
       category: normalizeCategory(category),
-      date: new Date().toLocaleDateString("zh-TW"),
+      date: normalizedDate,
+      payer,
+      participants,
     };
 
-    updateBudgetItems([newItem, ...budgetItems]);
-    setName("");
-    setAmount("");
+    updateBudgetItems((prev) => editingId === null
+      ? [newItem, ...prev]
+      : prev.map((item) => item.id === editingId ? { ...item, ...newItem, id: item.id, syncId: item.syncId } : item));
+    resetExpenseForm();
+  };
+
+  const handleEdit = (item: BudgetItem) => {
+    setEditingId(item.id);
+    setName(item.name);
+    setAmount(String(item.amount));
+    setCategory(normalizeCategory(item.category));
+    setExpenseDate(parseLocalDate(item.date) ?? getDateInTimeZone(new Date(), "Asia/Tokyo"));
+    setPayer(item.payer && TRAVELERS.includes(item.payer as (typeof TRAVELERS)[number]) ? item.payer : TRAVELERS[0]);
+    setParticipants(item.participants?.filter((person) => TRAVELERS.includes(person as (typeof TRAVELERS)[number])).length
+      ? item.participants!.filter((person) => TRAVELERS.includes(person as (typeof TRAVELERS)[number]))
+      : [...TRAVELERS]);
     setAmountError("");
+    document.getElementById("budget-add-form")?.scrollIntoView?.({ behavior: "smooth", block: "center" });
   };
 
   const saveBudgetLimit = () => {
@@ -228,7 +337,7 @@ export function BudgetTracker() {
     setIsEditingLimit(false);
   };
 
-  const handleDelete = async (id: number) => {
+  const handleDelete = async (id: BudgetItem["id"]) => {
     const ok = await confirm({
       title: "刪除支出",
       message: "確定要刪除這筆支出嗎？",
@@ -236,7 +345,26 @@ export function BudgetTracker() {
       confirmText: "刪除",
     });
     if (!ok) return;
-    updateBudgetItems(budgetItems.filter((item) => item.id !== id));
+    const index = budgetItems.findIndex((item) => item.id === id);
+    const item = budgetItems[index];
+    if (!item) return;
+    updateBudgetItems((prev) => prev.filter((entry) => entry.id !== id));
+    if (editingId === id) resetExpenseForm();
+    setDeletedItem({ item, index });
+    if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
+    undoTimerRef.current = setTimeout(() => setDeletedItem(null), 6_000);
+  };
+
+  const undoDelete = () => {
+    if (!deletedItem) return;
+    updateBudgetItems((prev) => {
+      if (prev.some((item) => item.id === deletedItem.item.id)) return prev;
+      const next = [...prev];
+      next.splice(Math.min(deletedItem.index, next.length), 0, deletedItem.item);
+      return next;
+    });
+    if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
+    setDeletedItem(null);
   };
 
   return (
@@ -246,7 +374,7 @@ export function BudgetTracker() {
         {/* Stats Row - Legible & Compact */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
           <div className="bg-gray-50 dark:bg-slate-900 p-4 rounded-3xl relative group border border-transparent">
-            <div className="text-sm font-black text-gray-400 uppercase tracking-widest mb-1.5 flex items-center gap-1">
+            <div className="text-sm font-black text-gray-600 dark:text-gray-300 uppercase tracking-widest mb-1.5 flex items-center gap-1">
               <Wallet className="w-2.5 h-2.5" /> 總預算
             </div>
             {isEditingLimit ? (
@@ -272,28 +400,35 @@ export function BudgetTracker() {
               </div>
             ) : (
               <div className="flex items-center justify-between">
-                <div className="text-base sm:text-lg font-black leading-tight ">¥{safeBudgetLimit.toLocaleString()}</div>
+                <div>
+                  <div className="text-base sm:text-lg font-black leading-tight">¥{safeBudgetLimit.toLocaleString()}</div>
+                  <div className="text-xs font-bold text-gray-600 dark:text-gray-300 mt-1">約 {formatTwd(safeBudgetLimit)}</div>
+                </div>
                 <button aria-label="編輯總預算" onClick={() => { setTempLimit(safeBudgetLimit.toString()); setLimitError(""); setIsEditingLimit(true); }} className="min-w-11 min-h-11 flex items-center justify-center p-1 text-gray-300 hover:text-primary transition-all rounded-xl">
                   <Pencil className="w-3.5 h-3.5" />
                 </button>
               </div>
             )}
-            {limitError && <p id="budget-limit-error" role="alert" className="mt-1 text-[11px] font-bold text-red-500">{limitError}</p>}
+            {limitError && <p id="budget-limit-error" role="alert" className="mt-1 text-[11px] font-bold text-red-700 dark:text-red-300">{limitError}</p>}
           </div>
 
           <div className="bg-gray-50 dark:bg-slate-900 p-4 rounded-3xl border border-transparent">
-            <div className="text-sm font-black text-gray-400 uppercase tracking-widest mb-1.5 flex items-center gap-1">
+            <div className="text-sm font-black text-gray-600 dark:text-gray-300 uppercase tracking-widest mb-1.5 flex items-center gap-1">
               <CreditCard className="w-2.5 h-2.5 text-red-400" /> 已花
             </div>
-            <div className="text-base sm:text-lg font-black leading-tight text-red-500 ">¥{spent.toLocaleString()}</div>
+            <div className="text-base sm:text-lg font-black leading-tight text-red-600 dark:text-red-400">¥{spent.toLocaleString()}</div>
+            <div className="text-xs font-bold text-gray-600 dark:text-gray-300 mt-1">約 {formatTwd(spent)}</div>
           </div>
 
           <div className="bg-gray-50 dark:bg-slate-900 p-4 rounded-3xl border border-transparent">
-            <div className="text-sm font-black text-gray-400 uppercase tracking-widest mb-1.5 flex items-center gap-1">
+            <div className="text-sm font-black text-gray-600 dark:text-gray-300 uppercase tracking-widest mb-1.5 flex items-center gap-1">
               <PieChart className={`w-2.5 h-2.5 ${overBudget > 0 ? "text-red-400" : "text-green-400"}`} /> {overBudget > 0 ? "超支" : "剩餘"}
             </div>
-            <div className={`text-base sm:text-lg font-black leading-tight ${overBudget > 0 ? "text-red-500" : "text-green-500"}`}>
+            <div className={`text-base sm:text-lg font-black leading-tight ${overBudget > 0 ? "text-red-700 dark:text-red-300" : "text-green-700 dark:text-green-300"}`}>
               ¥{(overBudget > 0 ? overBudget : remaining).toLocaleString()}
+            </div>
+            <div className="text-xs font-bold text-gray-600 dark:text-gray-300 mt-1">
+              約 {formatTwd(overBudget > 0 ? overBudget : remaining)}
             </div>
           </div>
         </div>
@@ -304,23 +439,23 @@ export function BudgetTracker() {
             <div className={`text-sm font-black mb-2 flex items-center gap-2 ${overBudget > 0 ? "text-red-700 dark:text-red-400" : "text-green-700 dark:text-green-400"}`}>
               <span className="text-lg">{overBudget > 0 ? "⚠️" : "💡"}</span> 預算分析
               {budgetAnalysis.phase === "ongoing" && (
-                <span className="ml-auto text-xs font-bold text-gray-400">
+                <span className="ml-auto text-xs font-bold text-gray-600 dark:text-gray-300">
                   目前第 {tripProgress.elapsedDays} 天 / 剩 {budgetAnalysis.remainingDays} 天
                 </span>
               )}
             </div>
             <div className="grid grid-cols-2 gap-4 text-sm">
               <div>
-                <div className="text-gray-500 dark:text-gray-400">建議每日預算</div>
+                <div className="text-gray-600 dark:text-gray-300">建議每日預算</div>
                 <div className="text-xl font-black text-green-600 dark:text-green-400">
                   ¥{budgetAnalysis.suggestedDaily.toLocaleString()}
                 </div>
               </div>
               <div>
-                <div className="text-gray-500 dark:text-gray-400">
+                <div className="text-gray-600 dark:text-gray-300">
                   {budgetAnalysis.phase === "pre" ? "旅程前已記支出" : "預計總支出"}
                 </div>
-                <div className={`text-xl font-black ${budgetAnalysis.overage > 0 ? "text-red-500" : "text-blue-500"}`}>
+                <div className={`text-xl font-black ${budgetAnalysis.overage > 0 ? "text-red-700 dark:text-red-300" : "text-blue-700 dark:text-blue-300"}`}>
                   ¥{(budgetAnalysis.projectedTotal ?? spent).toLocaleString()}
                 </div>
               </div>
@@ -340,8 +475,8 @@ export function BudgetTracker() {
         {/* Progress Bar */}
         <div className="mb-8 px-1">
           <div className="flex justify-between text-sm font-black uppercase tracking-widest mb-2">
-            <span className="text-gray-400">進度</span>
-            <span className={percentage > 90 ? "text-red-500" : "text-primary"}>{percentage.toFixed(1)}%</span>
+            <span className="text-gray-600 dark:text-gray-300">進度</span>
+            <span className={percentage > 90 ? "text-red-700 dark:text-red-300" : "text-primary"}>{percentage.toFixed(1)}%</span>
           </div>
           <div className="w-full h-2.5 bg-gray-100 dark:bg-slate-900 rounded-full overflow-hidden shadow-inner">
             <div
@@ -360,7 +495,7 @@ export function BudgetTracker() {
 
           return (
             <div className="mb-8 bg-gray-50 dark:bg-slate-900 rounded-[2rem] p-5 border border-gray-100 dark:border-slate-800">
-              <div className="text-sm font-black text-gray-400 uppercase tracking-widest mb-4">
+              <div className="text-sm font-black text-gray-600 dark:text-gray-300 uppercase tracking-widest mb-4">
                 類別支出比例
               </div>
               <div className="flex items-center gap-6">
@@ -396,7 +531,7 @@ export function BudgetTracker() {
                     })}
                   </svg>
                   <div className="absolute inset-0 flex flex-col items-center justify-center">
-                    <span className="text-xs font-bold text-gray-400">總計</span>
+                    <span className="text-xs font-bold text-gray-600 dark:text-gray-300">總計</span>
                     <span className="text-sm font-black">¥{grandTotal.toLocaleString()}</span>
                   </div>
                 </div>
@@ -416,7 +551,7 @@ export function BudgetTracker() {
                             <span className="text-sm">{cat.icon}</span>
                             <span className="text-xs font-bold text-gray-600 dark:text-gray-300 truncate">{cat.label}</span>
                           </div>
-                          <div className="text-xs text-gray-400">
+                          <div className="text-xs text-gray-600 dark:text-gray-300">
                             <span className="font-black">{percent}%</span>
                             <span className="ml-1">¥{cat.total.toLocaleString()}</span>
                           </div>
@@ -430,6 +565,40 @@ export function BudgetTracker() {
           );
         })()}
 
+        {splitSummary.trackedItems > 0 && (
+          <div className="mb-6 rounded-[2rem] border border-blue-200 bg-blue-50 p-5 dark:border-blue-900 dark:bg-blue-950/20">
+            <div className="flex items-start justify-between gap-3 mb-4">
+              <div>
+                <h3 className="font-black text-blue-950 dark:text-blue-100">👥 共同分帳結算</h3>
+                <p className="mt-1 text-xs font-bold text-blue-800 dark:text-blue-200">已計入 {splitSummary.trackedItems} 筆有設定付款人與分攤對象的支出；舊紀錄不會被猜測。</p>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3 mb-4">
+              {TRAVELERS.map((person) => {
+                const balance = splitSummary.balances[person] ?? 0;
+                return (
+                  <div key={person} className="rounded-2xl bg-white p-3 dark:bg-slate-800">
+                    <div className="text-sm font-black text-gray-900 dark:text-white">{person}</div>
+                    <div className={`mt-1 text-lg font-black tabular-nums ${balance > 0.5 ? "text-emerald-700 dark:text-emerald-300" : balance < -0.5 ? "text-red-700 dark:text-red-300" : "text-gray-600 dark:text-gray-300"}`}>
+                      {balance > 0.5 ? `應收 ¥${Math.round(balance).toLocaleString()}` : balance < -0.5 ? `應付 ¥${Math.round(-balance).toLocaleString()}` : "已結清"}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="space-y-2">
+              {splitSummary.settlements.length > 0 ? splitSummary.settlements.map((settlement) => (
+                <div key={`${settlement.from}-${settlement.to}`} className="flex items-center justify-between gap-3 rounded-xl bg-blue-100 px-3 py-2.5 text-sm font-black text-blue-950 dark:bg-blue-900/30 dark:text-blue-100">
+                  <span>{settlement.from} → {settlement.to}</span>
+                  <span className="tabular-nums">¥{settlement.amount.toLocaleString()} <span className="text-xs font-bold">（約 {formatTwd(settlement.amount)}）</span></span>
+                </div>
+              )) : (
+                <p className="rounded-xl bg-emerald-100 px-3 py-2.5 text-sm font-black text-emerald-900 dark:bg-emerald-900/30 dark:text-emerald-200">目前不用轉帳，兩人已結清。</p>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Scan Receipt Button */}
         <button
           onClick={() => setShowScanner(true)}
@@ -439,12 +608,33 @@ export function BudgetTracker() {
           <span>掃描發票自動記帳</span>
         </button>
 
+        <button
+          type="button"
+          onClick={() => {
+            const form = document.getElementById("budget-add-form");
+            form?.scrollIntoView({ behavior: "smooth", block: "center" });
+            form?.querySelector<HTMLInputElement>("#budget-item-name")?.focus();
+          }}
+          className="md:hidden w-full mb-4 flex min-h-12 items-center justify-center gap-2 rounded-2xl border border-primary/20 bg-primary/5 font-black text-primary active:scale-[0.98]"
+        >
+          <Plus className="w-5 h-5" />
+          快速記一筆
+        </button>
+
         {/* Form - Legible Inputs */}
         <form
           id="budget-add-form"
           onSubmit={handleAdd}
           className="flex flex-col sm:flex-row sm:flex-wrap gap-2 mb-8 bg-gray-50 dark:bg-slate-900 p-4 rounded-[2rem] border border-gray-100 dark:border-slate-800 min-w-0 w-full overflow-hidden"
         >
+          {editingId !== null && (
+            <div className="w-full flex items-center justify-between gap-3 rounded-2xl bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 px-4 py-2.5">
+              <span className="text-sm font-black text-orange-800 dark:text-orange-200">正在編輯「{name}」</span>
+              <button type="button" onClick={resetExpenseForm} className="inline-flex min-h-11 items-center gap-1 px-3 rounded-xl text-sm font-black text-orange-800 dark:text-orange-200 hover:bg-orange-100 dark:hover:bg-orange-900/40">
+                <X className="w-4 h-4" /> 取消
+              </button>
+            </div>
+          )}
           {/* 類別 + 項目名稱：min-w-0 避免 flex 子元素被內容撐爆 */}
           <div className="flex flex-1 min-w-0 gap-2">
             <label htmlFor="budget-category" className="sr-only">支出類別</label>
@@ -490,14 +680,76 @@ export function BudgetTracker() {
             />
             <button
               type="submit"
-              aria-label="新增支出"
+              aria-label={editingId === null ? "新增支出" : "儲存支出變更"}
               className="shrink-0 bg-primary hover:bg-primary-dark text-white p-3 sm:px-6 rounded-2xl font-black shadow-lg shadow-primary/20 active:scale-95 transition-all"
             >
-              <Plus className="w-5 h-5 sm:w-6 sm:h-6" />
+              {editingId === null ? <Plus className="w-5 h-5 sm:w-6 sm:h-6" /> : <Check className="w-5 h-5 sm:w-6 sm:h-6" />}
             </button>
           </div>
+          <div className="w-full grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_auto] gap-2 pt-1">
+            <div>
+              <label htmlFor="budget-expense-date" className="text-xs font-black text-gray-600 dark:text-gray-300 block mb-1 ml-1">實際支出日期</label>
+              <input
+                id="budget-expense-date"
+                type="date"
+                value={expenseDate}
+                onChange={(event) => { setExpenseDate(event.target.value); setAmountError(""); }}
+                className="w-full min-h-11 p-3 rounded-2xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm font-bold focus:ring-2 focus:ring-primary/20 outline-none"
+                required
+              />
+            </div>
+            <fieldset>
+              <legend className="text-xs font-black text-gray-600 dark:text-gray-300 mb-1 ml-1">快速選擇旅程日</legend>
+              <div className="flex gap-1 overflow-x-auto scrollbar-hide snap-x" aria-label="快速選擇 Day 1 至 Day 6">
+                {Array.from({ length: TRIP_TOTAL_DAYS }, (_, index) => {
+                  const day = index + 1;
+                  const date = tripDateForDay(day);
+                  return (
+                    <button
+                      key={date}
+                      type="button"
+                      aria-pressed={expenseDate === date}
+                      onClick={() => setExpenseDate(date)}
+                      className={`min-h-11 shrink-0 snap-start px-3 rounded-xl text-xs font-black border ${expenseDate === date
+                        ? "bg-primary text-white border-primary"
+                        : "bg-white dark:bg-slate-800 text-gray-700 dark:text-gray-200 border-gray-200 dark:border-slate-700"}`}
+                    >
+                      D{day}
+                    </button>
+                  );
+                })}
+              </div>
+            </fieldset>
+          </div>
+          <div className="w-full grid grid-cols-1 sm:grid-cols-2 gap-3 rounded-2xl border border-blue-100 bg-blue-50 p-3 dark:border-blue-900 dark:bg-blue-950/20">
+            <div>
+              <label htmlFor="budget-payer" className="text-xs font-black text-blue-900 dark:text-blue-200 block mb-1">付款人</label>
+              <select id="budget-payer" value={payer} onChange={(event) => setPayer(event.target.value)} className="min-h-11 w-full rounded-xl border border-blue-200 bg-white px-3 font-bold text-gray-900 dark:border-blue-900 dark:bg-slate-800 dark:text-white">
+                {TRAVELERS.map((person) => <option key={person} value={person}>{person}</option>)}
+              </select>
+            </div>
+            <fieldset>
+              <legend className="text-xs font-black text-blue-900 dark:text-blue-200 mb-1">分攤對象</legend>
+              <div className="grid grid-cols-2 gap-2">
+                {TRAVELERS.map((person) => {
+                  const selected = participants.includes(person);
+                  return (
+                    <button
+                      key={person}
+                      type="button"
+                      aria-pressed={selected}
+                      onClick={() => setParticipants((prev) => selected ? prev.filter((entry) => entry !== person) : [...prev, person])}
+                      className={`min-h-11 rounded-xl border px-3 text-sm font-black ${selected ? "border-blue-700 bg-blue-700 text-white" : "border-blue-200 bg-white text-blue-900 dark:border-blue-900 dark:bg-slate-800 dark:text-blue-200"}`}
+                    >
+                      {selected && <Check className="inline w-4 h-4 mr-1" />} {person}
+                    </button>
+                  );
+                })}
+              </div>
+            </fieldset>
+          </div>
           {amountError && (
-            <p id="budget-amount-error" role="alert" className="w-full text-sm font-bold text-red-500 px-1">
+            <p id="budget-amount-error" role="alert" className="w-full text-sm font-bold text-red-700 dark:text-red-300 px-1">
               {amountError}
             </p>
           )}
@@ -506,7 +758,7 @@ export function BudgetTracker() {
         {/* List - Readable text */}
         <div className="space-y-3 max-h-[350px] md:max-h-[500px] overflow-y-auto pr-1 custom-scrollbar">
           {budgetItems.length === 0 ? (
-            <div className="text-center text-gray-400 dark:text-slate-500 py-12 text-base border-2 border-dashed border-gray-200 dark:border-slate-700 rounded-[2.5rem] font-bold">
+            <div className="text-center text-gray-600 dark:text-slate-300 py-12 text-base border-2 border-dashed border-gray-200 dark:border-slate-700 rounded-[2.5rem] font-bold">
               目前尚無任何記帳紀錄
             </div>
           ) : (
@@ -517,13 +769,31 @@ export function BudgetTracker() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="font-black text-sm sm:text-base text-gray-900 dark:text-white leading-tight truncate">{item.name}</div>
-                  <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mt-0.5">{item.date}</div>
+                  <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                    <span className="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wide">{item.date}</span>
+                    {getTripDayLabel(item.date) && (
+                      <span className="rounded-full bg-blue-100 dark:bg-blue-900/30 px-2 py-0.5 text-[11px] font-black text-blue-700 dark:text-blue-300">{getTripDayLabel(item.date)}</span>
+                    )}
+                    {item.payer && item.participants?.length ? (
+                      <span className="rounded-full bg-violet-100 dark:bg-violet-900/30 px-2 py-0.5 text-[11px] font-black text-violet-800 dark:text-violet-200">{item.payer} 付款 · {item.participants.length} 人分</span>
+                    ) : (
+                      <span className="rounded-full bg-gray-100 dark:bg-slate-700 px-2 py-0.5 text-[11px] font-bold text-gray-600 dark:text-gray-300">未設定分攤</span>
+                    )}
+                  </div>
                 </div>
-                <span className={`font-black text-sm sm:text-base tabular-nums whitespace-nowrap flex-shrink-0 ${normalizeYenAmount(item.amount) === null ? "text-red-500" : ""}`}>
-                  {normalizeYenAmount(item.amount) === null
-                    ? "無效金額"
-                    : `¥${normalizeYenAmount(item.amount)!.toLocaleString()}`}
-                </span>
+                <div className="text-right shrink-0">
+                  <div className={`font-black text-sm sm:text-base tabular-nums whitespace-nowrap ${normalizeYenAmount(item.amount) === null ? "text-red-700 dark:text-red-300" : ""}`}>
+                    {normalizeYenAmount(item.amount) === null
+                      ? "無效金額"
+                      : `¥${normalizeYenAmount(item.amount)!.toLocaleString()}`}
+                  </div>
+                  {normalizeYenAmount(item.amount) !== null && (
+                    <div className="text-[11px] font-bold text-gray-600 dark:text-gray-300 tabular-nums">約 {formatTwd(normalizeYenAmount(item.amount)!)}</div>
+                  )}
+                </div>
+                <button onClick={() => handleEdit(item)} aria-label={`編輯「${item.name}」`} className="w-11 h-11 flex-shrink-0 flex items-center justify-center text-gray-500 hover:text-primary rounded-xl transition-all">
+                  <Pencil className="w-4 h-4" />
+                </button>
                 <button onClick={() => handleDelete(item.id)} aria-label={`刪除「${item.name}」`} className="w-11 h-11 flex-shrink-0 flex items-center justify-center text-gray-300 hover:text-red-500 rounded-xl transition-all">
                   <Trash2 className="w-4 h-4" />
                 </button>
@@ -541,22 +811,14 @@ export function BudgetTracker() {
         />
       )}
 
-      {/* 手機底部 sticky 新增 CTA */}
-      <div className="md:hidden fixed bottom-[calc(4.5rem+env(safe-area-inset-bottom))] left-0 right-0 z-40 px-4 pointer-events-none">
-        <button
-          type="button"
-          onClick={() => {
-            const form = document.getElementById("budget-add-form");
-            form?.scrollIntoView({ behavior: "smooth", block: "center" });
-            const input = form?.querySelector<HTMLInputElement>('input[placeholder="項目名稱"]');
-            input?.focus();
-          }}
-          className="pointer-events-auto w-full max-w-lg mx-auto flex items-center justify-center gap-2 py-3.5 rounded-2xl font-black text-white bg-primary shadow-2xl shadow-primary/40 border border-white/10 active:scale-[0.98]"
-        >
-          <Plus className="w-5 h-5" />
-          快速記一筆
-        </button>
-      </div>
+      {deletedItem && (
+        <div role="status" aria-live="polite" className="fixed bottom-[calc(1rem+env(safe-area-inset-bottom))] left-1/2 z-[90] flex w-[calc(100%-2rem)] max-w-md -translate-x-1/2 items-center gap-3 rounded-2xl bg-slate-950 px-4 py-3 text-white shadow-2xl">
+          <span className="min-w-0 flex-1 truncate text-sm font-bold">已刪除「{deletedItem.item.name}」</span>
+          <button type="button" onClick={undoDelete} className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-xl bg-white/10 px-3 text-sm font-black hover:bg-white/20">
+            <RotateCcw className="w-4 h-4" /> 復原
+          </button>
+        </div>
+      )}
     </section>
   );
 }

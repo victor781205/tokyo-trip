@@ -6,6 +6,10 @@ const migration = readFileSync(
   resolve("supabase/migrations/20260714020000_sync_cas_and_credential_binding.sql"),
   "utf8",
 );
+const mergeMigration = readFileSync(
+  resolve("supabase/migrations/20260714110000_sync_merge_rotation_recovery.sql"),
+  "utf8",
+);
 
 describe("sync CAS migration security contract", () => {
   it("binds reads to both credentials and removes trip_secret column access", () => {
@@ -43,5 +47,21 @@ describe("sync CAS migration security contract", () => {
     expect(migration).toContain("sync payload too large");
     expect(migration).toContain("jsonb_array_length(p_custom_foods) > 1000");
     expect(migration).toContain("jsonb_array_length(p_budget_items) > 5000");
+  });
+
+  it("syncs food statuses through the same revision transaction", () => {
+    expect(mergeMigration).toContain("ADD COLUMN IF NOT EXISTS food_statuses jsonb");
+    expect(mergeMigration).toContain("CREATE OR REPLACE FUNCTION public.sync_trip_slices_v2");
+    expect(mergeMigration).toContain("v_result := public.sync_trip_slices(");
+    expect(mergeMigration).toContain("revision = revision + 1");
+    expect(mergeMigration).toContain("status_entry.value NOT IN ('wishlist', 'visited')");
+  });
+
+  it("revokes old push subscriptions atomically when rotating the secret", () => {
+    const rotation = mergeMigration.match(/CREATE OR REPLACE FUNCTION public\.rotate_trip_secret\(([\s\S]*?)\nEND;\n\$\$;/)?.[0];
+    expect(rotation).toBeDefined();
+    expect(rotation).toContain("SET trip_secret = p_new_secret");
+    expect(rotation).toContain("DELETE FROM public.push_subscriptions WHERE trip_id = p_trip_id");
+    expect(rotation).toContain("revoked_push_subscriptions");
   });
 });

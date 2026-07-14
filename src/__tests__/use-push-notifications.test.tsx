@@ -116,6 +116,88 @@ describe("usePushNotifications native lifecycle", () => {
     expect(result.current.token).toBe("native-token-123");
   });
 
+  it("idempotently revalidates an existing marker on startup", async () => {
+    localStorage.setItem("tokyoPushRegistration:trip-revalidate", JSON.stringify({
+      token: "existing-native-token",
+      platform: "ios",
+      verifiedAt: "2026-07-14T00:00:00.000Z",
+    }));
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ ok: true }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { result } = renderHook(() => usePushNotifications("trip-revalidate", "secret-revalidate"));
+
+    await waitFor(() => expect(result.current.registered).toBe(true));
+    expect(result.current.token).toBe("existing-native-token");
+    expect(fetchMock).toHaveBeenCalledWith("/api/push/subscribe", expect.objectContaining({
+      method: "POST",
+      body: JSON.stringify({
+        trip_id: "trip-revalidate",
+        trip_secret: "secret-revalidate",
+        token: "existing-native-token",
+        platform: "ios",
+      }),
+    }));
+  });
+
+  it("keeps revalidation credentials isolated when the active trip changes mid-flight", async () => {
+    localStorage.setItem("tokyoPushRegistration:trip-old", JSON.stringify({
+      token: "old-token",
+      platform: "ios",
+      verifiedAt: "2026-07-14T00:00:00.000Z",
+    }));
+    localStorage.setItem("tokyoPushRegistration:trip-new", JSON.stringify({
+      token: "new-token",
+      platform: "ios",
+      verifiedAt: "2026-07-14T00:00:00.000Z",
+    }));
+    const pending = new Map<string, (response: Response) => void>();
+    const bodies: Array<Record<string, unknown>> = [];
+    const fetchMock = vi.fn((_url: string, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      bodies.push(body);
+      return new Promise<Response>((resolve) => {
+        pending.set(String(body.trip_id), resolve);
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { result, rerender } = renderHook(
+      ({ id, secret }) => usePushNotifications(id, secret),
+      { initialProps: { id: "trip-old", secret: "secret-old" } },
+    );
+    await waitFor(() => expect(pending.has("trip-old")).toBe(true));
+
+    rerender({ id: "trip-new", secret: "secret-new" });
+    await waitFor(() => expect(pending.has("trip-new")).toBe(true));
+
+    await act(async () => {
+      pending.get("trip-new")?.(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+    });
+    await waitFor(() => expect(result.current.registered).toBe(true));
+    expect(result.current.token).toBe("new-token");
+
+    await act(async () => {
+      pending.get("trip-old")?.(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+    });
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+    expect(bodies).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        trip_id: "trip-old",
+        trip_secret: "secret-old",
+        token: "old-token",
+      }),
+      expect.objectContaining({
+        trip_id: "trip-new",
+        trip_secret: "secret-new",
+        token: "new-token",
+      }),
+    ]));
+    expect(result.current.registered).toBe(true);
+    expect(result.current.token).toBe("new-token");
+  });
+
   it("rejects the register promise when the async token report fails", async () => {
     vi.spyOn(console, "warn").mockImplementation(() => undefined);
     vi.stubGlobal("fetch", vi.fn(async () => new Response("database unavailable", { status: 503 })));
@@ -199,6 +281,27 @@ describe("usePushNotifications native lifecycle", () => {
         token: "native-token-to-remove",
       }),
     }));
+    expect(result.current.registered).toBe(false);
+    expect(result.current.token).toBeNull();
+  });
+
+  it("still clears the local token when an old credential was revoked by rotation", async () => {
+    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => new Response(
+      init?.method === "DELETE" ? "credential rotated" : JSON.stringify({ ok: true }),
+      { status: init?.method === "DELETE" ? 403 : 200 },
+    ));
+    vi.stubGlobal("fetch", fetchMock);
+    pushMocks.register.mockImplementation(async () => {
+      emit("registration", { value: "rotated-native-token" });
+    });
+
+    const { result } = renderHook(() => usePushNotifications("trip-rotated", "old-secret"));
+    await waitFor(() => expect(pushMocks.addListener).toHaveBeenCalledTimes(4));
+    await act(async () => {
+      await result.current.register();
+      await result.current.unregister();
+    });
+
     expect(result.current.registered).toBe(false);
     expect(result.current.token).toBeNull();
   });
