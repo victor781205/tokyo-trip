@@ -17,15 +17,6 @@ const withPWA = withPWAInit({
   },
   runtimeCaching: [
     {
-      urlPattern: /^https:\/\/.*\.supabase\.co\/.*/i,
-      handler: "NetworkFirst",
-      options: {
-        cacheName: "supabase-api",
-        expiration: { maxEntries: 50, maxAgeSeconds: 60 * 30 },
-        networkTimeoutSeconds: 10,
-      },
-    },
-    {
       // open.er-api.com 是 currency/route.ts 用的匯率 API；offline 時 SWR 給上次快取
       urlPattern: /^https:\/\/open\.er-api\.com\/.*/i,
       handler: "StaleWhileRevalidate",
@@ -67,6 +58,54 @@ const withPWA = withPWAInit({
   ],
 });
 
+export function createContentSecurityPolicy(
+  isDevelopment = process.env.NODE_ENV === "development",
+  sentryDsn = process.env.NEXT_PUBLIC_SENTRY_DSN,
+) {
+  const scriptSources = [
+    "'self'",
+    "'unsafe-inline'",
+    "'wasm-unsafe-eval'",
+    ...(isDevelopment ? ["'unsafe-eval'"] : []),
+    "https://maps.googleapis.com",
+    "https://maps.gstatic.com",
+  ];
+  let sentryOrigin: string | null = null;
+  if (sentryDsn) {
+    try {
+      const parsed = new URL(sentryDsn);
+      if (parsed.protocol === "https:") sentryOrigin = parsed.origin;
+    } catch {
+      // Invalid optional DSNs disable Sentry transport without widening CSP.
+    }
+  }
+  const connectSources = [
+    "'self'",
+    "https://*.supabase.co",
+    "wss://*.supabase.co",
+    "https://maps.googleapis.com",
+    "https://maps.gstatic.com",
+    ...(sentryOrigin ? [sentryOrigin] : []),
+  ];
+
+  return [
+    "default-src 'self'",
+    `script-src ${scriptSources.join(" ")}`,
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "img-src 'self' data: blob: https://tile.openstreetmap.org https://*.tile.openstreetmap.org https://*.basemaps.cartocdn.com https://maps.googleapis.com https://maps.google.com https://maps.gstatic.com https://*.gstatic.com",
+    "font-src 'self' https://fonts.gstatic.com",
+    `connect-src ${connectSources.join(" ")}`,
+    "worker-src 'self' blob:",
+    "media-src 'self' blob:",
+    "manifest-src 'self'",
+    "frame-src 'none'",
+    "frame-ancestors 'none'",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+  ].join("; ");
+}
+
 // Security Headers Configuration
 const securityHeaders = [
   { key: "X-Content-Type-Options", value: "nosniff" },
@@ -74,18 +113,14 @@ const securityHeaders = [
   { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains; preload" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
   { key: "X-XSS-Protection", value: "0" },
+  { key: "X-Robots-Tag", value: "noindex, nofollow, noarchive, nosnippet, noimageindex" },
+  {
+    key: "Permissions-Policy",
+    value: "camera=(self), microphone=(), geolocation=(), payment=(), usb=(), browsing-topics=(), fullscreen=(self)",
+  },
   {
     key: "Content-Security-Policy",
-    value: [
-      "default-src 'self'",
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com https://maps.googleapis.com",
-      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://unpkg.com",
-      "img-src 'self' data: blob: https://tile.openstreetmap.org https://*.tile.openstreetmap.org https://*.basemaps.cartocdn.com https://maps.googleapis.com https://maps.google.com https://maps.gstatic.com https://*.gstatic.com https://images.unsplash.com",
-      "font-src 'self' https://fonts.gstatic.com https://unpkg.com",
-      "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://tdx.transportdata.tw https://api.currencyapi.net https://api.aviationstack.com https://maps.googleapis.com https://maps.googleapis.cn https://fonts.googleapis.com https://open.er-api.com https://www.jma.go.jp",
-      "frame-src 'self' https://www.google.com https://maps.google.com https://www.google.com/maps",
-      "frame-ancestors 'none'",
-    ].join("; "),
+    value: createContentSecurityPolicy(),
   },
 ];
 

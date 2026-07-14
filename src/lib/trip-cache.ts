@@ -34,14 +34,17 @@ export type TripSnapshot = {
 export type TripCache = {
   snapshot: TripSnapshot;
   dirtySlices: SyncSlice[];
+  /** Server-issued monotonic revision used for optimistic concurrency control. */
+  remoteRevision: number;
   remoteUpdatedAt: number;
   localUpdatedAt: number;
-  /** 舊版全域 key 尚未和遠端完成第一次 LWW 判斷。 */
+  /** 舊版全域 key 尚未透過首次 revision-CAS 完成匯入。 */
   legacyMigration: boolean;
 };
 
 type StorageReader = Pick<Storage, "getItem">;
 type StorageWriter = Pick<Storage, "setItem">;
+type LegacyMigrationStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
 const LEGACY_KEYS = {
   itinerary: "tokyoItinerary",
@@ -60,10 +63,19 @@ const snapshotSchema = z.object({
   customFoods: customFoodsSchema,
   packingList: packingListSchema,
 });
-const cacheSchema = z.object({
+const cacheV1Schema = z.object({
   version: z.literal(1),
   snapshot: snapshotSchema,
   dirtySlices: z.array(syncSliceSchema).default([]),
+  remoteUpdatedAt: z.number().nonnegative().finite().default(0),
+  localUpdatedAt: z.number().nonnegative().finite().default(0),
+  legacyMigration: z.boolean().default(false),
+});
+const cacheV2Schema = z.object({
+  version: z.literal(2),
+  snapshot: snapshotSchema,
+  dirtySlices: z.array(syncSliceSchema).default([]),
+  remoteRevision: z.number().int().nonnegative().finite().default(0),
   remoteUpdatedAt: z.number().nonnegative().finite().default(0),
   localUpdatedAt: z.number().nonnegative().finite().default(0),
   legacyMigration: z.boolean().default(false),
@@ -113,14 +125,29 @@ export function readTripCache(
   const raw = storage.getItem(tripCacheKey(tripId));
   if (raw) {
     try {
-      const parsed = cacheSchema.safeParse(JSON.parse(raw));
-      if (parsed.success) {
+      const value = JSON.parse(raw);
+      const parsedV2 = cacheV2Schema.safeParse(value);
+      if (parsedV2.success) {
         return {
-          snapshot: parsed.data.snapshot,
-          dirtySlices: [...new Set(parsed.data.dirtySlices)],
-          remoteUpdatedAt: parsed.data.remoteUpdatedAt,
-          localUpdatedAt: parsed.data.localUpdatedAt,
-          legacyMigration: parsed.data.legacyMigration,
+          snapshot: parsedV2.data.snapshot,
+          dirtySlices: [...new Set(parsedV2.data.dirtySlices)],
+          remoteRevision: parsedV2.data.remoteRevision,
+          remoteUpdatedAt: parsedV2.data.remoteUpdatedAt,
+          localUpdatedAt: parsedV2.data.localUpdatedAt,
+          legacyMigration: parsedV2.data.legacyMigration,
+        };
+      }
+      // Version 1 caches predate CAS. They remain readable and start at revision 0,
+      // forcing the first write to refetch/resolve a conflict instead of guessing.
+      const parsedV1 = cacheV1Schema.safeParse(value);
+      if (parsedV1.success) {
+        return {
+          snapshot: parsedV1.data.snapshot,
+          dirtySlices: [...new Set(parsedV1.data.dirtySlices)],
+          remoteRevision: 0,
+          remoteUpdatedAt: parsedV1.data.remoteUpdatedAt,
+          localUpdatedAt: parsedV1.data.localUpdatedAt,
+          legacyMigration: parsedV1.data.legacyMigration,
         };
       }
     } catch {
@@ -137,6 +164,7 @@ export function readTripCache(
   return {
     snapshot,
     dirtySlices,
+    remoteRevision: 0,
     remoteUpdatedAt: 0,
     localUpdatedAt: dirtySlices.length > 0 ? legacyUpdatedAt : 0,
     legacyMigration: dirtySlices.length > 0,
@@ -149,13 +177,33 @@ export function writeTripCache(
   cache: TripCache,
 ) {
   storage.setItem(tripCacheKey(tripId), JSON.stringify({
-    version: 1,
+    version: 2,
     snapshot: cache.snapshot,
     dirtySlices: [...new Set(cache.dirtySlices)],
+    remoteRevision: cache.remoteRevision,
     remoteUpdatedAt: cache.remoteUpdatedAt,
     localUpdatedAt: cache.localUpdatedAt,
     legacyMigration: cache.legacyMigration,
   }));
+}
+
+/**
+ * Imports the pre-trip-scoped global cache exactly once.
+ *
+ * Cleanup deliberately happens only after the namespaced write succeeds. If
+ * storage is full, the legacy data remains available for a later retry rather
+ * than being destroyed halfway through migration.
+ */
+export function migrateLegacyTripCache(
+  storage: LegacyMigrationStorage,
+  tripId: string,
+): TripCache {
+  const cache = readTripCache(storage, tripId, { allowLegacy: true });
+  writeTripCache(storage, tripId, cache);
+  for (const key of Object.values(LEGACY_KEYS)) {
+    storage.removeItem(key);
+  }
+  return cache;
 }
 
 function parseValue<T>(schema: z.ZodType<T>, value: unknown, fallback: T): T {

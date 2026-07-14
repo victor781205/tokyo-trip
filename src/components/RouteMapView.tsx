@@ -7,14 +7,38 @@ import {
   subscribeToGoogleMapsAuthFailure,
 } from "@/lib/google-maps-loader";
 
+export function getRoutePlanningStatusMessage(status: string) {
+  switch (status) {
+    case "ZERO_RESULTS":
+      return "找不到可用的大眾運輸路線，已改為顯示起點與目的地位置。";
+    case "NOT_FOUND":
+      return "無法辨識起點或目的地，已嘗試在地圖上標示可辨識的位置。";
+    case "OVER_QUERY_LIMIT":
+      return "目前路線查詢量較大，已改為顯示起點與目的地位置，請稍後再試。";
+    case "REQUEST_DENIED":
+      return "Google Maps 暫時無法提供路線規劃，已改為顯示起點與目的地位置。";
+    case "INVALID_REQUEST":
+      return "路線查詢資料不完整，請確認起點與目的地後重新查詢。";
+    case "UNKNOWN_ERROR":
+      return "Google Maps 暫時無法完成路線規劃，已改為顯示起點與目的地位置。";
+    default:
+      return "目前無法完成大眾運輸路線規劃，已改為顯示起點與目的地位置。";
+  }
+}
+
 export function RouteMapView({ originName, destName }: { originName: string; destName: string }) {
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
   const mapRef = useRef<HTMLDivElement>(null);
+  const [retryKey, setRetryKey] = useState(0);
+  const queryKey = `${apiKey ?? ""}\n${originName}\n${destName}\n${retryKey}`;
   const [status, setStatus] = useState<"loading" | "ok" | "error">(apiKey ? "loading" : "error");
+  const [settledQueryKey, setSettledQueryKey] = useState<string | null>(apiKey ? null : queryKey);
   const [errorMessage, setErrorMessage] = useState(
     apiKey ? "Google Maps 暫時無法載入。" : "Google Maps 金鑰尚未設定，請改用外部導航。",
   );
-  const [retryKey, setRetryKey] = useState(0);
+  const [routeWarning, setRouteWarning] = useState<{ queryKey: string; message: string } | null>(null);
+  const currentStatus = settledQueryKey === queryKey ? status : apiKey ? "loading" : "error";
+  const currentRouteWarning = routeWarning?.queryKey === queryKey ? routeWarning.message : null;
 
   useEffect(() => {
     if (!mapRef.current) return;
@@ -23,12 +47,13 @@ export function RouteMapView({ originName, destName }: { originName: string; des
     // 標記這次 effect 是否已被取消（unmount / deps 變更）
     // loadGoogleMaps 內部 polling 等 window.google.maps 最多 10 秒，
     // 若元件在 polling 期間 unmount，polling 的 resolve 觸發後仍會接著
-    // setStatus("ok") / 建 Map，這裡用 cancelled 做 gate 防止後續動作。
+    // 路線查詢完成 / 建 Map 前，這裡用 cancelled 做 gate 防止後續動作。
     let cancelled = false;
     const unsubscribeAuthFailure = subscribeToGoogleMapsAuthFailure(() => {
       if (cancelled) return;
       setErrorMessage("Google Maps 驗證失敗，請改用外部導航。");
       setStatus("error");
+      setSettledQueryKey(queryKey);
     });
 
     loadGoogleMaps(apiKey)
@@ -92,9 +117,14 @@ export function RouteMapView({ originName, destName }: { originName: string; des
               if (result.routes && result.routes[0]?.bounds) {
                 map.fitBounds(result.routes[0].bounds);
               }
+              setStatus("ok");
+              setSettledQueryKey(queryKey);
             } else {
               // 路線規劃失敗（例如輸入已存在但 transit destinations 過遠、或跨國），
               // 退回 geocode 兩個地點並放 marker + fitBounds，至少看得到「起」「終」位置
+              setRouteWarning({ queryKey, message: getRoutePlanningStatusMessage(status) });
+              setStatus("ok");
+              setSettledQueryKey(queryKey);
               const geocoder = new google.maps.Geocoder();
               const q: Array<[string, "起" | "終"]> = [[originName, "起"], [destName, "終"]];
               const bounds = new google.maps.LatLngBounds();
@@ -105,14 +135,16 @@ export function RouteMapView({ originName, destName }: { originName: string; des
                   { address: normalize(addr), region: "JP" },
                   // eslint-disable-next-line @typescript-eslint/no-explicit-any
                   (res: any, st: string) => {
+                    if (cancelled) return;
                     done += 1;
                     if (st === "OK" && res && res[0]) {
                       okCount += 1;
                       const pos = res[0].geometry.location;
                       new google.maps.Marker({ position: pos, map, label });
                       bounds.extend(pos);
-                      if (done === q.length && okCount > 0) map.fitBounds(bounds);
                     }
+
+                    if (done === q.length && okCount > 0) map.fitBounds(bounds);
                   }
                 );
               });
@@ -120,7 +152,6 @@ export function RouteMapView({ originName, destName }: { originName: string; des
           }
         );
 
-        setStatus("ok");
       })
       .catch((error: unknown) => {
         if (cancelled) return;
@@ -130,15 +161,16 @@ export function RouteMapView({ originName, destName }: { originName: string; des
             : "Google Maps 暫時無法載入，請重試或改用外部導航。",
         );
         setStatus("error");
+        setSettledQueryKey(queryKey);
       });
 
     return () => {
       cancelled = true;
       unsubscribeAuthFailure();
     };
-  }, [apiKey, originName, destName, retryKey]);
+  }, [apiKey, originName, destName, queryKey, retryKey]);
 
-  if (status === "error") {
+  if (currentStatus === "error") {
     return (
       <div className="w-full h-full flex flex-col items-center justify-center bg-gray-100" style={{ minHeight: "450px" }}>
         <div className="text-gray-500 font-bold mb-2">地圖載入失敗</div>
@@ -154,7 +186,6 @@ export function RouteMapView({ originName, destName }: { originName: string; des
                 setStatus("error");
                 return;
               }
-              setStatus("loading");
               setRetryKey((value) => value + 1);
             }}
             className="min-h-11 px-4 rounded-xl bg-white border border-gray-200 text-gray-700 text-sm font-black"
@@ -175,6 +206,27 @@ export function RouteMapView({ originName, destName }: { originName: string; des
   }
 
   return (
-    <div ref={mapRef} className="w-full h-full" style={{ minHeight: "450px" }} />
+    <div className="relative w-full h-full" style={{ minHeight: "450px" }}>
+      <div ref={mapRef} className="w-full h-full" style={{ minHeight: "450px" }} />
+
+      {currentStatus === "loading" && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="absolute inset-0 flex items-center justify-center bg-gray-100/90 px-6 text-center text-sm font-bold text-gray-500"
+        >
+          載入地圖與大眾運輸路線中...
+        </div>
+      )}
+
+      {currentRouteWarning && (
+        <div
+          role="alert"
+          className="absolute inset-x-4 top-4 rounded-2xl border border-amber-200 bg-amber-50/95 px-4 py-3 text-sm font-bold leading-relaxed text-amber-800 shadow-lg backdrop-blur-sm dark:border-amber-800 dark:bg-amber-950/90 dark:text-amber-200"
+        >
+          {currentRouteWarning}
+        </div>
+      )}
+    </div>
   );
 }

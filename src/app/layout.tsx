@@ -52,7 +52,6 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
   viewportFit: "cover",
   // 系統 status bar / splash 配色依 prefers-color-scheme 切換
   // light = 品牌紅，dark = slate-900（搭配 manifest background_color）

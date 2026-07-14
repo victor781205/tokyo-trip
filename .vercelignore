@@ -1,0 +1,11 @@
+# Local audit and credential-diagnostic helpers are never deployment inputs.
+/scripts/apply-*.mjs
+/scripts/check-*.mjs
+/scripts/diag-*.mjs
+/scripts/extract-public-env.mjs
+/scripts/force-set-public-env.mjs
+/scripts/health*.mjs
+/scripts/inspect-*.mjs
+/scripts/print-env-keys.mjs
+/scripts/probe-*.mjs
+/scripts/restore-vercel-env.mjs

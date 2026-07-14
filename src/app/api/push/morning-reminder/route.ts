@@ -1,15 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
 import { createHash, timingSafeEqual } from "node:crypto";
 import { DEFAULT_ITINERARY } from "@/lib/default-itinerary";
 import { createServerSupabase } from "@/lib/supabase-server";
+import { TRIP_OUTBOUND_DATE } from "@/lib/trip-dates";
 
 /**
  * POST/GET /api/push/morning-reminder
  *
  * 由 Vercel Cron 每天早上固定時間呼叫（見 vercel.json）。
- * 透過 SECURITY DEFINER RPC list_push_trips_for_cron 取得有訂閱的行程，
- * 不依賴 service_role 直連表。
+ * 僅使用 service_role 讀取受鎖定的推播訂閱與行程表。
  *
  * 認證：Vercel Cron 會以 `Authorization: Bearer CRON_SECRET` 呼叫。
  */
@@ -23,50 +22,63 @@ async function handle(req: NextRequest) {
     return NextResponse.json({ error: "未授權" }, { status: 401 });
   }
 
-  const { client, error: clientErr } = createServerSupabase();
+  const { client, mode, error: clientErr } = createServerSupabase();
   const SELF_URL = process.env.NEXT_PUBLIC_SITE_URL?.trim() || "https://tokyo-trip-rosy.vercel.app";
-  if (clientErr || !client) {
-    return NextResponse.json({ error: "推播設定未完成", detail: clientErr }, { status: 500 });
+  if (clientErr || !client || mode !== "service_role") {
+    return NextResponse.json(
+      { error: "推播設定未完成", detail: "需要有效的 SUPABASE_SERVICE_ROLE_KEY" },
+      { status: 500 },
+    );
   }
 
-  // 1. 用 cron secret 換取有訂閱的 trip 列表（含 secret，僅限 cron）
-  const { data: trips, error: tripsErr } = await client.rpc("list_push_trips_for_cron", {
-    p_expected_secret: cronSecret,
-    p_provided_secret: providedSecret,
-  });
+  // 1. service_role 直接讀取受鎖定表。不可退回 anon 或公開 RPC。
+  const { data: subscriptions, error: subscriptionsErr } = await client
+    .from("push_subscriptions")
+    .select("trip_id");
 
-  if (tripsErr) {
-    if (tripsErr.message?.includes("Could not find the function") || tripsErr.code === "PGRST202") {
+  if (subscriptionsErr) {
+    return NextResponse.json(
+      { error: "查訂閱失敗", detail: subscriptionsErr.message },
+      { status: 500 },
+    );
+  }
+
+  const tripIds = [
+    ...new Set(
+      (subscriptions ?? [])
+        .map((row) => String(row.trip_id ?? "").trim())
+        .filter(Boolean),
+    ),
+  ];
+  let tripRows: { trip_id: string; trip_secret: string; itinerary: unknown }[] = [];
+
+  if (tripIds.length > 0) {
+    const { data: rows, error: rowsErr } = await client
+      .from("sync_state")
+      .select("trip_id, trip_secret, itinerary")
+      .in("trip_id", tripIds);
+
+    if (rowsErr) {
       return NextResponse.json(
-        {
-          error: "推播 RPC 尚未安裝",
-          detail: tripsErr.message,
-          hint: "請執行 supabase/migrations/20260709040000_push_rpc_security_definer.sql",
-        },
+        { error: "查行程失敗", detail: rowsErr.message },
         { status: 500 },
       );
     }
-    return NextResponse.json({ error: "查訂閱失敗", detail: tripsErr.message }, { status: 500 });
-  }
 
-  const tripRows = (trips ?? []) as { trip_id: string; trip_secret: string }[];
-  const today = getTokyoMonthDay();
+    tripRows = (rows ?? []).flatMap((row) => {
+      const tripId = String(row.trip_id ?? "").trim();
+      const tripSecret = String(row.trip_secret ?? "").trim();
+      return tripId && tripSecret
+        ? [{ trip_id: tripId, trip_secret: tripSecret, itinerary: row.itinerary }]
+        : [];
+    });
+  }
+  const today = getTokyoDate();
+  const deliveryDate = formatDate(today);
   const results: { trip_id: string; sent: boolean; detail?: string }[] = [];
 
   for (const s of tripRows) {
-    // 讀行程：用 anon + x-trip-secret 或直接再查（有 secret 即可）
-    const tripClient = createClientWithSecret(s.trip_secret);
-    if (!tripClient) continue;
-
-    const { data: row, error: rowErr } = await tripClient
-      .from("sync_state")
-      .select("trip_id, trip_secret, itinerary")
-      .eq("trip_id", s.trip_id)
-      .maybeSingle();
-
-    if (rowErr || !row) continue;
-
-    const remoteItinerary = row.itinerary as Record<
+    const remoteItinerary = s.itinerary as Record<
       string,
       { title?: string; date?: string; activities?: { time: string; name: string }[] }
     > | null;
@@ -76,13 +88,38 @@ async function handle(req: NextRequest) {
     const dayKey = Object.keys(itinerary).find((k) => {
       const plan = itinerary[k];
       if (!plan) return false;
-      const planDate = parseMonthDay(plan.date);
-      return planDate?.month === today.month && planDate.day === today.day;
+      const planDate = parseTripDate(plan.date);
+      return planDate?.year === today.year
+        && planDate.month === today.month
+        && planDate.day === today.day;
     });
 
     const todayPlan = dayKey ? itinerary[dayKey] : null;
     const activities = todayPlan?.activities ?? [];
     if (activities.length === 0) continue;
+
+    const { error: claimError } = await client
+      .from("push_delivery_log")
+      .insert({
+        trip_id: s.trip_id,
+        delivery_date: deliveryDate,
+        delivery_type: "morning-reminder",
+      });
+
+    if (claimError?.code === "23505") {
+      results.push({
+        trip_id: s.trip_id,
+        sent: false,
+        detail: "今日提醒已處理，略過重複執行",
+      });
+      continue;
+    }
+    if (claimError) {
+      return NextResponse.json(
+        { error: "無法建立推播防重紀錄", detail: claimError.message },
+        { status: 500 },
+      );
+    }
 
     const summary = activities
       .slice(0, 5)
@@ -97,22 +134,37 @@ async function handle(req: NextRequest) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          trip_id: row.trip_id,
-          trip_secret: row.trip_secret,
+          trip_id: s.trip_id,
+          trip_secret: s.trip_secret,
           title,
           body,
           data: { type: "morning-reminder", day: dayKey, url: "/?tab=itinerary" },
         }),
       });
-      const json = (await res.json()) as { ok?: boolean; sent?: number };
+      const json = (await res.json()) as {
+        ok?: boolean;
+        partial?: boolean;
+        sent?: number;
+        error?: string;
+      };
+      const delivered = res.ok && (
+        json.ok === true
+        || (json.partial === true && (json.sent ?? 0) > 0)
+      );
+      if (!delivered) {
+        await releaseDeliveryClaim(client, s.trip_id, deliveryDate);
+      }
       results.push({
-        trip_id: row.trip_id,
-        sent: json.ok === true,
-        detail: json.ok ? `發送 ${json.sent} 則` : "發送失敗",
+        trip_id: s.trip_id,
+        sent: delivered,
+        detail: delivered
+          ? (json.partial ? "部分通道成功，共發送 " : "發送 ") + (json.sent ?? 0) + " 則"
+          : json.error ?? "發送失敗 (" + res.status + ")",
       });
     } catch (e) {
+      await releaseDeliveryClaim(client, s.trip_id, deliveryDate);
       results.push({
-        trip_id: row.trip_id,
+        trip_id: s.trip_id,
         sent: false,
         detail: e instanceof Error ? e.message : String(e),
       });
@@ -120,16 +172,6 @@ async function handle(req: NextRequest) {
   }
 
   return NextResponse.json({ ok: true, processed: results.length, results });
-}
-
-function createClientWithSecret(secret: string) {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
-  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim();
-  if (!url || !anon) return null;
-  return createClient(url, anon, {
-    global: { headers: { "x-trip-secret": secret } },
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
 }
 
 export const POST = handle;
@@ -158,27 +200,57 @@ function securelyEqual(provided: string, expected: string): boolean {
   return timingSafeEqual(providedDigest, expectedDigest);
 }
 
-function getTokyoMonthDay(): { month: number; day: number } {
+function formatDate(date: { year: number; month: number; day: number }): string {
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return String(date.year) + "-" + pad(date.month) + "-" + pad(date.day);
+}
+
+async function releaseDeliveryClaim(
+  client: ReturnType<typeof createServerSupabase>["client"],
+  tripId: string,
+  deliveryDate: string,
+) {
+  if (!client) return;
+  const { error } = await client
+    .from("push_delivery_log")
+    .delete()
+    .eq("trip_id", tripId)
+    .eq("delivery_date", deliveryDate)
+    .eq("delivery_type", "morning-reminder");
+  if (error) console.warn("[morning-reminder] 無法釋放防重紀錄", error.message);
+}
+
+function getTokyoDate(): { year: number; month: number; day: number } {
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: "Asia/Tokyo",
+    year: "numeric",
     month: "numeric",
     day: "numeric",
   }).formatToParts(new Date());
 
   return {
+    year: Number(parts.find((part) => part.type === "year")?.value),
     month: Number(parts.find((part) => part.type === "month")?.value),
     day: Number(parts.find((part) => part.type === "day")?.value),
   };
 }
 
-function parseMonthDay(value?: string): { month: number; day: number } | null {
+function parseTripDate(value?: string): { year: number; month: number; day: number } | null {
   if (!value) return null;
 
-  const iso = value.match(/\b\d{4}-(\d{1,2})-(\d{1,2})\b/);
-  if (iso) return { month: Number(iso[1]), day: Number(iso[2]) };
+  const iso = value.match(/\b(\d{4})-(\d{1,2})-(\d{1,2})\b/);
+  if (iso) {
+    return { year: Number(iso[1]), month: Number(iso[2]), day: Number(iso[3]) };
+  }
 
   const local = value.match(/\b(\d{1,2})\s*[/.]\s*(\d{1,2})\b/);
-  if (local) return { month: Number(local[1]), day: Number(local[2]) };
+  if (local) {
+    return {
+      year: Number(TRIP_OUTBOUND_DATE.slice(0, 4)),
+      month: Number(local[1]),
+      day: Number(local[2]),
+    };
+  }
 
   return null;
 }

@@ -4,7 +4,37 @@ export type TokyoForecastDay = {
   tempMax: string;
   tempMin: string;
   pop: string;
+  temperatureNote?: string;
 };
+
+export type TokyoObservedTemperature = {
+  date: string;
+  min: string;
+  max: string;
+  observedAt?: string;
+};
+
+export type JmaWeatherKind = "sunny" | "cloudy" | "rain" | "snow" | "unknown";
+
+export function getJmaWeatherKind(code: string): JmaWeatherKind {
+  const value = Number.parseInt(code, 10);
+  if (Number.isNaN(value)) return "unknown";
+  if (value >= 100 && value < 200) return "sunny";
+  if (value >= 200 && value < 300) return "cloudy";
+  if (value >= 300 && value < 400) return "rain";
+  if (value >= 400 && value < 500) return "snow";
+  return "unknown";
+}
+
+export function getJmaWeatherLabel(code: string): string {
+  switch (getJmaWeatherKind(code)) {
+    case "sunny": return "晴";
+    case "cloudy": return "多雲";
+    case "rain": return "雨";
+    case "snow": return "雪";
+    default: return "天氣未知";
+  }
+}
 
 type JsonRecord = Record<string, unknown>;
 
@@ -27,13 +57,69 @@ function dateLabel(isoDate: string): string {
   return `${Number(month)}/${Number(day)}`;
 }
 
+function aggregatePopsByDate(timeDefines: string[], pops: string[]): Map<string, string> {
+  const result = new Map<string, string>();
+  timeDefines.forEach((dateTime, index) => {
+    const isoDate = dateTime.slice(0, 10);
+    const pop = pops[index];
+    const numericPop = Number.parseInt(pop, 10);
+    if (!isoDate || Number.isNaN(numericPop)) return;
+
+    const current = Number.parseInt(result.get(isoDate) ?? "", 10);
+    if (Number.isNaN(current) || numericPop > current) {
+      result.set(isoDate, String(numericPop));
+    }
+  });
+  return result;
+}
+
+function formatTemperature(value: number): string {
+  return Number.isInteger(value) ? String(value) : value.toFixed(1);
+}
+
+/** Parse the Tokyo AMeDAS station's ten-minute observations for one date. */
+export function parseTokyoObservedTemperature(
+  payloads: unknown[],
+  isoDate: string,
+): TokyoObservedTemperature | null {
+  const compactDate = isoDate.replaceAll("-", "");
+  if (!/^\d{8}$/.test(compactDate)) return null;
+
+  const samples: Array<{ key: string; value: number }> = [];
+  payloads.forEach((payload) => {
+    const root = record(payload);
+    if (!root) return;
+    Object.entries(root).forEach(([key, rawObservation]) => {
+      if (!/^\d{14}$/.test(key) || !key.startsWith(compactDate)) return;
+      const temperature = array(record(rawObservation)?.temp);
+      const value = Number(temperature[0]);
+      const quality = temperature.length > 1 ? Number(temperature[1]) : 0;
+      if (!Number.isFinite(value) || !Number.isFinite(quality) || quality > 1) return;
+      samples.push({ key, value });
+    });
+  });
+
+  if (samples.length === 0) return null;
+  samples.sort((a, b) => a.key.localeCompare(b.key));
+  const values = samples.map((sample) => sample.value);
+  const latest = samples.at(-1)?.key;
+  return {
+    date: isoDate,
+    min: formatTemperature(Math.min(...values)),
+    max: formatTemperature(Math.max(...values)),
+    observedAt: latest ? `${latest.slice(8, 10)}:${latest.slice(10, 12)}` : undefined,
+  };
+}
+
 /**
- * JMA 的短期 temps 是「時點溫度」，不是固定的 [最低, 最高]。
- * 當日最低溫在上午發布時通常已不再提供，因此明確顯示「--」，
- * 避免把兩個時點值誤標成 32–32°C。隔日起使用週間預報的
- * tempsMin / tempsMax 欄位。
+ * JMA 短期資料通常只提供今天的預報最高溫，最低溫會缺席；傍晚
+ * 甚至連今天最高溫也會從預報序列移除。第二參數可帶東京 AMeDAS
+ * 當日實測範圍，補齊第一張卡而不把明天的預報誤標成今天。
  */
-export function parseTokyoForecast(payload: unknown): TokyoForecastDay[] {
+export function parseTokyoForecast(
+  payload: unknown,
+  observed?: TokyoObservedTemperature | null,
+): TokyoForecastDay[] {
   const roots = array(payload);
   const shortRoot = record(roots[0]);
   const weeklyRoot = record(roots[1]);
@@ -46,7 +132,10 @@ export function parseTokyoForecast(payload: unknown): TokyoForecastDay[] {
 
   const shortDates = strings(shortWeather?.timeDefines);
   const weatherCodes = strings(firstArea(shortWeather)?.weatherCodes);
+  const popTimes = strings(shortPop?.timeDefines);
   const pops = strings(firstArea(shortPop)?.pops);
+  const shortPopByDate = aggregatePopsByDate(popTimes, pops);
+  const undatedShortPop = popTimes.length === 0 ? pops[0] : "";
   const temperatureTimes = strings(shortTemps?.timeDefines);
   const temperatures = strings(firstArea(shortTemps)?.temps);
   const todayIso = shortDates[0]?.slice(0, 10);
@@ -67,12 +156,19 @@ export function parseTokyoForecast(payload: unknown): TokyoForecastDay[] {
   const result: TokyoForecastDay[] = [];
   if (todayIso) {
     const todayTemperature = shortTemperatureByDate.get(todayIso);
+    const observedToday = observed?.date === todayIso ? observed : null;
+    const observedMin = observedToday?.min;
+    const observedMax = !todayTemperature?.max ? observedToday?.max : undefined;
+    const observedParts = [observedMin && "低溫", observedMax && "高溫"].filter(Boolean);
     result.push({
       date: dateLabel(todayIso),
       weather: weatherCodes[0] || "",
-      tempMax: todayTemperature?.max || "--",
-      tempMin: "--",
-      pop: pops[0] || "--",
+      tempMax: todayTemperature?.max || observedMax || "--",
+      tempMin: observedMin || "--",
+      pop: shortPopByDate.get(todayIso) || undatedShortPop || "--",
+      temperatureNote: observedParts.length > 0
+        ? `今日${observedParts.join("、")}為${observedToday?.observedAt ? `截至 ${observedToday.observedAt} ` : ""}實測值`
+        : undefined,
     });
   }
 
@@ -94,9 +190,34 @@ export function parseTokyoForecast(payload: unknown): TokyoForecastDay[] {
       weather: weeklyCodes[index] || "",
       tempMax: shortTemperature?.max || weeklyMaxes[index] || "--",
       tempMin: shortTemperature?.min || weeklyMins[index] || "--",
-      pop: weeklyPops[index] || "--",
+      pop: shortPopByDate.get(isoDate) || weeklyPops[index] || "--",
     });
   });
 
   return result.slice(0, 7);
+}
+
+/** Validate the compact response returned by the app's weather route. */
+export function parseTokyoForecastResponse(payload: unknown): TokyoForecastDay[] {
+  const items = array(record(payload)?.forecast);
+  return items.flatMap((item) => {
+    const value = record(item);
+    if (!value) return [];
+    const date = typeof value.date === "string" ? value.date : "";
+    const weather = typeof value.weather === "string" ? value.weather : "";
+    const tempMax = typeof value.tempMax === "string" ? value.tempMax : "";
+    const tempMin = typeof value.tempMin === "string" ? value.tempMin : "";
+    const pop = typeof value.pop === "string" ? value.pop : "";
+    if (!date || !weather || !tempMax || !tempMin || !pop) return [];
+    return [{
+      date,
+      weather,
+      tempMax,
+      tempMin,
+      pop,
+      temperatureNote: typeof value.temperatureNote === "string"
+        ? value.temperatureNote.slice(0, 120)
+        : undefined,
+    }];
+  }).slice(0, 7);
 }

@@ -14,7 +14,9 @@ const transferMethods = [
     badge: "最輕鬆",
     badgeBg: "bg-orange-100 text-orange-700",
     badgeBorder: "border-orange-200",
-    description: "直達飯店；例：T2 14:30 發車、16:10 抵達，須預留交通浮動",
+    description: "直達飯店；例：T2 14:30 發車、16:10 抵達，建議先確認座位",
+    href: "https://webservice.limousinebus.co.jp/web/jp/ReservationTop.aspx?AirportLine=1&Direction=1",
+    linkLabel: "官方時刻與預約",
     recommended: false,
   },
   {
@@ -27,6 +29,8 @@ const transferMethods = [
     badgeBg: "bg-blue-100 text-blue-700",
     badgeBorder: "border-blue-200",
     description: "JR 成田線快速直達錦糸町站，一車到底",
+    href: "https://www.jreast.co.jp/chiba/pdf/soubu.pdf",
+    linkLabel: "JR 官方路線圖",
     recommended: true,
   },
   {
@@ -39,6 +43,8 @@ const transferMethods = [
     badgeBg: "bg-green-100 text-green-700",
     badgeBorder: "border-green-200",
     description: "京成線至押上站轉乘半藏門線，班次密集",
+    href: "https://www.keisei.co.jp/keisei/tetudou/skyliner/us/directions/oshiage.php",
+    linkLabel: "京成官方路線",
     recommended: false,
   },
   {
@@ -46,11 +52,13 @@ const transferMethods = [
     title: "Skyliner + JR 線",
     subtitle: "舒適度最高",
     duration: "約 65 分鐘",
-    fare: "約 ¥2,800+",
+    fare: "約 ¥2,700",
     badge: "最舒適",
     badgeBg: "bg-purple-100 text-purple-700",
     badgeBorder: "border-purple-200",
-    description: "對號座位、行李置放架，適合追求舒適",
+    description: "Skyliner ¥2,470 至日暮里／上野後轉 JR；總額依轉乘與即時票價",
+    href: "https://www.keisei.co.jp/keisei/tetudou/skyliner/us/index.php",
+    linkLabel: "Skyliner 官方資訊",
     recommended: false,
   },
 ];
@@ -142,14 +150,14 @@ export function HotelInfo() {
               <div>
                 <div className="text-xs font-black text-gray-400 uppercase tracking-wider mb-0.5">標準退房</div>
                 <div className="font-bold text-sm text-gray-700 dark:text-gray-200">11:00 前</div>
-                <div className="text-xs text-gray-400">退房後可向櫃檯寄放行李</div>
+                <div className="text-xs text-gray-400">入住前可寄放；退房後請先向飯店確認</div>
               </div>
             </div>
           </div>
 
           {/* 設施標籤 */}
           <div className="flex flex-wrap gap-2 mb-6">
-            {["📶 免費 Wi-Fi", "🍽️ 餐廳", "🚌 機場巴士停靠", "🧳 行李寄存", "🛁 客房浴缸"].map((f) => (
+            {["📶 免費 Wi-Fi", "🍽️ 餐廳", "🚌 機場巴士停靠", "🧳 入住前行李寄存", "🛁 客房浴缸"].map((f) => (
               <span key={f} className="bg-gray-50 dark:bg-slate-700/50 px-3 py-1.5 rounded-xl text-sm font-medium text-gray-600 dark:text-gray-300">
                 {f}
               </span>
@@ -201,12 +209,17 @@ export function HotelInfo() {
           </h3>
         </div>
 
-        {/* 4 種交通方式 — 直接連結 Google Maps */}
+        <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold leading-relaxed text-amber-800 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-300">
+          <strong>機場巴士預約提醒：</strong>飯店出發班次為預約制，須由旅客事前自行網路預約，飯店前台不受理代訂；成田機場出發班次可於機場購票，仍建議先確認座位。
+        </div>
+
+        {/* 4 種交通方式 — 各自連結對應的官方路線或預約頁 */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           {transferMethods.map((t, i) => (
             <a
               key={i}
-              href={`https://www.google.com/maps/dir/?api=1&origin=Narita+Airport+NRT&destination=Tobu+Levant+Hotel+Tokyo+Kinshicho&travelmode=transit`}
+              href={t.href}
+              aria-label={`${t.title}：${t.linkLabel}`}
               target="_blank"
               rel="noopener noreferrer"
               className={`
@@ -238,10 +251,22 @@ export function HotelInfo() {
               </div>
               <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">{t.description}</p>
               <div className="mt-3 pt-3 border-t border-gray-100 dark:border-slate-700 flex items-center gap-1 text-xs font-black text-primary">
-                <Navigation className="w-3.5 h-3.5" /> Google Maps 導航
+                <Navigation className="w-3.5 h-3.5" /> {t.linkLabel}
               </div>
             </a>
           ))}
+        </div>
+
+        <div role="note" className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-bold leading-relaxed text-emerald-800 dark:border-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-300">
+          <strong>Welcome Suica：</strong>實體卡自購買日起 28 天有效、免押金，餘額不退；可在成田機場 T1、T2・3 的指定售票機／JR 東日本旅行服務中心購買，並以日圓現金加值。{" "}
+          <a
+            href="https://www.jreast.co.jp/multi/welcomesuica/purchase.html"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex min-h-11 items-center px-1 underline underline-offset-2"
+          >
+            JR 東日本官方購買說明
+          </a>
         </div>
       </div>
 

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import { PushNotifications, Token, PushNotificationSchema, ActionPerformed } from "@capacitor/push-notifications";
+import type { PluginListenerHandle } from "@capacitor/core";
 import { isNativePlatform, platform, getActiveServiceWorker, isIOSBrowser, isStandaloneWebApp, waitForServiceWorkerControl } from "@/lib/platform";
 import {
   clearPushRegistrationMarker,
@@ -34,7 +35,7 @@ export interface UsePushNotificationsApi {
   token: string | null;
   /** 訂冊推播並把 token 回報給後端 */
   register: () => Promise<PushRegisterResult | null>;
-  /** 取消訂閱（web 才支援完整取消；native 會請求 removeListener） */
+  /** 從後端移除此裝置 token；Web 另外取消瀏覽器 subscription。 */
   unregister: () => Promise<void>;
   /** 收到前景推播時的 callback */
   onNotification: (cb: (p: PushNotificationPayload) => void) => void;
@@ -51,6 +52,36 @@ class PushRegistrationError extends Error {
     super(message);
     this.name = "PushRegistrationError";
   }
+}
+
+type Deferred<T> = {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+  reject: (reason: unknown) => void;
+  settled: boolean;
+};
+
+function createDeferred<T>(): Deferred<T> {
+  let resolvePromise!: (value: T) => void;
+  let rejectPromise!: (reason: unknown) => void;
+  const deferred: Deferred<T> = {
+    promise: new Promise<T>((resolve, reject) => {
+      resolvePromise = resolve;
+      rejectPromise = reject;
+    }),
+    resolve: (value) => {
+      if (deferred.settled) return;
+      deferred.settled = true;
+      resolvePromise(value);
+    },
+    reject: (reason) => {
+      if (deferred.settled) return;
+      deferred.settled = true;
+      rejectPromise(reason);
+    },
+    settled: false,
+  };
+  return deferred;
 }
 
 export function usePushNotifications(tripId?: string, tripSecret?: string): UsePushNotificationsApi {
@@ -71,6 +102,9 @@ export function usePushNotifications(tripId?: string, tripSecret?: string): UseP
   const clickCbRef = useRef<((p: PushNotificationPayload) => void) | null>(null);
   const tripIdRef = useRef<string | undefined>(tripId);
   const tripSecretRef = useRef<string | undefined>(tripSecret);
+  const nativeSetupPromiseRef = useRef<Promise<void> | null>(null);
+  const nativeRegistrationRef = useRef<Deferred<PushRegisterResult> | null>(null);
+  const nativeRegisterInFlightRef = useRef<Promise<PushRegisterResult | null> | null>(null);
 
   useEffect(() => {
     tripIdRef.current = tripId;
@@ -154,18 +188,29 @@ export function usePushNotifications(tripId?: string, tripSecret?: string): UseP
     [],
   );
 
-  /** 註冊（native 走 Capacitor；web 走 Web Push + VAPID） */
-  const register = useCallback(async (): Promise<PushRegisterResult | null> => {
-    if (current === "native") {
-      return registerNative(setPermission);
-    }
-    if (current === "web") {
-      return registerWeb(setPermission, setToken, reportSubscriptionToBackend);
-    }
-    return null;
-  }, [current, reportSubscriptionToBackend]);
-
   const unregister = useCallback(async () => {
+    if (token) {
+      if (!tripIdRef.current || !tripSecretRef.current) {
+        throw new PushRegistrationError("missing-trip-credentials", "缺少行程代號或密碼，無法取消推播。");
+      }
+      const response = await fetch(SUBSCRIBE_API, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          trip_id: tripIdRef.current,
+          trip_secret: tripSecretRef.current,
+          token,
+        }),
+      });
+      if (!response.ok) {
+        const detail = await response.text().catch(() => "");
+        throw new PushRegistrationError(
+          "unsubscribe-api",
+          "取消推播失敗 (" + response.status + ")" + (detail ? "：" + detail.slice(0, 120) : ""),
+        );
+      }
+    }
+
     if (current === "web" && token) {
       // Web Push：呼叫 pushSubscription.unsubscribe()
       try {
@@ -176,7 +221,7 @@ export function usePushNotifications(tripId?: string, tripSecret?: string): UseP
         // ignore
       }
     }
-    // native：Capacitor 沒有直接 unsubscribe API，FCM token 會在 App 重啟時自動刷新
+    // Native 沒有可靠的 OS token revoke；後端刪除後即不再列入發送名單。
     try {
       clearPushRegistrationMarker(window.localStorage, tripIdRef.current);
     } catch {
@@ -197,28 +242,75 @@ export function usePushNotifications(tripId?: string, tripSecret?: string): UseP
   useEffect(() => {
     if (current !== "native") return;
     let stopped = false;
+    const handles: PluginListenerHandle[] = [];
+
+    const rejectPendingRegistration = (error: unknown) => {
+      const pending = nativeRegistrationRef.current;
+      if (!pending) return;
+      pending.reject(error);
+    };
+
+    const trackHandle = async (handlePromise: Promise<PluginListenerHandle>) => {
+      const handle = await handlePromise;
+      if (stopped) {
+        await handle.remove().catch(() => undefined);
+        return;
+      }
+      handles.push(handle);
+    };
 
     const setup = async () => {
-      try {
-        await PushNotifications.addListener("registration", (t: Token) => {
-          const plat = platform() === "ios" ? "ios" : "android";
-          const result: PushRegisterResult = { token: t.value, platform: plat };
-          setToken(t.value);
-          setPermission("granted");
-          reportSubscriptionToBackend(result);
-        });
-        await PushNotifications.addListener("registrationError", (err) => {
+      await Promise.all([
+        trackHandle(PushNotifications.addListener("registration", (t: Token) => {
+          void (async () => {
+            try {
+              if (!t.value) {
+                throw new PushRegistrationError("native-token-missing", "原生推播未回傳有效 token。");
+              }
+              const plat = platform() === "ios" ? "ios" : "android";
+              const result: PushRegisterResult = { token: t.value, platform: plat };
+              await reportSubscriptionToBackend(result);
+              if (stopped) return;
+              setToken(t.value);
+              setPermission("granted");
+              nativeRegistrationRef.current?.resolve(result);
+            } catch (error) {
+              if (stopped) return;
+              try {
+                clearPushRegistrationMarker(window.localStorage, tripIdRef.current);
+              } catch {
+                // ignore storage restrictions
+              }
+              setRegistered(false);
+              setToken(null);
+              rejectPendingRegistration(
+                error instanceof Error
+                  ? error
+                  : new PushRegistrationError("native-registration-report", String(error)),
+              );
+              console.warn("[push] native token report failed", error);
+            }
+          })();
+        })),
+        trackHandle(PushNotifications.addListener("registrationError", (err) => {
+          const error = new PushRegistrationError(
+            "native-registration-error",
+            typeof err?.error === "string" ? err.error : "原生推播註冊失敗。",
+          );
+          rejectPendingRegistration(error);
           console.warn("[push] registration error", err);
-        });
-        await PushNotifications.addListener("pushNotificationReceived", (n: PushNotificationSchema) => {
+        })),
+        trackHandle(PushNotifications.addListener("pushNotificationReceived", (n: PushNotificationSchema) => {
+          if (stopped) return;
           const payload: PushNotificationPayload = {
             title: n.title ?? undefined,
             body: n.body ?? undefined,
             data: n.data as Record<string, unknown> | undefined,
           };
           notifyCbRef.current?.(payload);
-        });
-        await PushNotifications.addListener("pushNotificationActionPerformed", (a: ActionPerformed) => {
+        })),
+        trackHandle(PushNotifications.addListener("pushNotificationActionPerformed", (a: ActionPerformed) => {
+          if (stopped) return;
           const n = a.notification;
           const payload: PushNotificationPayload = {
             title: n.title ?? undefined,
@@ -226,16 +318,96 @@ export function usePushNotifications(tripId?: string, tripSecret?: string): UseP
             data: n.data as Record<string, unknown> | undefined,
           };
           clickCbRef.current?.(payload);
-        });
-      } catch (e) {
-        if (!stopped) console.warn("[push] listener setup failed", e);
-      }
+        })),
+      ]);
     };
-    void setup();
+    const setupPromise = setup();
+    nativeSetupPromiseRef.current = setupPromise;
+    void setupPromise.catch((error) => {
+      if (stopped) return;
+      rejectPendingRegistration(
+        error instanceof Error
+          ? error
+          : new PushRegistrationError("native-listener-setup", String(error)),
+      );
+      console.warn("[push] listener setup failed", error);
+    });
+
     return () => {
       stopped = true;
-      void PushNotifications.removeAllListeners().catch(() => { });
+      if (nativeSetupPromiseRef.current === setupPromise) {
+        nativeSetupPromiseRef.current = null;
+      }
+      rejectPendingRegistration(
+        new PushRegistrationError("native-listeners-disposed", "原生推播 listener 已卸載。"),
+      );
+      for (const handle of handles) {
+        void handle.remove().catch(() => undefined);
+      }
     };
+  }, [current, reportSubscriptionToBackend]);
+
+  /** 註冊（native 走 Capacitor；web 走 Web Push + VAPID） */
+  const register = useCallback(async (): Promise<PushRegisterResult | null> => {
+    if (current === "native") {
+      if (nativeRegisterInFlightRef.current) {
+        return nativeRegisterInFlightRef.current;
+      }
+
+      const attempt = (async () => {
+        // Listener 必須先完成安裝，否則原生層可能在 register() 後立刻回傳 token 而遺失事件。
+        await Promise.resolve();
+        const setupPromise = nativeSetupPromiseRef.current;
+        if (!setupPromise) {
+          throw new PushRegistrationError("native-listeners-not-ready", "原生推播 listener 尚未就緒，請稍後再試。");
+        }
+        await withTimeout(setupPromise, PUSH_STEP_TIMEOUT_MS, "native-listener-setup-timeout");
+
+        const granted = await requestNativePermission(setPermission);
+        if (!granted) return null;
+
+        const pending = createDeferred<PushRegisterResult>();
+        // registrationError / token ACK 可能在 Capacitor.register() 尚未 resolve 前觸發；
+        // 先掛上 rejection handler，避免原生同步事件形成 unhandled rejection。
+        void pending.promise.catch(() => undefined);
+        nativeRegistrationRef.current = pending;
+        try {
+          try {
+            await PushNotifications.register();
+          } catch (error) {
+            pending.settled = true;
+            throw new PushRegistrationError(
+              "native-register-call",
+              error instanceof Error ? error.message : "呼叫原生推播註冊失敗。",
+            );
+          }
+
+          // 只有拿到真實 token，且後端 subscribe API 已確認寫入，才算註冊完成。
+          return await withTimeout(
+            pending.promise,
+            PUSH_STEP_TIMEOUT_MS,
+            "native-registration-ack-timeout",
+          );
+        } finally {
+          if (nativeRegistrationRef.current === pending) {
+            nativeRegistrationRef.current = null;
+          }
+        }
+      })();
+
+      nativeRegisterInFlightRef.current = attempt;
+      try {
+        return await attempt;
+      } finally {
+        if (nativeRegisterInFlightRef.current === attempt) {
+          nativeRegisterInFlightRef.current = null;
+        }
+      }
+    }
+    if (current === "web") {
+      return registerWeb(setPermission, setToken, reportSubscriptionToBackend);
+    }
+    return null;
   }, [current, reportSubscriptionToBackend]);
 
   return {
@@ -250,10 +422,10 @@ export function usePushNotifications(tripId?: string, tripSecret?: string): UseP
   };
 }
 
-// ── Native：透過 Capacitor 註冊 ──
-async function registerNative(
+// ── Native：請求權限；token 與後端 ACK 由 hook listener 完成 ──
+async function requestNativePermission(
   setPermission: (p: PermissionState) => void,
-): Promise<PushRegisterResult | null> {
+): Promise<boolean> {
   let reqPerm = false;
   try {
     const perm = await PushNotifications.checkPermissions();
@@ -268,19 +440,10 @@ async function registerNative(
   }
   if (!reqPerm) {
     setPermission("denied");
-    return null;
+    return false;
   }
   setPermission("granted");
-  try {
-    await PushNotifications.register();
-    // registration listener 會在 token 取得後 call report()
-    const plat = platform() === "ios" ? "ios" : "android";
-    // 注意：回傳的 token 只做為占位；真正流程在 registration 事件中
-    const placeholder: PushRegisterResult = { token: "", platform: plat };
-    return placeholder;
-  } catch {
-    return null;
-  }
+  return true;
 }
 
 // ── Web PWA：Web Push + VAPID ──

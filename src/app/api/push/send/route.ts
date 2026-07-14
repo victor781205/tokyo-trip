@@ -14,7 +14,7 @@ import { createServerSupabase, isForbiddenRpcError } from "@/lib/supabase-server
 
 const bodySchema = z.object({
   trip_id: z.string().min(1).max(64),
-  trip_secret: z.string().min(1).max(64),
+  trip_secret: z.string().min(1).max(128),
   title: z.string().min(1).max(120),
   body: z.string().min(1).max(400),
   data: z.record(z.string(), z.unknown()).optional(),
@@ -25,6 +25,23 @@ type PushSubscriptionRow = {
   platform: "web" | "ios" | "android";
   keys: { p256dh?: string; auth?: string } | null;
 };
+
+type ChannelDeliveryResult = {
+  requested: number;
+  sent: number;
+  failed: number;
+  error?: string;
+};
+
+type WebPushResult = ChannelDeliveryResult & {
+  invalidTokens: string[];
+  unavailable: boolean;
+};
+
+const INVALID_NATIVE_TOKEN_CODES = new Set([
+  "messaging/registration-token-not-registered",
+  "messaging/invalid-registration-token",
+]);
 
 export async function POST(req: NextRequest) {
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "anonymous";
@@ -76,7 +93,7 @@ export async function POST(req: NextRequest) {
         {
           error: "推播 RPC 尚未安裝",
           detail: subsErr.message,
-          hint: "請執行 supabase/migrations/20260709040000_push_rpc_security_definer.sql",
+          hint: "請執行 npx supabase db push --linked 套用目前所有 migrations",
         },
         { status: 500 },
       );
@@ -90,77 +107,125 @@ export async function POST(req: NextRequest) {
   }
 
   // 2. 分類 token
-  const nativeTokens = rows
+  const nativeTokens = [...new Set(rows
     .filter((s) => s.platform === "ios" || s.platform === "android")
-    .map((s) => s.token);
+    .map((s) => s.token))];
 
   const webSubs = rows.filter((s) => s.platform === "web");
 
-  let sentNative = 0;
-  const failedNativeTokens: string[] = [];
-  let sentWeb = 0;
+  const nativeResult: ChannelDeliveryResult = {
+    requested: nativeTokens.length,
+    sent: 0,
+    failed: 0,
+  };
+  const invalidNativeTokens: string[] = [];
+  const nativeErrors = new Set<string>();
+  let nativeUnavailable = false;
 
   // 3a. FCM multicast
   if (nativeTokens.length > 0) {
     const { messaging, initError } = await getMessagingSafe();
     if (!messaging || initError) {
-      return NextResponse.json(
-        { error: "FCM 未設定", detail: initError ?? "firebase-admin 未初始化" },
-        { status: 503 },
-      );
-    }
-
-    try {
+      nativeUnavailable = true;
+      nativeResult.failed = nativeTokens.length;
+      nativeResult.error = `FCM 未設定：${initError ?? "firebase-admin 未初始化"}`;
+    } else {
       for (let i = 0; i < nativeTokens.length; i += 500) {
         const batch = nativeTokens.slice(i, i + 500);
-        const res = await messaging.sendEachForMulticast({
-          tokens: batch,
-          notification: { title, body },
-          data: stringifyData(data),
-          android: { priority: "high" },
-          apns: {
-            payload: {
-              aps: { sound: "default", badge: 1 },
+        try {
+          const res = await messaging.sendEachForMulticast({
+            tokens: batch,
+            notification: { title, body },
+            data: stringifyData(data),
+            android: { priority: "high" },
+            apns: {
+              payload: {
+                aps: { sound: "default", badge: 1 },
+              },
             },
-          },
-        });
-        sentNative += res.successCount;
-        res.responses.forEach((r, idx) => {
-          if (!r.success && r.error) {
-            failedNativeTokens.push(batch[idx]);
-          }
-        });
+          });
+          nativeResult.sent += res.successCount;
+          res.responses.forEach((response, idx) => {
+            if (response.success) return;
+            nativeResult.failed++;
+            const code = response.error?.code;
+            if (code) nativeErrors.add(code);
+            if (code && INVALID_NATIVE_TOKEN_CODES.has(code)) {
+              invalidNativeTokens.push(batch[idx]);
+            }
+          });
+        } catch (error) {
+          nativeResult.failed += batch.length;
+          nativeErrors.add(error instanceof Error ? error.message : String(error));
+        }
       }
-    } catch (e) {
-      return NextResponse.json(
-        { error: "FCM 發送失敗", detail: e instanceof Error ? e.message : String(e) },
-        { status: 502 },
-      );
+      if (nativeErrors.size > 0) {
+        nativeResult.error = [...nativeErrors].join("；");
+      }
     }
+  }
 
-    if (failedNativeTokens.length > 0) {
-      await client.rpc("delete_push_tokens", {
+  // 3b. Web Push 與 FCM 是獨立通道；即使 FCM 未設定或某批失敗也必須照常嘗試。
+  const webResult = await sendWebPush(webSubs, title, body, data);
+
+  // 只清除供應商明確判定失效的 token：FCM invalid/unregistered、Web Push 404/410。
+  const invalidTokens = [...new Set([
+    ...invalidNativeTokens,
+    ...webResult.invalidTokens,
+  ])];
+  let cleanupError: string | undefined;
+  if (invalidTokens.length > 0) {
+    try {
+      const cleanup = await client.rpc("delete_push_tokens", {
         p_trip_id: trip_id,
         p_trip_secret: trip_secret,
-        p_tokens: failedNativeTokens,
+        p_tokens: invalidTokens,
       });
+      if (cleanup.error) {
+        cleanupError = cleanup.error.message;
+      }
+    } catch (error) {
+      cleanupError = error instanceof Error ? error.message : String(error);
     }
   }
 
-  // 3c. Web Push
-  if (webSubs.length > 0) {
-    const webRes = await sendWebPush(webSubs, title, body, data);
-    sentWeb = webRes.sent;
-  }
+  const sent = nativeResult.sent + webResult.sent;
+  const failed = nativeResult.failed + webResult.failed;
+  const hasFailure = failed > 0 || Boolean(cleanupError);
+  const partial = sent > 0 && hasFailure;
+  const unavailable = nativeUnavailable || webResult.unavailable;
+  const status = hasFailure
+    ? partial
+      ? 207
+      : unavailable
+        ? 503
+        : 502
+    : 200;
 
   return NextResponse.json(
     {
-      ok: true,
-      sent: sentNative + sentWeb,
-      native: sentNative,
-      web: sentWeb,
+      ok: !hasFailure,
+      partial,
+      sent,
+      failed,
+      native: nativeResult.sent,
+      web: webResult.sent,
+      channels: {
+        native: nativeResult,
+        web: {
+          requested: webResult.requested,
+          sent: webResult.sent,
+          failed: webResult.failed,
+          ...(webResult.error ? { error: webResult.error } : {}),
+        },
+      },
+      removedInvalidTokens: invalidTokens.length,
+      ...(cleanupError ? { cleanupError } : {}),
     },
-    { headers: { "X-RateLimit-Remaining": String(remaining) } },
+    {
+      status,
+      headers: { "X-RateLimit-Remaining": String(remaining) },
+    },
   );
 }
 
@@ -178,7 +243,16 @@ async function sendWebPush(
   title: string,
   body: string,
   data?: Record<string, unknown>,
-): Promise<{ sent: number }> {
+): Promise<WebPushResult> {
+  const result: WebPushResult = {
+    requested: subs.length,
+    sent: 0,
+    failed: 0,
+    invalidTokens: [],
+    unavailable: false,
+  };
+  if (subs.length === 0) return result;
+
   try {
     const webPush = await import("web-push");
     const privateKey = process.env.VAPID_PRIVATE_KEY?.trim();
@@ -189,26 +263,38 @@ async function sendWebPush(
     }
 
     if (!privateKey || !publicKey) {
-      console.warn("[push] web-push 缺 VAPID 金鑰，跳過 web 發送");
-      return { sent: 0 };
+      result.failed = subs.length;
+      result.unavailable = true;
+      result.error = "Web Push 未設定：缺少 VAPID 金鑰";
+      console.warn("[push] web-push 缺 VAPID 金鑰");
+      return result;
     }
 
     webPush.setVapidDetails(subject, publicKey, privateKey);
 
     const payload = JSON.stringify({ title, body, data });
-    let sent = 0;
+    const errors = new Set<string>();
 
     for (const s of subs) {
-      if (!s.keys?.p256dh || !s.keys?.auth) continue;
+      if (!s.keys?.p256dh || !s.keys?.auth) {
+        result.failed++;
+        errors.add("訂閱缺少 Web Push 金鑰");
+        continue;
+      }
       const subscription = {
         endpoint: s.token,
         keys: { p256dh: s.keys.p256dh, auth: s.keys.auth },
       };
       try {
         await webPush.sendNotification(subscription, payload);
-        sent++;
+        result.sent++;
       } catch (e: unknown) {
         const err = e as { message?: string; statusCode?: number; body?: string };
+        result.failed++;
+        errors.add(err?.statusCode ? `HTTP ${err.statusCode}` : err?.message || "Web Push 發送失敗");
+        if (err?.statusCode === 404 || err?.statusCode === 410) {
+          result.invalidTokens.push(s.token);
+        }
         console.warn("[push] web-push 失敗:", {
           message: err?.message || String(e),
           statusCode: err?.statusCode,
@@ -216,10 +302,14 @@ async function sendWebPush(
         });
       }
     }
-    return { sent };
+    if (errors.size > 0) result.error = [...errors].join("；");
+    return result;
   } catch (e) {
+    result.failed = subs.length;
+    result.unavailable = true;
+    result.error = e instanceof Error ? e.message : String(e);
     console.warn("[push] web-push 模組載入失敗", e);
-    return { sent: 0 };
+    return result;
   }
 }
 

@@ -51,6 +51,9 @@ next-start.err.log*
 .vercel
 .vercel/
 
+# Supabase CLI link/cache metadata
+/supabase/.temp/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Loader2, MapPin, Navigation, Plus, Search, Star, Trash2, Utensils, Map, List, Clock, Footprints, Filter, Edit3 } from "lucide-react";
+import { Loader2, MapPin, Navigation, Plus, Search, Trash2, Utensils, Map, List, Clock, Footprints, Filter, Edit3 } from "lucide-react";
 import { useTripState } from "@/hooks/useTripState";
 import { useDialog } from "@/context/DialogContext";
 import {
@@ -9,6 +9,7 @@ import {
     loadGoogleMaps,
     subscribeToGoogleMapsAuthFailure,
 } from "@/lib/google-maps-loader";
+import { looksLikeGoogleMapsUrl } from "@/lib/validations";
 
 // ── 飯店座標（錦糸町 東武黎凡特飯店）──
 const HOTEL_COORDS = { lat: 35.6968, lng: 139.8144 };
@@ -16,12 +17,11 @@ const HOTEL_COORDS = { lat: 35.6968, lng: 139.8144 };
 // ── 餐廳資料擴充：加入座標 ──
 type FoodItem = {
     name: string;
-    star: string;
-    reviews: string;
     loc: string;
     desc: string;
     lat: number;
     lng: number;
+    officialUrl?: string;
 };
 
 const FOOD_CATEGORIES = [
@@ -33,7 +33,7 @@ const FOOD_CATEGORIES = [
     { id: "global", label: "洋食/其他", icon: "🍱" },
 ];
 
-const DISTRICT_FILTERS = [
+export const DISTRICT_FILTERS = [
     { id: "all", label: "全部", icon: "📍" },
     { id: "錦糸町", label: "錦糸町", icon: "🏨" },
     { id: "淺草", label: "淺草", icon: "⛩️" },
@@ -44,6 +44,7 @@ const DISTRICT_FILTERS = [
     { id: "澀谷", label: "澀谷", icon: "🐕" },
     { id: "六本木", label: "六本木", icon: "🌃" },
     { id: "東京車站", label: "東京車站", icon: "🚉" },
+    { id: "丸之內", label: "丸之內", icon: "🏢" },
     { id: "押上", label: "押上", icon: "🗼" },
     { id: "豐洲", label: "豐洲", icon: "🐟" },
     { id: "築地", label: "築地", icon: "🍣" },
@@ -55,78 +56,76 @@ const DISTRICT_FILTERS = [
     { id: "池袋", label: "池袋", icon: "🎪" },
 ];
 
-const RECOMMENDED_FOODS: Record<string, FoodItem[]> = {
+export const RECOMMENDED_FOODS: Record<string, FoodItem[]> = {
     ramen: [
-        { name: "一蘭 澀谷店", star: "4.4", reviews: "5,100+", loc: "澀谷", desc: "全球最知名的豚骨拉麵，客製化口味必試。", lat: 35.6598, lng: 139.7006 },
-        { name: "AFURI 原宿", star: "4.5", reviews: "5,400+", loc: "原宿", desc: "招牌柚子鹽拉麵，清爽不膩的高級口感。", lat: 35.6694, lng: 139.7051 },
-        { name: "風雲兒", star: "4.3", reviews: "5,600+", loc: "新宿", desc: "東京最強沾麵之一，濃郁魚介豚骨湯頭。", lat: 35.6918, lng: 139.7042 },
-        { name: "真鯛らーめん 面魚", star: "4.0", reviews: "2,800+", loc: "錦糸町", desc: "使用宇和島產真鯛熬製，極致鮮美的在地名店。", lat: 35.6962, lng: 139.8132 },
-        { name: "六厘舍", star: "4.1", reviews: "5,200+", loc: "東京車站", desc: "拉麵街排隊王，超濃厚沾麵的代名詞。", lat: 35.6812, lng: 139.7671 },
-        { name: "銀座 篝 (Kagari)", star: "4.2", reviews: "4,500+", loc: "銀座", desc: "米其林推薦，如濃湯般甘甜的雞白湯拉麵。", lat: 35.6717, lng: 139.7649 },
-        { name: "入鹿 TOKYO", star: "4.0", reviews: "1,600+", loc: "六本木", desc: "多重湯頭揉合，精緻如法式料理的拉麵。", lat: 35.6628, lng: 139.7309 },
-        { name: "麵屋武藏 新宿本店", star: "4.1", reviews: "3,700+", loc: "新宿", desc: "豪邁的叉燒塊與濃郁湯頭，飽足感十足。", lat: 35.6938, lng: 139.7026 },
-        { name: "鴨 to 蔥", star: "4.5", reviews: "13,600+", loc: "上野", desc: "僅用鴨、蔥、水熬煮，純粹且深邃的美味。", lat: 35.7102, lng: 139.7750 },
-        { name: "金色不如歸", star: "4.1", reviews: "2,600+", loc: "新宿", desc: "米其林一星，蛤蜊與松露香氣的完美結合。", lat: 35.6932, lng: 139.6989 },
+        { name: "一蘭 渋谷店", loc: "澀谷", desc: "可依喜好調整湯頭、辣度與麵條硬度的豚骨拉麵。", lat: 35.661076, lng: 139.700928 },
+        { name: "AFURI 原宿", loc: "原宿", desc: "以柚子鹽拉麵聞名，位於原宿站附近。", lat: 35.672951, lng: 139.703796 },
+        { name: "風雲児", loc: "新宿", desc: "位於代代木的魚介雞白湯沾麵店。", lat: 35.686668, lng: 139.696564, officialUrl: "https://www.fu-unji.com/" },
+        { name: "真鯛らーめん 麺魚 錦糸町本店", loc: "錦糸町", desc: "以真鯛熬製湯頭的錦糸町拉麵店。", lat: 35.694263, lng: 139.81192, officialUrl: "https://www.mengyo.net/" },
+        { name: "六厘舎 東京駅東京ラーメンストリート店", loc: "東京車站", desc: "位於東京站拉麵街的濃厚魚介沾麵店。", lat: 35.6812, lng: 139.7671 },
+        { name: "銀座 篝 本店", loc: "銀座", desc: "銀座的雞白湯拉麵店。", lat: 35.670967, lng: 139.761063 },
+        { name: "入鹿TOKYO 六本木", loc: "六本木", desc: "位於六本木的複合湯頭拉麵店。", lat: 35.664528, lng: 139.731506 },
+        { name: "麺屋武蔵 新宿総本店", loc: "新宿", desc: "位於西新宿的拉麵與沾麵店。", lat: 35.695362, lng: 139.698593, officialUrl: "https://menya634.co.jp/" },
+        { name: "らーめん 鴨to葱 御徒町本店", loc: "上野", desc: "以鴨、蔥與水熬製湯頭，位於御徒町。", lat: 35.708527, lng: 139.775162, officialUrl: "https://www.kamotonegi.com/shoprisuto/" },
+        { name: "SOBA HOUSE 金色不如帰 新宿御苑本店", loc: "新宿", desc: "位於新宿御苑附近，以蛤蜊風味湯頭聞名。", lat: 35.688667, lng: 139.708267, officialUrl: "https://sobahousekonjikihototogisu.com/access/" },
     ],
     sushi: [
-        { name: "壽司大 (Sushi Dai)", star: "4.5", reviews: "1,900+", loc: "豐洲", desc: "東京第一名店，清晨排隊也值得的終極鮮味。", lat: 35.6462, lng: 139.7786 },
-        { name: "美登利壽司總本店", star: "4.2", reviews: "2,200+", loc: "澀谷", desc: "高 CP 值精品壽司，食材大方新鮮。總本店位於梅丘。", lat: 35.6628, lng: 139.6555 },
-        { name: "根室花丸 銀座店", star: "4.1", reviews: "4,200+", loc: "銀座", desc: "來自北海道的迴轉壽司，鮮度與種類驚人。", lat: 35.6720, lng: 139.7662 },
-        { name: "壽司郎 Asakusa", star: "3.9", reviews: "900+", loc: "淺草", desc: "平價迴轉壽司連鎖，種類豐富且環境舒適。", lat: 35.7115, lng: 139.7962 },
-        { name: "まんてん鮨 (Manten)", star: "4.3", reviews: "1,500+", loc: "丸之內", desc: "高級 Omakase 的親民選擇，預約困難店。", lat: 35.6813, lng: 139.7671 },
-        { name: "銀座 久兵衛", star: "4.4", reviews: "2,600+", loc: "銀座", desc: "江戶前壽司的殿堂，極致的職人服務。", lat: 35.6714, lng: 139.7658 },
-        { name: "沼津港 新宿店", star: "3.8", reviews: "2,300+", loc: "新宿", desc: "新宿迴轉壽司，海膽種類豐富。", lat: 35.6904, lng: 139.7019 },
-        { name: "くら寿司 押上店", star: "3.9", reviews: "800+", loc: "押上", desc: "全球最大規模旗艦店，好玩又好吃。", lat: 35.7100, lng: 139.8132 },
-        { name: "すしざんまい 24時錦糸町店", star: "4.0", reviews: "500+", loc: "錦糸町", desc: "24 小時營業的知名迴轉壽司，深夜也能享用。", lat: 35.6965, lng: 139.8128 },
-        { name: "うに虎 築地", star: "4.5", reviews: "1,400+", loc: "築地", desc: "招牌海膽專門店，新鮮海鮮丼飯的代名詞。", lat: 35.6654, lng: 139.7707 },
+        { name: "寿司大", loc: "豐洲", desc: "位於豐洲市場內的江戶前壽司店；候位時間可能很長。", lat: 35.643154, lng: 139.780136 },
+        { name: "梅丘寿司の美登利 渋谷店", loc: "澀谷", desc: "高 CP 值江戶前壽司；平日 15:00–17:00 暫停營業。", lat: 35.6583453, lng: 139.6967988, officialUrl: "https://www.sushinomidori.co.jp/shops/shibuya/" },
+        { name: "回転寿司 根室花まる 銀座店", loc: "銀座", desc: "位於 Tokyu Plaza Ginza 10F 的北海道迴轉壽司。", lat: 35.672646, lng: 139.762756 },
+        { name: "スシロー 浅草六区店", loc: "淺草", desc: "位於淺草 ROX・3G 3F 的迴轉壽司連鎖店。", lat: 35.713928, lng: 139.793396, officialUrl: "https://www.akindo-sushiro.co.jp/shop/detail.php?id=2413" },
+        { name: "まんてん鮨 丸の内店", loc: "丸之內", desc: "位於丸之內 Brick Square B1 的套餐壽司店；建議預約。", lat: 35.678783, lng: 139.763062, officialUrl: "https://www.manten-sushi.com/" },
+        { name: "銀座 久兵衛 銀座本店", loc: "銀座", desc: "銀座 8 丁目的江戶前壽司老店；建議預約。", lat: 35.668453, lng: 139.761292, officialUrl: "https://www.kyubey.jp/shoplist/ginza/" },
+        { name: "沼津港 新宿本店", loc: "新宿", desc: "位於新宿的迴轉壽司店。", lat: 35.690369, lng: 139.703186 },
+        { name: "くら寿司 グローバル旗艦店 押上（スカイツリー前）駅前2F", loc: "押上", desc: "押上站前 2F 的大型迴轉壽司店；11:00–23:00。", lat: 35.710796, lng: 139.814041, officialUrl: "https://shop.kurasushi.co.jp/detail/595" },
+        { name: "すしざんまい 錦糸町店", loc: "錦糸町", desc: "現點現握壽司；11:00–翌日 05:00（L.O. 04:30），並非迴轉壽司。", lat: 35.6948712, lng: 139.8148557, officialUrl: "https://www.kiyomura.co.jp/store/detail/13" },
+        { name: "うに虎本店", loc: "築地", desc: "築地場外市場的海膽與海鮮料理店。", lat: 35.665462, lng: 139.769989, officialUrl: "https://beyondtsukiji-hd.co.jp/shop/" },
     ],
     yakiniku: [
-        { name: "敘敘苑 遊玄亭", star: "4.4", reviews: "900+", loc: "新宿", desc: "燒肉界的奢華代表，服務與肉質無可挑剔。", lat: 35.6896, lng: 139.7005 },
-        { name: "六歌仙 (Rokkasen)", star: "4.6", reviews: "3,200+", loc: "新宿", desc: "超人氣和牛吃到飽，遊客心中的 No.1。", lat: 35.6934, lng: 139.7032 },
-        { name: "牛炸串本村 (Motomura)", star: "4.9", reviews: "3,000+", loc: "澀谷", desc: "排隊神店，三分熟炸牛排石板自烤。", lat: 35.6590, lng: 139.7034 },
-        { name: "肉之萬世", star: "4.1", reviews: "200+", loc: "秋葉原", desc: "整棟都是肉料理，頂級黑毛和牛壽喜燒。", lat: 35.6984, lng: 139.7731 },
-        { name: "燒肉 LIKE 錦糸町", star: "3.6", reviews: "300+", loc: "錦糸町", desc: "個人燒肉首選，快速、平價且肉質有水準。", lat: 35.6968, lng: 139.8135 },
-        { name: "USHIGORO S.", star: "4.6", reviews: "500+", loc: "銀座", desc: "精品級全包廂服務，只提供最高等級 A5 和牛。", lat: 35.6731, lng: 139.7638 },
-        { name: "薩摩牛 藏", star: "4.6", reviews: "300+", loc: "澀谷", desc: "來自鹿兒島的頂級和牛，環境具現代設計感。", lat: 35.6603, lng: 139.6982 },
-        { name: "鐵板燒 白秋", star: "4.7", reviews: "900+", loc: "澀谷", desc: "溫馨的家族經營店，神戶牛鐵板燒極品。", lat: 35.6572, lng: 139.7029 },
-        { name: "土古里 新宿", star: "3.8", reviews: "600+", loc: "新宿", desc: "山形牛一頭買，提供各種稀有部位。", lat: 35.6912, lng: 139.7034 },
-        { name: "今半 壽喜燒", star: "4.5", reviews: "2,000+", loc: "上野", desc: "百年老店，關東風壽喜燒的最巔峰。", lat: 35.6824, lng: 139.7820 },
+        { name: "游玄亭 新宿", loc: "新宿", desc: "敘敘苑旗下高級燒肉店，位於歌舞伎町。", lat: 35.695175, lng: 139.703186, officialUrl: "https://www.jojoen.co.jp/shop/yugentei/shinjuku/" },
+        { name: "六歌仙 本店", loc: "新宿", desc: "西新宿的和牛燒肉與套餐餐廳；熱門時段建議預約。", lat: 35.689869, lng: 139.698532, officialUrl: "https://rokkasen.co.jp/jp/shop_honten/" },
+        { name: "牛かつもと村 渋谷店", loc: "澀谷", desc: "炸牛排搭配石盤自行加熱至喜好熟度。", lat: 35.660675, lng: 139.698196, officialUrl: "https://www.gyukatsu-motomura.com/store/Shibuya" },
+        { name: "焼肉の万世 秋葉原店", loc: "秋葉原", desc: "黑毛和牛燒肉；位於秋葉原トゥモロービル 6F。", lat: 35.6973025, lng: 139.7714744, officialUrl: "https://akiba.or.jp/store/s237" },
+        { name: "焼肉ライク 錦糸町北口店", loc: "錦糸町", desc: "適合一人用餐的快速燒肉；10:00–23:00。", lat: 35.697952, lng: 139.814774, officialUrl: "https://yakiniku-like.com/access-kinshicho-kitaguchi.html" },
+        { name: "USHIGORO S. GINZA", loc: "銀座", desc: "全包廂和牛燒肉套餐；位於銀座 7 丁目。", lat: 35.669228, lng: 139.762131, officialUrl: "https://sangue.co.jp/en/brand/ushigoro-s" },
+        { name: "神戸鉄板焼 白秋", loc: "澀谷", desc: "位於櫻丘町的神戶牛鐵板燒店；建議預約。", lat: 35.656292, lng: 139.701096, officialUrl: "https://hakushu.foodre.jp/" },
+        { name: "和牛焼肉 土古里 新宿NOWAビル店", loc: "新宿", desc: "新宿站旁的和牛燒肉店，提供多種部位與套餐。", lat: 35.690495, lng: 139.701477, officialUrl: "https://yakiniku-tokori-shinjuku-nowa.com/information/" },
+        { name: "人形町今半 上野広小路店", loc: "上野", desc: "黑毛和牛壽喜燒百年老店；建議預約。", lat: 35.707469, lng: 139.772691, officialUrl: "https://restaurant.imahan.com/ueno/" },
     ],
     cafe: [
-        { name: "HARBS 新宿店", star: "4.2", reviews: "2,000+", loc: "新宿", desc: "招牌水果千層蛋糕，東京甜點必排行程。", lat: 35.6896, lng: 139.7004 },
-        { name: "藍瓶咖啡 澀谷", star: "4.6", reviews: "1,600+", loc: "澀谷", desc: "公園景觀店，極簡設計與精品手沖咖啡。", lat: 35.6575, lng: 139.7018 },
-        { name: "星巴克 臻選® 旗艦店", star: "4.5", reviews: "13,700+", loc: "中目黑", desc: "全球僅六間的旗艦店，建築由隈研吾大師設計。", lat: 35.6431, lng: 139.6995 },
-        { name: "淺草 梅園", star: "4.0", reviews: "700+", loc: "淺草", desc: "安政元年創立，招牌粟善哉是傳統甜點代表。", lat: 35.7118, lng: 139.7960 },
-        { name: "Bills 銀座", star: "4.1", reviews: "3,200+", loc: "銀座", desc: "世界第一早餐，絲滑香蕉熱鬆餅。", lat: 35.6715, lng: 139.7648 },
-        { name: "Qu'il fait bon", star: "4.2", reviews: "1,800+", loc: "銀座", desc: "水果塔的天花板，嚴選當季最頂級果物。", lat: 35.6724, lng: 139.7632 },
-        { name: "Tsujiri 辻利 晴空塔", star: "4.2", reviews: "700+", loc: "押上", desc: "抹茶控必訪，濃郁道地的京都宇治抹茶。", lat: 35.7100, lng: 139.8107 },
-        { name: "Ginza West", star: "4.3", reviews: "1,300+", loc: "銀座", desc: "古典懷舊咖啡廳，體驗老派紳士的優雅下午茶。", lat: 35.6738, lng: 139.7624 },
-        { name: "Café de L'Ambre", star: "4.3", reviews: "1,900+", loc: "銀座", desc: "只賣咖啡的老店，咖啡職人朝聖之地。", lat: 35.6718, lng: 139.7668 },
-        { name: "喫茶 You", star: "4.0", reviews: "2,000+", loc: "銀座", desc: "網紅蛋包飯名店，極致絲滑的口感。", lat: 35.6730, lng: 139.7650 },
+        { name: "HARBS ルミネエスト新宿店", loc: "新宿", desc: "位於 Lumine EST 新宿 B2，以水果千層蛋糕聞名。", lat: 35.691784, lng: 139.700775, officialUrl: "https://www.harbs.co.jp/shop_kanto/" },
+        { name: "Blue Bottle Coffee 渋谷カフェ", loc: "澀谷", desc: "位於神南 Kitaya Park；08:00–20:00。", lat: 35.6641252, lng: 139.6994862, officialUrl: "https://store.bluebottlecoffee.jp/pages/shibuya" },
+        { name: "スターバックス リザーブ® ロースタリー 東京", loc: "中目黑", desc: "位於目黑川旁的 Starbucks Reserve Roastery。", lat: 35.649384, lng: 139.692474, officialUrl: "https://www.starbucks.co.jp/reserve/roastery/" },
+        { name: "淺草 梅園", loc: "淺草", desc: "安政元年創立，招牌粟善哉是傳統甜點代表。", lat: 35.7118, lng: 139.7960 },
+        { name: "bills 銀座", loc: "銀座", desc: "位於 Okura House 12F，提供早午餐與鬆餅。", lat: 35.673229, lng: 139.766586 },
+        { name: "キル フェ ボン グランメゾン銀座", loc: "銀座", desc: "銀座 2 丁目的季節水果塔專門店。", lat: 35.673958, lng: 139.767105, officialUrl: "https://www.quil-fait-bon.com/shop/?tsp=1" },
+        { name: "祇園辻利 東京スカイツリータウン・ソラマチ店", loc: "押上", desc: "位於 Tokyo Solamachi 6F 的宇治茶與抹茶甜點店；導航請依館內樓層指標。", lat: 35.7100, lng: 139.8107, officialUrl: "https://www.giontsujiri.co.jp/store/skytree/" },
+        { name: "銀座ウエスト 銀座本店", loc: "銀座", desc: "銀座 7 丁目的傳統喫茶與洋菓子店。", lat: 35.670364, lng: 139.760773 },
+        { name: "カフェ・ド・ランブル", loc: "銀座", desc: "銀座 8 丁目的咖啡專門店。", lat: 35.667957, lng: 139.762299 },
+        { name: "喫茶YOU", loc: "銀座", desc: "歌舞伎座附近的喫茶店，以蛋包飯聞名。", lat: 35.669518, lng: 139.768631, officialUrl: "https://kissa-you.com/about.htm" },
     ],
     local: [
-        { name: "利久牛舌 晴空塔店", star: "4.3", reviews: "1,000+", loc: "押上", desc: "來自仙台的厚切牛舌，Q 彈多汁必吃。", lat: 35.7100, lng: 139.8107 },
-        { name: "上野 大統領", star: "4.0", reviews: "1,700+", loc: "上野", desc: "最道地的立飲居酒屋，內臟煮與串燒名店。", lat: 35.7108, lng: 139.7742 },
-        { name: "淺草 大黑家", star: "3.5", reviews: "3,400+", loc: "淺草", desc: "傳承百年的天婦羅，特製黑醬汁風味。", lat: 35.7120, lng: 139.7965 },
-        { name: "伊豆榮 本店", star: "4.1", reviews: "3,100+", loc: "上野", desc: "創業 270 年的鰻魚飯老店，炭火慢烤備長炭。", lat: 35.7138, lng: 139.7748 },
-        { name: "鳥貴族 錦糸町", star: "3.4", reviews: "300+", loc: "錦糸町", desc: "全品項均一價，高品質燒鳥居酒屋。", lat: 35.6966, lng: 139.8140 },
-        { name: "三定 天婦羅", star: "3.5", reviews: "1,300+", loc: "淺草", desc: "日本最古老的天婦羅店，鄰近雷門。", lat: 35.7116, lng: 139.7958 },
-        { name: "阿美橫丁 鐵火丼", star: "3.6", reviews: "300+", loc: "上野", desc: "最在地、最熱鬧的海鮮丼街頭小吃。", lat: 35.7105, lng: 139.7740 },
-        { name: "磯丸水產 澀谷", star: "3.8", reviews: "600+", loc: "澀谷", desc: "24 小時營業，自己現烤活海鮮，氛圍極佳。", lat: 35.6590, lng: 139.6994 },
-        { name: "とり錦 錦糸町", star: "4.1", reviews: "1,100+", loc: "錦糸町", desc: "飯店周邊評價高的備長炭燒鳥店，完全個室。", lat: 35.6960, lng: 139.8138 },
-        { name: "銀座 梅林", star: "4.4", reviews: "1,400+", loc: "銀座", desc: "炸豬排鼻祖店，招牌豬排三明治必買。", lat: 35.6728, lng: 139.7640 },
+        { name: "牛たん炭焼 利久 東京ソラマチ店", loc: "押上", desc: "位於東京 Solamachi 的仙台牛舌餐廳。", lat: 35.710083, lng: 139.808609, officialUrl: "https://www.rikyu-gyutan.co.jp/location.html" },
+        { name: "上野 大統領", loc: "上野", desc: "最道地的立飲居酒屋，內臟煮與串燒名店。", lat: 35.7108, lng: 139.7742 },
+        { name: "大黒家天麩羅 本店", loc: "淺草", desc: "淺草天婦羅老店，以深色醬汁天丼聞名。", lat: 35.712776, lng: 139.795532, officialUrl: "https://www.tempura.co.jp/" },
+        { name: "伊豆榮 本店", loc: "上野", desc: "上野的不忍池附近鰻魚料理老店。", lat: 35.709732, lng: 139.772751, officialUrl: "https://izuei.co.jp/" },
+        { name: "鳥貴族 錦糸町駅前店", loc: "錦糸町", desc: "燒鳥連鎖店；平日 17:00–翌日 04:00、週末 15:00–翌日 04:00。", lat: 35.696186, lng: 139.813171, officialUrl: "https://map.torikizoku.co.jp/detail/494/" },
+        { name: "三定", loc: "淺草", desc: "雷門旁的天婦羅店；週四休，11:00–20:30（L.O. 20:00）。", lat: 35.710972, lng: 139.796707, officialUrl: "https://asakusa.gr.jp/jp/?p=413" },
+        { name: "磯丸水産 渋谷宇田川町店", loc: "澀谷", desc: "可自行燒烤海鮮的 24 小時居酒屋。", lat: 35.660839, lng: 139.697845, officialUrl: "https://isomaru.jp/1393/" },
+        { name: "鳥錦 錦糸町総本店", loc: "錦糸町", desc: "飯店周邊的燒鳥與雞料理店；16:00–23:30。", lat: 35.6988782, lng: 139.8134977, officialUrl: "https://torikin-kinshityo.owst.jp/" },
+        { name: "銀座梅林", loc: "銀座", desc: "銀座炸豬排老店，也販售豬排三明治。", lat: 35.669609, lng: 139.762741 },
     ],
     global: [
-        { name: "銀座 煉瓦亭", star: "3.7", reviews: "1,900+", loc: "銀座", desc: "日本洋食起源，炸豬排與蛋包飯的始祖。", lat: 35.6722, lng: 139.7645 },
-        { name: "Shake Shack 外苑", star: "4.1", reviews: "3,400+", loc: "表參道", desc: "銀杏大道下的最美漢堡店。", lat: 35.6685, lng: 139.7132 },
-        { name: "Luke's Lobster", star: "4.1", reviews: "2,900+", loc: "表參道", desc: "滿載龍蝦肉的美味三明治，街拍神店。", lat: 35.6660, lng: 139.7108 },
-        { name: "The Apollo", star: "4.0", reviews: "2,000+", loc: "銀座", desc: "精品地中海料理，位於銀座 Novo 大樓頂層。", lat: 35.6718, lng: 139.7636 },
-        { name: "T's TanTan", star: "4.6", reviews: "2,900+", loc: "東京車站", desc: "超人氣純素擔擔麵，口感連肉食者都驚艷。", lat: 35.6812, lng: 139.7671 },
-        { name: "神田たまごけん", star: "4.5", reviews: "2,900+", loc: "秋葉原", desc: "現做鬆軟滑蛋包飯，多種特製醬汁。", lat: 35.6980, lng: 139.7725 },
-        { name: "Mercer Brunch", star: "3.8", reviews: "1,300+", loc: "銀座", desc: "時尚早午餐代表，招牌法式吐司精緻美味。", lat: 35.6726, lng: 139.7652 },
-        { name: "Burger Mania", star: "4.2", reviews: "1,000+", loc: "惠比壽", desc: "東京人氣手工漢堡名店，口味獨特。", lat: 35.6467, lng: 139.7101 },
-        { name: "龍吟", star: "4.0", reviews: "500+", loc: "日比谷", desc: "米其林級日本料理，創新與傳統的完美結合。", lat: 35.6763, lng: 139.7589 },
-        { name: "権八 西麻布", star: "4.3", reviews: "8,100+", loc: "六本木", desc: "《追殺比爾》場景靈感店，體驗日本盛宴氛圍。", lat: 35.6592, lng: 139.7288 },
+        { name: "煉瓦亭", loc: "銀座", desc: "銀座的傳統洋食老店，提供炸豬排與蛋料理。", lat: 35.672733, lng: 139.76593 },
+        { name: "Shake Shack 外苑いちょう並木店", loc: "表參道", desc: "外苑銀杏大道旁的漢堡店；11:00–20:30 L.O.。", lat: 35.673153, lng: 139.719757, officialUrl: "https://shakeshack.jp/locations/gaien/" },
+        { name: "LUKE’S LOBSTER 表参道キャットストリート店", loc: "表參道", desc: "龍蝦三明治專門店；平日 11:00–20:00、週末 10:00–20:00。", lat: 35.665437, lng: 139.70449, officialUrl: "https://baycrews.jp/store/detail/1517" },
+        { name: "THE APOLLO", loc: "銀座", desc: "位於 Tokyu Plaza Ginza 11F 的希臘料理餐廳。", lat: 35.672646, lng: 139.762756, officialUrl: "https://theapollo.jp/contact/" },
+        { name: "T’sたんたん グランスタ東京店", loc: "東京車站", desc: "2026/8/1 起移至 B1 改札外、Gransta 地下北口右側；10:00–22:00。導航點為東京站中心，請依站內指標前往。", lat: 35.681252, lng: 139.767242, officialUrl: "https://www.jr-cross.co.jp/info/items/07538f5adfaa1defa1800963b679ccf86c140841.pdf" },
+        { name: "神田たまごけん 秋葉原店", loc: "秋葉原", desc: "現做蛋包飯專門店，提供多種醬汁。", lat: 35.701206, lng: 139.770981, officialUrl: "https://tamagoken.com/shop/akihabara/" },
+        { name: "MERCER BRUNCH GINZA TERRACE", loc: "銀座", desc: "位於 ONE GINZA 4F 的早午餐餐廳。", lat: 35.67437, lng: 139.768539, officialUrl: "https://www.mercer-brunch-ginza.com/" },
+        { name: "Burger Mania 恵比寿店", loc: "惠比壽", desc: "惠比壽的手工漢堡店。", lat: 35.646034, lng: 139.713226 },
+        { name: "日本料理 龍吟", loc: "日比谷", desc: "位於 Tokyo Midtown Hibiya 7F 的日本料理餐廳。", lat: 35.674088, lng: 139.759552, officialUrl: "https://www.hibiya.tokyo-midtown.com/jp/restaurants/70100/" },
+        { name: "権八 西麻布", loc: "六本木", desc: "西麻布的和食居酒屋，設有蕎麥麵與爐端料理。", lat: 35.66045, lng: 139.723404, officialUrl: "https://gonpachi.jp/nishi-azabu/" },
     ]
 };
 
@@ -321,7 +320,6 @@ export function Food() {
                         createInfoWindowNode({
                             title: `${emoji} ${item.name}`,
                             lines: [
-                                `⭐ ${item.star} · ${item.reviews} 則評價`,
                                 `📍 ${item.loc} · 🚃 ${time} (${dist.toFixed(1)}km)`,
                                 item.desc,
                             ],
@@ -465,29 +463,54 @@ export function Food() {
     // (已移至 onClick 事件中處理，避免 effect 中 setState 警告)
     // 相關代碼在下方 onClick={() => { setActiveCat(cat.id); setActiveDistrict("all"); }}
 
+    const analyzeSeqRef = useRef(0);
+
     const analyzeUrl = async (inputUrl: string) => {
-        if (!inputUrl.includes("google.com/maps") && !inputUrl.includes("maps.app.goo.gl")) return;
+        const trimmed = inputUrl.trim();
+        if (!looksLikeGoogleMapsUrl(trimmed)) return;
+
+        const seq = ++analyzeSeqRef.current;
         setIsAnalyzing(true);
         try {
-            const res = await fetch(`/api/map-info?url=${encodeURIComponent(inputUrl)}`);
+            const res = await fetch(`/api/map-info?url=${encodeURIComponent(trimmed)}`);
+            // 若使用者在等待期間又貼了新網址，忽略這次過期回應
+            if (seq !== analyzeSeqRef.current) return;
+
             const data = await res.json().catch(() => null) as {
                 name?: string;
                 emoji?: string;
                 category?: string;
                 location?: string;
                 hours?: string;
+                finalUrl?: string;
                 lat?: number;
                 lng?: number;
                 error?: string;
             } | null;
+
             if (!res.ok) {
+                if (res.status === 422) {
+                    // 有座標/位置但沒店名：仍填入 mapLink，讓使用者只補店名
+                    setFormData((prev) => ({
+                        ...prev,
+                        mapLink: trimmed,
+                        location: data?.location || prev.location,
+                        lat: data?.lat ?? prev.lat,
+                        lng: data?.lng ?? prev.lng,
+                    }));
+                    throw new Error("無法從這個網址辨識店名，已保留地圖連結，請手動填寫店名。");
+                }
+                if (res.status === 429) {
+                    throw new Error("解析太頻繁，請稍候再試。");
+                }
                 throw new Error(data?.error || `地圖資訊服務回應錯誤 (${res.status})`);
             }
             if (!data?.name) {
                 throw new Error("無法從這個網址辨識店名");
             }
+
             const restaurantName = data.name;
-            const isStandard = FOOD_CATEGORIES.some(cat => cat.icon === data.emoji);
+            const isStandard = FOOD_CATEGORIES.some((cat) => cat.icon === data.emoji);
             if (data.emoji && !isStandard) {
                 setIsCustomType(true);
                 setCustomEmoji(data.emoji);
@@ -495,32 +518,74 @@ export function Food() {
             } else {
                 setIsCustomType(false);
             }
-            setFormData(prev => ({
-                ...prev, name: restaurantName, mapLink: inputUrl,
-                emoji: data.emoji || prev.emoji, location: data.location || prev.location,
-                hours: data.hours || prev.hours, desc: data.category ? `分類：${data.category}` : prev.desc,
-                lat: data.lat ?? prev.lat, lng: data.lng ?? prev.lng,
+            setFormData((prev) => ({
+                ...prev,
+                name: restaurantName,
+                mapLink: data.finalUrl || trimmed,
+                emoji: data.emoji || prev.emoji,
+                location: data.location || prev.location,
+                hours: data.hours || prev.hours,
+                desc: data.category ? `分類：${data.category}` : prev.desc,
+                lat: data.lat ?? prev.lat,
+                lng: data.lng ?? prev.lng,
             }));
         } catch (e) {
+            if (seq !== analyzeSeqRef.current) return;
             console.error("Failed to analyze URL", e);
+            const message =
+                e instanceof Error && e.message
+                    ? e.message
+                    : "無法自動解析這個網址，請改為手動填寫名稱與其他欄位。";
             void showAlert({
                 title: "分析失敗",
-                message: "無法自動解析這個網址，請改為手動填寫名稱與其他欄位。",
+                message:
+                    message.includes("手動") || message.includes("頻繁") || message.includes("錯誤")
+                        ? message
+                        : "無法自動解析這個網址，請改為手動填寫名稱與其他欄位。",
                 accent: "danger",
                 closeText: "知道了",
             });
-        } finally { setIsAnalyzing(false); }
+        } finally {
+            if (seq === analyzeSeqRef.current) setIsAnalyzing(false);
+        }
     };
 
     const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+    useEffect(() => () => {
+        if (debounceRef.current) clearTimeout(debounceRef.current);
+        analyzeSeqRef.current += 1;
+    }, []);
+
+    const scheduleAnalyze = (val: string) => {
+        if (debounceRef.current) clearTimeout(debounceRef.current);
+        const trimmed = val.trim();
+        if (!trimmed) return;
+        // 支援 http(s) 與使用者常直接貼 maps.app.goo.gl/... 的情況
+        if (trimmed.startsWith("http") || looksLikeGoogleMapsUrl(trimmed)) {
+            debounceRef.current = setTimeout(() => {
+                const normalized =
+                    trimmed.startsWith("http") ? trimmed : `https://${trimmed}`;
+                analyzeUrl(normalized);
+            }, 600);
+        }
+    };
+
     const handleUrlChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const val = e.target.value;
         setUrl(val);
-        if (debounceRef.current) clearTimeout(debounceRef.current);
-        if (val.startsWith("http")) {
-            debounceRef.current = setTimeout(() => analyzeUrl(val), 600);
-        }
+        scheduleAnalyze(val);
+    };
+
+    const handleUrlPaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+        const pasted = e.clipboardData.getData("text");
+        if (!pasted) return;
+        // 讓 input 先吃到 paste 值後再觸發；此處用 next tick 讀取最新 value
+        window.setTimeout(() => {
+            const next = (e.target as HTMLInputElement).value || pasted;
+            setUrl(next);
+            scheduleAnalyze(next);
+        }, 0);
     };
 
     const resetForm = () => {
@@ -748,26 +813,21 @@ export function Food() {
                             >
                                 <div>
                                     <div className="flex justify-between items-start mb-2">
-                                        <h3 className="font-black text-base text-gray-900 dark:text-white truncate flex-1 pr-2">{item.name}</h3>
-                                        <div className="flex items-center gap-1 bg-white dark:bg-slate-800 px-1.5 py-0.5 rounded-lg shadow-sm shrink-0">
-                                            <Star className="w-2 h-2 text-yellow-500 fill-yellow-500" />
-                                            <span className="text-sm font-black">{item.star}</span>
-                                        </div>
+                                        <h3 title={item.name} className="font-black text-base text-gray-900 dark:text-white truncate flex-1 pr-2">{item.name}</h3>
                                     </div>
                                     <div className="text-sm font-bold text-primary flex items-center gap-1 mb-1">
                                         <MapPin className="w-2.5 h-2.5" /> {item.loc}
-                                        <span className="text-gray-400 opacity-50 ml-1">({item.reviews})</span>
                                     </div>
                                     {/* ── 距離與時間 ── */}
                                     <div className="flex items-center gap-3 mb-2">
-                                        <span className="inline-flex items-center gap-1 text-xs font-bold text-gray-400">
+                                        <span className="inline-flex items-center gap-1 text-xs font-bold text-gray-600 dark:text-gray-300">
                                             <Footprints className="w-3 h-3" /> {dist.toFixed(1)}km
                                         </span>
-                                        <span className="inline-flex items-center gap-1 text-xs font-bold text-orange-500">
+                                        <span className="inline-flex items-center gap-1 text-xs font-bold text-orange-700 dark:text-orange-300">
                                             <Clock className="w-3 h-3" /> {time}
                                         </span>
                                     </div>
-                                    <p className="text-sm text-gray-400 leading-tight line-clamp-2 italic mb-3">&ldquo;{item.desc}&rdquo;</p>
+                                    <p className="text-sm text-gray-600 dark:text-gray-300 leading-tight line-clamp-2 italic mb-3">&ldquo;{item.desc}&rdquo;</p>
 
                                     {/* Hours are not fetched in real time; keep the state neutral. */}
                                     <div className="flex items-center gap-2 mb-3">
@@ -782,15 +842,15 @@ export function Food() {
                                         >
                                             <Navigation className="w-3 h-3" /> 導航
                                         </button>
-                                        <button
-                                            type="button"
-                                            disabled
-                                            aria-label={`${item.name}預約資訊尚未開放`}
-                                            title="預約資訊尚未開放"
-                                            className="flex-1 min-h-11 py-2 bg-gray-100 dark:bg-slate-800 text-gray-400 border border-gray-200 dark:border-slate-700 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 cursor-not-allowed"
+                                        <a
+                                            href={item.officialUrl ?? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${item.name} 東京`)}`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            aria-label={`${item.name}${item.officialUrl ? "官方資訊" : "店家資訊"}（另開新視窗）`}
+                                            className="flex-1 min-h-11 py-2 bg-gray-100 dark:bg-slate-800 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-slate-700 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 hover:border-primary/40 hover:text-primary transition-colors"
                                         >
-                                            📅 預約未開放
-                                        </button>
+                                            <Map className="w-3 h-3" /> {item.officialUrl ? "官方資訊" : "店家資訊"}
+                                        </a>
                                     </div>
                                 </div>
                             </div>
@@ -841,7 +901,15 @@ export function Food() {
                             <label htmlFor="food-map-url" className="text-xs font-black text-gray-400 uppercase tracking-widest block ml-1">自動解析（選擇性）</label>
                             <div className="relative group">
                                 <input
-                                    id="food-map-url" type="text" placeholder="貼上 Google Map 分享網址自動解析店名與位置..." value={url} onChange={handleUrlChange}
+                                    id="food-map-url"
+                                    type="text"
+                                    inputMode="url"
+                                    autoComplete="off"
+                                    spellCheck={false}
+                                    placeholder="貼上 Google Map 分享網址自動解析店名與位置..."
+                                    value={url}
+                                    onChange={handleUrlChange}
+                                    onPaste={handleUrlPaste}
                                     className="w-full p-4 pl-12 pr-12 rounded-2xl border-2 border-transparent bg-white dark:bg-slate-800 focus:border-primary outline-none transition-all text-sm font-bold"
                                 />
                                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />

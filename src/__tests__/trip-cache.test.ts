@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   EMPTY_TRIP_SNAPSHOT,
+  migrateLegacyTripCache,
   mergeRemoteSnapshot,
   readTripCache,
   tripCacheKey,
@@ -31,6 +32,7 @@ describe("trip-scoped cache", () => {
     writeTripCache(localStorage, "trip A", {
       snapshot: snapshot("A 的餐廳"),
       dirtySlices: ["customFoods"],
+      remoteRevision: 1,
       remoteUpdatedAt: 10,
       localUpdatedAt: 20,
       legacyMigration: false,
@@ -38,6 +40,7 @@ describe("trip-scoped cache", () => {
     writeTripCache(localStorage, "trip B", {
       snapshot: snapshot("B 的餐廳"),
       dirtySlices: [],
+      remoteRevision: 2,
       remoteUpdatedAt: 30,
       localUpdatedAt: 0,
       legacyMigration: false,
@@ -73,5 +76,56 @@ describe("trip-scoped cache", () => {
     expect(readTripCache(localStorage, "shared-trip").snapshot.customFoods).toEqual([]);
     expect(readTripCache(localStorage, "current-trip", { allowLegacy: true }).snapshot.customFoods[0].name)
       .toBe("舊行程");
+  });
+
+  it("moves legacy globals into one namespaced cache and removes every legacy key", () => {
+    localStorage.setItem("tokyoCustomFoods", JSON.stringify(snapshot("只屬於 A").customFoods));
+    localStorage.setItem("tokyoBudgetLimit", "80000");
+    localStorage.setItem("tokyoLocalUpdatedAt", "1234");
+
+    const migrated = migrateLegacyTripCache(localStorage, "trip-a");
+
+    expect(migrated.snapshot.customFoods[0].name).toBe("只屬於 A");
+    expect(migrated.dirtySlices).toEqual(expect.arrayContaining(["customFoods", "budgetLimit"]));
+    expect(JSON.parse(localStorage.getItem(tripCacheKey("trip-a")) || "{}").version).toBe(2);
+    expect(localStorage.getItem("tokyoCustomFoods")).toBeNull();
+    expect(localStorage.getItem("tokyoBudgetLimit")).toBeNull();
+    expect(localStorage.getItem("tokyoLocalUpdatedAt")).toBeNull();
+
+    // A second trip can no longer inherit A's old global snapshot.
+    expect(migrateLegacyTripCache(localStorage, "trip-b").snapshot.customFoods).toEqual([]);
+  });
+
+  it("keeps legacy data when the namespaced write fails", () => {
+    const values = new Map<string, string>([
+      ["tokyoCustomFoods", JSON.stringify(snapshot("不可遺失").customFoods)],
+      ["tokyoLocalUpdatedAt", "1234"],
+    ]);
+    const storage = {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: () => { throw new DOMException("quota", "QuotaExceededError"); },
+      removeItem: (key: string) => { values.delete(key); },
+    };
+
+    expect(() => migrateLegacyTripCache(storage, "trip-a")).toThrow(/quota/);
+    expect(values.has("tokyoCustomFoods")).toBe(true);
+    expect(values.has("tokyoLocalUpdatedAt")).toBe(true);
+  });
+
+  it("reads version 1 caches as revision zero for a safe first CAS", () => {
+    localStorage.setItem(tripCacheKey("legacy-v1"), JSON.stringify({
+      version: 1,
+      snapshot: snapshot("舊版 namespaced cache"),
+      dirtySlices: ["customFoods"],
+      remoteUpdatedAt: 99,
+      localUpdatedAt: 100,
+      legacyMigration: false,
+    }));
+
+    expect(readTripCache(localStorage, "legacy-v1")).toMatchObject({
+      remoteRevision: 0,
+      remoteUpdatedAt: 99,
+      dirtySlices: ["customFoods"],
+    });
   });
 });

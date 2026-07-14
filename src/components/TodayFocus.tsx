@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { useTripState } from "@/hooks/useTripState";
 import { DEFAULT_ITINERARY } from "@/lib/default-itinerary";
-import { parseTokyoForecast } from "@/lib/jma-forecast";
+import { getJmaWeatherLabel, parseTokyoForecastResponse } from "@/lib/jma-forecast";
 import { getTripCountdownParts, getTripTimelineState } from "@/lib/trip-dates";
 import { isNativePlatform } from "@/lib/platform";
 import {
@@ -27,15 +27,6 @@ type WeatherSnippet = {
   tempMin: string;
   pop: string;
 };
-
-function weatherCodeLabel(code: string) {
-  const c = parseInt(code, 10);
-  if (Number.isNaN(c)) return "天氣未知";
-  if (c < 200) return "晴";
-  if (c < 300) return "多雲";
-  if (c < 400) return "雨";
-  return "雷雨";
-}
 
 export interface PushHintSnapshot {
   supported: boolean;
@@ -147,14 +138,14 @@ export function TodayFocus({ onNavigate }: TodayFocusProps) {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch("https://www.jma.go.jp/bosai/forecast/data/forecast/130000.json");
+        const res = await fetch("/api/weather");
         if (!res.ok) throw new Error(`JMA 回應錯誤 (${res.status})`);
         const data = await res.json();
-        const today = parseTokyoForecast(data)[0];
+        const today = parseTokyoForecastResponse(data)[0];
         if (!today) throw new Error("JMA 回傳內容不完整");
         if (cancelled) return;
         setWeather({
-          label: weatherCodeLabel(today.weather),
+          label: getJmaWeatherLabel(today.weather),
           tempMax: today.tempMax,
           tempMin: today.tempMin,
           pop: today.pop,
@@ -274,7 +265,7 @@ export function TodayFocus({ onNavigate }: TodayFocusProps) {
         {/* 活動預覽 */}
         <div className="px-5 sm:px-6 pb-4 space-y-2">
           {snapshot.activities.length === 0 ? (
-            <p className="text-sm text-slate-400 font-medium py-2">尚無行程，到「行程」頁新增吧</p>
+            <p className="text-sm text-slate-600 dark:text-slate-300 font-medium py-2">尚無行程，到「行程」頁新增吧</p>
           ) : (
             snapshot.activities.map((act, i) => (
               <div
@@ -289,11 +280,11 @@ export function TodayFocus({ onNavigate }: TodayFocusProps) {
                     {act.name}
                   </div>
                   {act.desc && (
-                    <div className="text-xs text-slate-400 truncate">{act.desc}</div>
+                    <div className="text-xs text-slate-600 dark:text-slate-300 truncate">{act.desc}</div>
                   )}
                 </div>
                 {act.tag && (
-                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 shrink-0">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-600 dark:text-slate-300 shrink-0">
                     {act.tag}
                   </span>
                 )}
@@ -407,7 +398,7 @@ function QuickStat({
       onClick={onClick}
       className="rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-100 dark:border-slate-700 px-3 py-3 text-left active:scale-[0.98] transition-all hover:border-primary/30"
     >
-      <div className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">
+      <div className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-slate-600 dark:text-slate-300 mb-1">
         <Icon className="w-3.5 h-3.5 text-primary" />
         {label}
       </div>

@@ -5,10 +5,10 @@ import { Phone, Shield, Stethoscope, Building2, Globe, MapPin, AlertTriangle, He
 const CONTACTS = [
   { icon: Shield, label: "日本報警", number: "110", sub: "警察 (Police)", color: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400" },
   { icon: Stethoscope, label: "救護車・消防", number: "119", sub: "急救 (Ambulance / Fire)", color: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" },
-  { icon: Building2, label: "駐日台北代表處", number: "+81-3-3280-7811", sub: "東京事務所 (Taipei Representative Office)", color: "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400" },
+  { icon: Building2, label: "駐日代表處", number: "03-3280-7811", sub: "辦公時間緊急救助請按分機 4", color: "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400" },
   { icon: Globe, label: "JNTO 旅遊熱線", number: "050-3816-2787", sub: "24小時多語言觀光諮詢", color: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" },
-  { icon: Heart, label: "JATA 消費者相談", number: "03-3592-1266", sub: "旅行社糾紛・平日 10:00–17:00", color: "bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-400" },
-  { icon: MapPin, label: "台灣桃園機場", number: "+886-3-398-3728", sub: "出發地機場聯繫", color: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400" },
+  { icon: Heart, label: "駐日代表處緊急手機", number: "080-1009-7179", sub: "生命安全緊急；備援 080-1009-7436", color: "bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-400" },
+  { icon: MapPin, label: "桃園機場航班語音查詢", number: "+886-3-398-3728", sub: "航班資訊語音專線（非緊急／一般客服）", color: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400" },
 ];
 
 const HOSPITALS = [
@@ -16,11 +16,11 @@ const HOSPITALS = [
     name: "東京都立墨東病院",
     area: "墨田區江東橋 4-23-15（錦糸町附近）",
     phone: "+81-3-3633-6151",
-    note: "JMIP 外國患者認證・英中醫療口譯",
-    languages: "英／中口譯",
-    hours: "急診 24h（先電話）",
+    note: "JMIP；英／中醫療口譯僅平日 09:00–17:00，急診口譯不保證",
+    languages: "英／中（平日 09:00–17:00）",
+    hours: "急診 24h；到院前先電話",
     distanceHint: "錦糸町步行約 10 分",
-    url: "https://www.tmhp.jp/bokutoh/about/information/foreign-patient.html",
+    url: "https://www.tmhp.jp/bokutoh/about/information/foreign-patient-language.html",
   },
   {
     name: "聖路加國際病院",
@@ -64,7 +64,7 @@ export function EmergencyContacts() {
         <AlertTriangle className="w-6 h-6 text-amber-500 shrink-0 mt-0.5" />
         <div>
           <h3 className="font-black text-amber-800 dark:text-amber-300 mb-1">重要提醒</h3>
-          <p className="text-sm text-amber-700 dark:text-amber-400">人在日本時，警察直接撥 110、救護車／消防直接撥 119，不需加日本國碼。若語言不通，可要求「通訳（翻譯）」服務；非緊急醫療請先致電確認是否能立即接診。</p>
+          <p className="text-sm text-amber-700 dark:text-amber-400">人在日本時，警察直接撥 110、救護車／消防直接撥 119，不需加日本國碼。部分地區 119 已導入多語三方口譯，是否提供依所在地與當下服務為準；語言不通可先說「通訳お願いします」。非緊急醫療請先致電確認是否能立即接診。駐日代表處另一支緊急備援手機為 080-1009-7436。</p>
         </div>
       </div>
 
@@ -149,7 +149,7 @@ export function EmergencyContacts() {
           ))}
         </div>
 
-        <p className="mt-5 text-xs text-gray-400 text-right">聯絡資料最後核對：2026-07-10</p>
+        <p className="mt-5 text-xs text-gray-400 text-right">聯絡資料最後核對：2026-07-14</p>
 
         {/* ── Emergency Japanese Phrases ── */}
         <div className="bg-white dark:bg-slate-800 rounded-3xl p-8 shadow-xl border border-gray-100 dark:border-slate-700 mt-8">

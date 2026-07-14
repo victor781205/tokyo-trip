@@ -11,10 +11,17 @@ const RouteMapView = dynamic(() => import("./RouteMapView").then(m => m.RouteMap
     ssr: false,
     loading: () => (
         <div className="w-full h-full flex items-center justify-center bg-gray-100" style={{ minHeight: "450px" }}>
-            <div className="text-gray-400 font-bold text-sm">載入地圖中...</div>
+            <div className="text-gray-400 font-bold text-sm" role="status">載入地圖中...</div>
         </div>
     ),
 });
+
+type SubmittedRoute = {
+    origin: string;
+    destination: string;
+};
+
+type InvalidRouteField = "origin" | "destination" | null;
 
 export function isHotelOrKinshichoOrigin(value: string) {
     const normalized = value.replace(/\s+/g, "").toLowerCase();
@@ -27,26 +34,53 @@ export function isHotelOrKinshichoOrigin(value: string) {
 export function RouteMap() {
     const [origin, setOrigin] = useState("東京東武黎凡特飯店");
     const [destination, setDestination] = useState("");
-    const [isSearched, setIsSearched] = useState(false);
+    const [submittedRoute, setSubmittedRoute] = useState<SubmittedRoute | null>(null);
+    const [validationError, setValidationError] = useState("");
+    const [invalidField, setInvalidField] = useState<InvalidRouteField>(null);
     const [showItineraryRoutes, setShowItineraryRoutes] = useState(false);
 
     const { itinerary } = useTripState();
 
+    const isSearched = submittedRoute !== null;
+
+    const submitRoute = (nextOrigin: string, nextDestination: string) => {
+        const trimmedOrigin = nextOrigin.trim();
+        const trimmedDestination = nextDestination.trim();
+
+        if (!trimmedOrigin) {
+            setValidationError("請輸入起點後再查詢路線。");
+            setInvalidField("origin");
+            return;
+        }
+        if (!trimmedDestination) {
+            setValidationError("請輸入目的地後再查詢路線。");
+            setInvalidField("destination");
+            return;
+        }
+
+        setOrigin(trimmedOrigin);
+        setDestination(trimmedDestination);
+        setValidationError("");
+        setInvalidField(null);
+        setSubmittedRoute({ origin: trimmedOrigin, destination: trimmedDestination });
+    };
+
     const handleSearch = (e: React.FormEvent) => {
         e.preventDefault();
-        if (!destination) return;
-        setIsSearched(true);
+        submitRoute(origin, destination);
     };
 
     const handleQuickSpot = (name: string) => {
         setDestination(name);
-        setIsSearched(true);
+        submitRoute(origin, name);
     };
 
     const swapPlaces = () => {
         const temp = origin;
         setOrigin(destination || "東京東武黎凡特飯店");
         setDestination(temp);
+        setValidationError("");
+        setInvalidField(null);
     };
 
     const quickSpots = [
@@ -57,10 +91,13 @@ export function RouteMap() {
         { name: "秋葉原", fare: "約 ¥180~210" },
         { name: "成田機場", fare: "約 ¥1,200~1,700" },
     ];
-    const hasHotelFareBasis = isHotelOrKinshichoOrigin(origin);
+    const fareBasisOrigin = submittedRoute?.origin ?? origin;
+    const hasHotelFareBasis = isHotelOrKinshichoOrigin(fareBasisOrigin);
 
     // Google Maps 深度連結（按鈕開啟完整導航）
-    const googleMapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}&travelmode=transit`;
+    const googleMapsUrl = submittedRoute
+        ? `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(submittedRoute.origin)}&destination=${encodeURIComponent(submittedRoute.destination)}&travelmode=transit`
+        : "";
 
     // 從行程中取得所有地點，按天分組
     const itinerarySource = Object.keys(itinerary || {}).length > 0 ? itinerary : DEFAULT_ITINERARY;
@@ -88,7 +125,7 @@ export function RouteMap() {
                             <Navigation className="text-primary w-6 h-6" /> 即時路線查詢
                         </h3>
 
-                        <form onSubmit={handleSearch} className="space-y-6">
+                        <form onSubmit={handleSearch} className="space-y-6" noValidate>
                             <div className="space-y-4">
                                 <div className="relative group">
                                     <label htmlFor="route-origin" className="text-sm font-black text-gray-400 uppercase tracking-widest block mb-2 ml-1">起點</label>
@@ -97,7 +134,15 @@ export function RouteMap() {
                                         id="route-origin"
                                         type="text"
                                         value={origin}
-                                        onChange={e => setOrigin(e.target.value)}
+                                        onChange={e => {
+                                            setOrigin(e.target.value);
+                                            if (invalidField === "origin") {
+                                                setValidationError("");
+                                                setInvalidField(null);
+                                            }
+                                        }}
+                                        aria-invalid={invalidField === "origin"}
+                                        aria-describedby={invalidField === "origin" ? "route-search-error" : undefined}
                                         className="w-full p-4 pl-10 rounded-2xl border-2 border-gray-50 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 focus:border-primary focus:outline-none transition-all font-bold text-base"
                                         placeholder="輸入起點..."
                                     />
@@ -121,12 +166,30 @@ export function RouteMap() {
                                         id="route-destination"
                                         type="text"
                                         value={destination}
-                                        onChange={e => setDestination(e.target.value)}
+                                        onChange={e => {
+                                            setDestination(e.target.value);
+                                            if (invalidField === "destination") {
+                                                setValidationError("");
+                                                setInvalidField(null);
+                                            }
+                                        }}
+                                        aria-invalid={invalidField === "destination"}
+                                        aria-describedby={invalidField === "destination" ? "route-search-error" : undefined}
                                         className="w-full p-4 pl-10 rounded-2xl border-2 border-gray-50 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 focus:border-primary focus:outline-none transition-all font-bold text-primary text-base"
                                         placeholder="要去哪裡？"
                                     />
                                 </div>
                             </div>
+
+                            {validationError && (
+                                <p
+                                    id="route-search-error"
+                                    role="alert"
+                                    className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300"
+                                >
+                                    {validationError}
+                                </p>
+                            )}
 
                             <div className="grid grid-cols-3 gap-2 pt-2">
                                 {quickSpots.map(spot => (
@@ -191,22 +254,22 @@ export function RouteMap() {
                 </div>
 
                 {/* Internal Display Result */}
-                {isSearched && (
+                {submittedRoute && (
                     <div className="lg:col-span-8 w-full animate-in fade-in slide-in-from-right-8 duration-700">
                         <div className="bg-white dark:bg-slate-800 rounded-[2.5rem] shadow-2xl border border-gray-100 dark:border-slate-700 overflow-hidden flex flex-col">
                             <div className="p-6 bg-gray-50 dark:bg-slate-900 border-b border-gray-100 dark:border-slate-800 flex justify-between items-center shrink-0">
                                 <div className="flex items-center gap-3 min-w-0">
                                     <div className="bg-primary/10 p-2 rounded-xl text-primary shrink-0"><MapIcon className="w-5 h-5" /></div>
                                     <div className="min-w-0">
-                                        <p className="font-black text-base truncate">{origin} → {destination}</p>
+                                        <p className="font-black text-base truncate">{submittedRoute.origin} → {submittedRoute.destination}</p>
                                         <p className="text-sm text-gray-400 font-bold uppercase tracking-wider">Transit Directions</p>
                                     </div>
                                 </div>
-                                <button onClick={() => setIsSearched(false)} aria-label="關閉路線結果" className="w-11 h-11 inline-flex items-center justify-center hover:bg-gray-200 dark:hover:bg-slate-700 rounded-full shrink-0 ml-2"><X className="w-4 h-4" /></button>
+                                <button onClick={() => setSubmittedRoute(null)} aria-label="關閉路線結果" className="w-11 h-11 inline-flex items-center justify-center hover:bg-gray-200 dark:hover:bg-slate-700 rounded-full shrink-0 ml-2"><X className="w-4 h-4" /></button>
                             </div>
 
                             <div className="relative bg-slate-100 w-full" style={{ height: "450px" }}>
-                                <RouteMapView originName={origin} destName={destination} />
+                                <RouteMapView originName={submittedRoute.origin} destName={submittedRoute.destination} />
                             </div>
 
                             <div className="p-6 md:p-8 bg-gray-50 dark:bg-slate-900 border-t border-gray-100 dark:border-slate-800 shrink-0">
@@ -224,12 +287,12 @@ export function RouteMap() {
                                                             自訂起點車資 <span className="text-primary font-black">依路線而定</span>，請查看即時路線結果
                                                         </>;
                                                     }
-                                                    const matched = quickSpots.find(s => destination.includes(s.name));
+                                                    const matched = quickSpots.find(s => submittedRoute.destination.includes(s.name));
                                                     if (matched) return <>預估車資 <span className="text-primary font-black">{matched.fare}</span></>;
                                                     return <>一般電車單程約 <span className="text-primary font-black">¥180 ~ ¥430</span>，實際票價依路線而定</>;
                                                 })()}
                                                 <br />
-                                                <span className="text-xs opacity-70">從 {origin} 出發，使用 Suica/PASMO 搭乘電車</span>
+                                                <span className="text-xs opacity-70">從 {submittedRoute.origin} 出發，使用 Suica/PASMO 搭乘電車</span>
                                             </p>
                                         </div>
                                     </div>
@@ -311,8 +374,8 @@ export function RouteMap() {
                                     <h3 className="font-black text-lg text-green-600 dark:text-green-400">手機 Suica（裝置有限制）</h3>
                                 </div>
                                 <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed mb-2">
-                                    Apple Pay 相容 iPhone 可用 Welcome Suica Mobile，並以 Apple Pay 信用卡手動加值。
-                                    海外版 Android 目前通常無法發行 Suica；建議改用實體 Welcome Suica。
+                                    Welcome Suica Mobile 官方服務支援 Apple Pay 相容 iPhone，並以 Apple Pay 信用卡手動加值。
+                                    其他裝置能否使用請依 JR 東日本最新相容性說明確認；無法使用時可改買實體 Welcome Suica。
                                 </p>
                                 <div className="text-xs font-bold text-green-700 dark:text-green-400 bg-white/60 dark:bg-transparent px-2 py-1 rounded-lg inline-block leading-relaxed">
                                     一般信用卡不是自動加值；自動加值須符合日本 View Card 等資格。{" "}

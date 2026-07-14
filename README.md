@@ -12,7 +12,7 @@
 
 | 模組 | 說明 |
 |------|------|
-| 行程同步 | `trip_id` + `trip_secret`，localStorage + Supabase Realtime |
+| 行程同步 | `trip_id` + `trip_secret`，localStorage + 憑證綁定的 Supabase REST/CAS 同步 |
 | 分享連結 | 使用 **hash**（`#trip=…&secret=…`），載入後會 scrub URL |
 | 航班 | TDX + AviationStack |
 | 預算 | 記帳 + Tesseract OCR 發票 |
@@ -63,7 +63,7 @@ npm run firebase:env             # service account → env 字串
 
 | 變數 | 用途 |
 |------|------|
-| `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` | 前端 Realtime 同步 |
+| `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` | 前端憑證綁定同步 |
 | `SUPABASE_SERVICE_ROLE_KEY` | 後端推播 / 跨 RLS（**勿公開**） |
 | `NEXT_PUBLIC_VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | Web Push |
 | `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` | 地圖 |
@@ -75,31 +75,24 @@ npm run firebase:env             # service account → env 字串
 ## 安全模型（必讀）
 
 1. **行程授權**：每筆行程有 `trip_id` + `trip_secret`。
-2. **RLS**：`sync_state` 的 SELECT / 直連寫入依請求 header `x-trip-secret` 驗證。
-3. **同步寫入（正式路徑）**：前端優先呼叫 SECURITY DEFINER RPC `upsert_sync_state`；若 DB 尚未套用 migration（`PGRST202`），自動 fallback 為 **UPDATE → INSERT → upsert**。避免 PostgREST + FORCE RLS 下直接 upsert 回模糊的 `new row violates row-level security policy`。
-4. **推播**：`push_subscriptions` 表對 anon 直連關閉；API 走 SECURITY DEFINER RPC（`upsert_push_subscription` 等），即使 Vercel 沒有有效 `service_role` key 也能運作。
-5. **必須在 Supabase 執行 migration**（程式碼無法代替 Dashboard 套用 DDL）。目前最重要：
-   - [`supabase/migrations/20260709030000_rls_nuclear_fix.sql`](supabase/migrations/20260709030000_rls_nuclear_fix.sql)（完整 RLS）
-   - [`supabase/migrations/20260709040000_push_rpc_security_definer.sql`](supabase/migrations/20260709040000_push_rpc_security_definer.sql)（推播 RPC）
-   - [`supabase/migrations/20260710000000_allow_secret_rotation.sql`](supabase/migrations/20260710000000_allow_secret_rotation.sql)（UPDATE policy 放寬）
-   - [`supabase/migrations/20260710010000_rotate_trip_secret_rpc.sql`](supabase/migrations/20260710010000_rotate_trip_secret_rpc.sql)（**實際輪換路徑**：`rotate_trip_secret` SECURITY DEFINER RPC）
-   - [`supabase/migrations/20260711070000_upsert_sync_state_rpc.sql`](supabase/migrations/20260711070000_upsert_sync_state_rpc.sql)（**行程上送正式路徑**：`upsert_sync_state`；前端已有 fallback，建議仍套用）
+2. **RLS**：`sync_state` 讀取必須同時帶正確的 `x-trip-id` 與 `x-trip-secret`；anon 只能讀取不含 secret 的 DTO 欄位，也不能直接寫表。
+3. **同步寫入（唯一正式路徑）**：前端呼叫 SECURITY DEFINER RPC `sync_trip_slices`，用 server revision 做 CAS，只寫入變更中的資料切片。舊版 `upsert_sync_state` 已撤權，沒有不安全的直寫 fallback。
+4. **推播**：訂閱 RPC 只接受已存在且 secret 完全相符的行程。晨間 cron 必須使用 Vercel `CRON_SECRET`，後端資料存取只使用 `service_role`。
+5. **Migration**：依時間順序套用 [`supabase/migrations`](supabase/migrations)。不要挑單一舊 migration 手動執行；以 Supabase CLI 的 migration history 與 `db push` 為準。
 6. **分享**：優先使用 hash 片段，避免 secret 進 query / server log / Referer。
 7. **Token**：使用 [`src/lib/secure-id.ts`](src/lib/secure-id.ts)（CSPRNG）。
 
-### 套用（Supabase SQL Editor）
+### 套用（Supabase CLI）
 
-1. 開啟 Supabase Dashboard → SQL Editor
-2. 貼上並執行 [`supabase/migrations/20260711070000_upsert_sync_state_rpc.sql`](supabase/migrations/20260711070000_upsert_sync_state_rpc.sql)
-3. 本地回測：
+先確認 CLI 已登入且專案已 `supabase link`，再檢查差異並依序套用：
 
 ```bash
-node scripts/probe-upsert-rpc.mjs
-node --env-file=.env.smoke.runtime scripts/smoke-rls.mjs
+npx supabase migration list --linked
+npx supabase db push --linked --dry-run
+npx supabase db push --linked
 ```
 
-套用後：anon 無 secret 不可掃表；`upsert_sync_state` 錯誤 secret → forbidden、正確 → ok。
-**注意**：若仍失敗，優先檢查是否用了舊分享連結（secret 已輪換）。
+套用後應驗證：無憑證或單一 header 無法讀行程、回應不含 `trip_secret`、舊 RPC 不可呼叫、`sync_trip_slices` 的正確憑證與 revision 可成功完成 CAS。
 
 ---
 

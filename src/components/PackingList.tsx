@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { Plus, X, Check, ChevronDown, ChevronRight, Sparkles, RotateCcw, Download } from "lucide-react";
 import { useTripState } from "@/hooks/useTripState";
 import { generateShortId } from "@/lib/secure-id";
@@ -15,7 +15,7 @@ export interface PackingItem {
 const DEFAULT_CATEGORIES: Record<string, { icon: string; items: string[] }> = {
   "衣物": {
     icon: "👕",
-    items: ["T恤 ×5", "內衣褲 ×6", "襪子 ×5", "外套", "睡衣", "泳衣", "帽子", "拖鞋", "運動鞋"],
+    items: ["透氣短袖 ×5", "內衣褲 ×6", "襪子 ×5", "薄外套（冷氣房用）", "睡衣", "泳衣", "帽子", "拖鞋", "運動鞋"],
   },
   "證件": {
     icon: "📄",
@@ -23,7 +23,7 @@ const DEFAULT_CATEGORIES: Record<string, { icon: string; items: string[] }> = {
   },
   "電子用品": {
     icon: "🔌",
-    items: ["手機", "充電器", "行動電源", "耳機", "相機", "萬用轉接頭", "USB 線"],
+    items: ["手機", "充電器", "行動電源（最多 2 顆、每顆 ≤100Wh；隨身攜帶）", "耳機", "相機", "三腳轉兩腳轉接頭（需要時）", "USB 線"],
   },
   "日用品": {
     icon: "🧴",
@@ -56,20 +56,7 @@ export function PackingList() {
   const [newItemCategory, setNewItemCategory] = useState("其他");
   const [showAdd, setShowAdd] = useState(false);
   const [expandedCats, setExpandedCats] = useState<Set<string>>(new Set(Object.keys(DEFAULT_CATEGORIES)));
-  const [defaultItems] = useState(createDefaultPackingItems);
-  const initializedRef = useRef(false);
-
-  useEffect(() => {
-    if (!isLoaded || packingList.length > 0 || initializedRef.current) return;
-    initializedRef.current = true;
-    updatePackingList(defaultItems);
-  }, [defaultItems, isLoaded, packingList.length, updatePackingList]);
-
-  const currentList: PackingItem[] = packingList.length > 0
-    ? packingList
-    : isLoaded
-      ? defaultItems
-      : [];
+  const currentList: PackingItem[] = isLoaded ? packingList : [];
 
   const categories = Array.from(new Set(currentList.map(i => i.category)));
   const totalItems = currentList.length;
@@ -97,6 +84,11 @@ export function PackingList() {
   const removeItem = (id: string) => {
     const updated = currentList.filter(item => item.id !== id);
     updatePackingList(updated);
+  };
+
+  const restoreDefaults = () => {
+    updatePackingList(createDefaultPackingItems());
+    setExpandedCats(new Set(Object.keys(DEFAULT_CATEGORIES)));
   };
 
   /** 一鍵取消全部勾選（重打包） */
@@ -192,6 +184,16 @@ export function PackingList() {
           </div>
         )}
         <div className="mt-4 flex flex-wrap gap-2">
+          {totalItems === 0 && (
+            <button
+              type="button"
+              onClick={restoreDefaults}
+              className="inline-flex min-h-11 items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-black border border-primary/30 text-primary bg-primary/5 active:scale-95"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              載入建議清單
+            </button>
+          )}
           <button
             type="button"
             onClick={uncheckAll}
@@ -326,18 +328,29 @@ export function PackingList() {
           🌦️ 根據 9 月東京天氣建議
         </h3>
         <div className="flex flex-wrap gap-2 text-sm mb-4">
-          <span className="px-3 py-1.5 bg-yellow-100 dark:bg-yellow-900/30 rounded-full font-bold">👕 薄長袖 3-4 件</span>
-          <span className="px-3 py-1.5 bg-yellow-100 dark:bg-yellow-900/30 rounded-full font-bold">🧥 薄外套 1 件</span>
+          <span className="px-3 py-1.5 bg-yellow-100 dark:bg-yellow-900/30 rounded-full font-bold">👕 透氣短袖 4-5 件</span>
+          <span className="px-3 py-1.5 bg-yellow-100 dark:bg-yellow-900/30 rounded-full font-bold">🧥 冷氣房用薄外套 1 件</span>
           <span className="px-3 py-1.5 bg-blue-100 dark:bg-blue-900/30 rounded-full font-bold">☔ 摺疊傘</span>
           <span className="px-3 py-1.5 bg-blue-100 dark:bg-blue-900/30 rounded-full font-bold">👟 舒適步行鞋</span>
-          <span className="px-3 py-1.5 bg-purple-100 dark:bg-purple-900/30 rounded-full font-bold">🔌 萬用轉接頭</span>
+          <span className="px-3 py-1.5 bg-purple-100 dark:bg-purple-900/30 rounded-full font-bold">🔌 台灣兩扁腳通常可直接使用</span>
           <span className="px-3 py-1.5 bg-green-100 dark:bg-green-900/30 rounded-full font-bold">💊 個人藥品</span>
           <span className="px-3 py-1.5 bg-pink-100 dark:bg-pink-900/30 rounded-full font-bold">🧴 防曬乳 SPF50+</span>
           <span className="px-3 py-1.5 bg-gray-100 dark:bg-gray-700 rounded-full font-bold">😷 口罩</span>
         </div>
-        <div className="flex items-start gap-2 text-xs text-gray-500">
+        <div className="flex items-start gap-2 text-xs text-gray-600 dark:text-gray-300">
           <span className="text-lg">💡</span>
-          <p>9 月東京氣溫約 23-30°C，午後常有雷陣雨，建議隨身攜帶雨具和薄外套。颱風季節請關注天氣預報。</p>
+          <p>9 月上旬東京通常仍炎熱潮濕，以透氣短袖為主；薄外套留給冷氣房。日本為 100V、常見兩扁腳插座，請先確認充電器支援 100V，三腳插頭才需轉接頭。颱風季請出發前再看即時預報。</p>
+        </div>
+        <div role="note" className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-black leading-relaxed text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">
+          🔋 星宇航空自 2026/4/1 起：行動電源最多 2 顆、每顆 ≤100Wh，必須隨身攜帶且不可託運；機上禁止使用或充電，也不可放入頭頂置物櫃，請放在前方座椅下。其他備用鋰電池同樣不可託運。{" "}
+          <a
+            href="https://latestnews.starlux-airlines.com/en-JP/about-us/travel-advisories/advisories/latest-news/safety-regulations"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex min-h-11 items-center px-1 underline underline-offset-2"
+          >
+            查看星宇最新規定
+          </a>
         </div>
       </div>
     </section>

@@ -76,6 +76,24 @@ function translateStatus(status: string): { text: string; color: string } {
   }
 }
 
+type LiveTimeUpdate = { label: "實際" | "預估"; time: string };
+
+function formatFlightClock(value?: string): string | null {
+  const normalized = value?.trim();
+  if (!normalized) return null;
+  const match = normalized.match(/(?:T|\s)(\d{1,2}):(\d{2})/) ?? normalized.match(/^(\d{1,2}):(\d{2})/);
+  if (!match) return null;
+  return `${match[1].padStart(2, "0")}:${match[2]}`;
+}
+
+function getLiveTimeUpdate(actual?: string, estimated?: string): LiveTimeUpdate | null {
+  const actualClock = formatFlightClock(actual);
+  if (actualClock) return { label: "實際", time: actualClock };
+  const estimatedClock = formatFlightClock(estimated);
+  if (estimatedClock) return { label: "預估", time: estimatedClock };
+  return null;
+}
+
 export function FlightInfo() {
   const [flightData, setFlightData] = useState<FlightResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -148,6 +166,15 @@ export function FlightInfo() {
     outboundLive || inboundArrLive ? "TDX FIDS (TPE)" : null,
     inboundDepLive ? "AviationStack (NRT)" : null,
   ].filter(Boolean).join(" · ");
+  const outboundTimeUpdate = outboundLive
+    ? getLiveTimeUpdate(outbound?.actualTime ?? outbound?.actual, outbound?.estimated)
+    : null;
+  const inboundDepartureTimeUpdate = inboundDepLive
+    ? getLiveTimeUpdate(inbound?.depActual, inbound?.depEstimated)
+    : null;
+  const inboundArrivalTimeUpdate = inboundArrLive
+    ? getLiveTimeUpdate(inbound?.arrActual, inbound?.arrEstimated)
+    : null;
 
   return (
     <section id="flights" className="py-8 px-4 md:px-12 max-w-6xl mx-auto animate-in fade-in duration-700">
@@ -203,6 +230,11 @@ export function FlightInfo() {
               <div className="text-4xl font-black mb-1 tracking-tighter">TPE</div>
               <div className="text-sm font-bold text-gray-400 uppercase">Taipei</div>
               <div className="text-3xl font-black text-primary mt-3 bg-primary/5 py-1 rounded-xl">08:30</div>
+              {outboundTimeUpdate && (
+                <div className="mt-1 text-xs font-black text-green-600" aria-label={`去程${outboundTimeUpdate.label}起飛時間`}>
+                  {outboundTimeUpdate.label} {outboundTimeUpdate.time}
+                </div>
+              )}
             </div>
 
             <div className="flex-1 px-4 relative flex flex-col items-center gap-2">
@@ -251,7 +283,7 @@ export function FlightInfo() {
                         <span className="text-[10px] text-gray-400">({outbound.aircraftIcao})</span>
                         {outboundLive && outbound.aircraftLive
                           ? <span className="ml-1 px-1.5 py-0.5 bg-green-100 text-green-700 rounded-full text-[10px] font-bold">LIVE</span>
-                          : <span className="ml-1 px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded-full text-[10px] font-bold">預定</span>}
+                          : <span className="ml-1 px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded-full text-[10px] font-bold">訂位預定</span>}
                       </span>
                     </div>
                     {outbound.aircraftTags && outbound.aircraftTags.length > 0 && (
@@ -308,6 +340,11 @@ export function FlightInfo() {
               <div className="text-4xl font-black mb-1 tracking-tighter">NRT</div>
               <div className="text-sm font-bold text-gray-400 uppercase">Tokyo</div>
               <div className="text-3xl font-black text-accent mt-3 bg-accent/5 py-1 rounded-xl">20:40</div>
+              {inboundDepartureTimeUpdate && (
+                <div className="mt-1 text-xs font-black text-green-600" aria-label={`回程${inboundDepartureTimeUpdate.label}起飛時間`}>
+                  {inboundDepartureTimeUpdate.label} {inboundDepartureTimeUpdate.time}
+                </div>
+              )}
             </div>
 
             <div className="flex-1 px-4 relative flex flex-col items-center gap-2">
@@ -321,6 +358,11 @@ export function FlightInfo() {
               <div className="text-4xl font-black mb-1 tracking-tighter">TPE</div>
               <div className="text-sm font-bold text-gray-400 uppercase">Taipei</div>
               <div className="text-3xl font-black text-accent mt-3 bg-accent/5 py-1 rounded-xl">23:20</div>
+              {inboundArrivalTimeUpdate && (
+                <div className="mt-1 text-xs font-black text-green-600" aria-label={`回程${inboundArrivalTimeUpdate.label}抵達時間`}>
+                  {inboundArrivalTimeUpdate.label} {inboundArrivalTimeUpdate.time}
+                </div>
+              )}
             </div>
           </div>
 
@@ -419,7 +461,7 @@ export function FlightInfo() {
                     {inboundArrLive && inbound.aircraftLive ? (
                       <span className="ml-1 px-1.5 py-0.5 bg-green-100 text-green-600 rounded-full text-[10px] font-bold">LIVE</span>
                     ) : (
-                      <span className="ml-1 px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded-full text-[10px] font-bold">預定</span>
+                      <span className="ml-1 px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded-full text-[10px] font-bold">訂位預定</span>
                     )}
                   </span>
                 </div>
@@ -434,6 +476,10 @@ export function FlightInfo() {
             )}
           </div>
         </div>
+      </div>
+
+      <div role="note" className="mt-5 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-bold leading-relaxed text-blue-700 dark:border-blue-800 dark:bg-blue-900/20 dark:text-blue-300">
+        機型標示：非 LIVE 時為訂位資料的預定機型；實際執飛航機仍可能因航空公司營運調度變更，請以出發當日資訊為準。
       </div>
 
       <div className="mt-8 flex items-center justify-center gap-2 text-sm text-gray-400 font-bold uppercase tracking-tighter">
@@ -516,7 +562,7 @@ export function FlightInfo() {
             <div>
               <div className="font-black text-amber-700 dark:text-amber-400 mb-1">💡 建議</div>
               <p className="text-sm text-amber-600 dark:text-amber-300">
-                去程為早班機，建議前一天晚上在 <strong>23:00 前就寢</strong>，並提早將行李整理完成。桃園機場報到截止為起飛前 <strong>45 分鐘</strong>，請預留充足時間。
+                去程為早班機，建議前一天晚上在 <strong>23:00 前就寢</strong>，並提早將行李整理完成。星宇航空桃園機場報到櫃檯於起飛前 <strong>60 分鐘</strong> 關閉，請預留充足時間。
               </p>
             </div>
           </div>
@@ -541,8 +587,8 @@ export function FlightInfo() {
           </div>
           <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl text-center shadow-sm">
             <div className="text-xs text-gray-500 font-bold mb-1">🏨 從飯店出發</div>
-            <div className="text-xl md:text-2xl font-black text-orange-500">~16:30</div>
-            <div className="text-xs text-gray-400">JR 總武線 + NEX</div>
+            <div className="text-xl md:text-2xl font-black text-orange-500">16:00</div>
+            <div className="text-xs text-gray-400">JR 總武快速直達</div>
           </div>
           <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl text-center shadow-sm">
             <div className="text-xs text-gray-500 font-bold mb-1">🏠 飯店退房</div>
@@ -556,7 +602,7 @@ export function FlightInfo() {
           {[
             { time: "11:00", label: "退房寄放", color: "bg-orange-500" },
             { time: "14:00", label: "取行李", color: "bg-amber-500" },
-            { time: "16:30", label: "出發", color: "bg-yellow-500" },
+            { time: "16:00", label: "出發", color: "bg-yellow-500" },
             { time: "18:40", label: "抵達機場", color: "bg-green-500" },
             { time: "20:40", label: "起飛", color: "bg-accent" },
           ].map((step, i, arr) => (
@@ -578,7 +624,7 @@ export function FlightInfo() {
           {[
             { time: "11:00", label: "退房寄放", color: "bg-orange-500" },
             { time: "14:00", label: "取行李", color: "bg-amber-500" },
-            { time: "16:30", label: "出發", color: "bg-yellow-500" },
+            { time: "16:00", label: "出發", color: "bg-yellow-500" },
             { time: "18:40", label: "抵達機場", color: "bg-green-500" },
             { time: "20:40", label: "起飛", color: "bg-accent" },
           ].map((step) => (

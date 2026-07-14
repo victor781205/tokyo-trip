@@ -21,19 +21,22 @@ describe("secure-id", () => {
 
   it("generateTripId has trip_ prefix", () => {
     const id = generateTripId();
-    expect(id.startsWith("trip_")).toBe(true);
-    expect(id.length).toBeGreaterThan(10);
+    expect(id).toMatch(/^trip_[A-Za-z0-9_-]{22}$/);
   });
 
   it("generateTripSecret has sec_ prefix and higher entropy length", () => {
     const secret = generateTripSecret();
-    expect(secret.startsWith("sec_")).toBe(true);
-    expect(secret.length).toBeGreaterThan(20);
+    expect(secret).toMatch(/^sec_[A-Za-z0-9_-]{32}$/);
   });
 
   it("generateShortId is shorter but still non-empty", () => {
     const id = generateShortId(8);
     expect(id.length).toBeGreaterThanOrEqual(8);
     expect(id).toMatch(/^[A-Za-z0-9_-]+$/);
+  });
+
+  it("rejects invalid entropy lengths", () => {
+    expect(() => generateSecureToken(0)).toThrow(RangeError);
+    expect(() => generateSecureToken(1.5)).toThrow(RangeError);
   });
 });

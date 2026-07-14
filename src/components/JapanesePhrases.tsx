@@ -192,7 +192,7 @@ export function JapanesePhrases() {
                             <button
                               onClick={() => handleSpeak(phrase.jp)}
                               aria-label={`播放發音：${phrase.jp}`}
-                              className="w-11 h-11 shrink-0 inline-flex items-center justify-center rounded-xl text-gray-400 hover:text-primary hover:bg-primary/10 transition-colors opacity-100 md:opacity-0 md:group-hover:opacity-100"
+                              className="w-11 h-11 shrink-0 inline-flex items-center justify-center rounded-xl text-gray-400 hover:text-primary hover:bg-primary/10 focus-visible:text-primary focus-visible:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 transition-colors opacity-100 md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
                               title="聆聽發音"
                             >
                               <Volume2 className="w-4 h-4" />

@@ -7,6 +7,7 @@ import {
   type SyncSlice,
   type TripSnapshot,
   mergeRemoteSnapshot,
+  migrateLegacyTripCache,
   readTripCache,
   remoteRecordToSnapshot,
   writeTripCache,
@@ -15,6 +16,16 @@ import { generateTripId, generateTripSecret } from "@/lib/secure-id";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() ?? "";
 const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim() ?? "";
+const SYNC_SELECT_COLUMNS = [
+  "itinerary",
+  "budget_limit",
+  "budget_items",
+  "custom_foods",
+  "packing_list",
+  "updated_at",
+  "revision",
+].join(",");
+const MAX_SYNC_ATTEMPTS = 3;
 
 // ── localStorage 鍵名常數 ──
 const STORAGE_KEYS = {
@@ -78,11 +89,12 @@ function writeStorage(key: string, value: string) {
   }
 }
 
-/** 建立帶 x-trip-secret header 的 Supabase client（配合 RLS） */
-function createTripClient(secret: string): SupabaseClient {
+/** 建立同時綁定 trip id + secret 的 Supabase client（配合 RLS）。 */
+function createTripClient(tripId: string, secret: string): SupabaseClient {
   return createClient(SUPABASE_URL, SUPABASE_KEY, {
     global: {
       headers: {
+        "x-trip-id": tripId,
         "x-trip-secret": secret,
       },
     },
@@ -93,12 +105,17 @@ function createTripClient(secret: string): SupabaseClient {
   });
 }
 
+function credentialsAreSupported(tripId: string, secret: string) {
+  if (!tripId || !secret || /[\u0000-\u001f\u007f]/.test(tripId + secret)) return false;
+  const encoder = new TextEncoder();
+  return encoder.encode(tripId).byteLength <= 64 && encoder.encode(secret).byteLength <= 128;
+}
+
 /**
- * 從 URL 解析行程憑證。
- * 優先 hash（#trip=...&secret=...，不會進 server / Referer），
- * 相容舊版 query（?trip=&secret=）。
+ * 只從 hash fragment 解析行程憑證。Query string 會進 server、log 與
+ * Referer，因此即使看起來完整也絕不接受。
  */
-function parseCredentialsFromLocation(): { tripId: string; secret: string; source: "hash" | "query" } | null {
+function parseCredentialsFromLocation(): { tripId: string; secret: string } | null {
   if (typeof window === "undefined") return null;
 
   const hashRaw = window.location.hash.startsWith("#")
@@ -108,28 +125,42 @@ function parseCredentialsFromLocation(): { tripId: string; secret: string; sourc
   const hashTrip = hashParams.get("trip");
   const hashSecret = hashParams.get("secret");
   if (hashTrip && hashSecret) {
-    return { tripId: hashTrip.trim(), secret: hashSecret.trim(), source: "hash" };
+    const tripId = hashTrip.trim();
+    const secret = hashSecret.trim();
+    if (credentialsAreSupported(tripId, secret)) return { tripId, secret };
   }
-
-  const query = new URLSearchParams(window.location.search);
-  const queryTrip = query.get("trip");
-  const querySecret = query.get("secret");
-  if (queryTrip && querySecret) {
-    return { tripId: queryTrip.trim(), secret: querySecret.trim(), source: "query" };
-  }
-
   return null;
 }
 
-/** 清掉 URL 上的 secret（query / 保留乾淨路徑），避免殘留在歷史紀錄過久 */
+function locationContainsCredentialKeys() {
+  if (typeof window === "undefined") return false;
+  const query = new URLSearchParams(window.location.search);
+  const hash = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+  return query.has("trip") || query.has("secret") || hash.has("trip") || hash.has("secret");
+}
+
+/**
+ * 清掉 query/hash 中的憑證，同時保留不相關的 query/hash 狀態。
+ * Query 憑證不會被接受，但仍立即移除，避免繼續出現在歷史與 Referer。
+ */
 function scrubCredentialsFromUrl() {
   if (typeof window === "undefined") return;
   try {
     const url = new URL(window.location.href);
     url.searchParams.delete("trip");
     url.searchParams.delete("secret");
-    url.hash = "";
-    window.history.replaceState({}, "", url.pathname + url.search);
+    const hash = new URLSearchParams(url.hash.replace(/^#/, ""));
+    if (hash.has("trip") || hash.has("secret")) {
+      hash.delete("trip");
+      hash.delete("secret");
+      const remainingHash = hash.toString();
+      url.hash = remainingHash ? `#${remainingHash}` : "";
+    }
+    window.history.replaceState(
+      window.history.state,
+      "",
+      url.pathname + url.search + url.hash,
+    );
   } catch {
     // ignore
   }
@@ -142,12 +173,22 @@ type SyncSnapshot = {
   custom_foods?: unknown;
   packing_list?: unknown;
   updated_at?: string | null;
+  revision?: number | null;
 };
 
-type SyncRecord = SyncSnapshot & {
-  trip_id?: string;
-  trip_secret?: string;
-};
+type SyncRecord = SyncSnapshot;
+
+async function fetchSyncRecord(client: SupabaseClient, tripId: string) {
+  const result = await client
+    .from("sync_state")
+    .select(SYNC_SELECT_COLUMNS)
+    .eq("trip_id", tripId)
+    .maybeSingle();
+  return {
+    data: result.data as SyncRecord | null,
+    error: result.error,
+  };
+}
 
 export function TripProvider({ children }: { children: React.ReactNode }) {
   const [isLoaded, setIsLoaded] = useState(false);
@@ -168,15 +209,13 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
   const supabase = useRef<SupabaseClient | null>(null);
   const tripSecretRef = useRef<string>("");
   const pushReady = useRef(false);
-  const lastUpdateRef = useRef(0);
+  const remoteRevisionRef = useRef(0);
   const remoteUpdatedAtRef = useRef(0);
   const localUpdatedAtRef = useRef(0);
   const activeTripIdRef = useRef("");
   const dirtySlicesRef = useRef<Set<SyncSlice>>(new Set());
   const legacyMigrationRef = useRef(false);
   const stateVersionRef = useRef(0);
-  const realtimeChannel = useRef<ReturnType<SupabaseClient["channel"]> | null>(null);
-  const realtimeClientRef = useRef<SupabaseClient | null>(null);
   const connectionGenerationRef = useRef(0);
   const loginAttemptRef = useRef(0);
   const initialUrlCredentialsRef = useRef<ReturnType<typeof parseCredentialsFromLocation> | undefined>(undefined);
@@ -197,6 +236,7 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
       writeTripCache(localStorage, id, {
         snapshot: stateRef.current,
         dirtySlices: [...dirtySlicesRef.current],
+        remoteRevision: remoteRevisionRef.current,
         remoteUpdatedAt: remoteUpdatedAtRef.current,
         localUpdatedAt: localUpdatedAtRef.current,
         legacyMigration: legacyMigrationRef.current,
@@ -212,6 +252,7 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
    */
   const applyRemoteSnapshot = useCallback((
     raw: SyncSnapshot,
+    remoteRevision: number,
     remoteTs: number,
     preserveDirty = false,
   ) => {
@@ -230,13 +271,12 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
     _setBudgetItems(snapshot.budgetItems);
     _setCustomFoods(snapshot.customFoods);
     _setPackingList(snapshot.packingList);
+    remoteRevisionRef.current = remoteRevision;
     remoteUpdatedAtRef.current = remoteTs;
     stateVersionRef.current += 1;
     if (preserveDirty) {
-      lastUpdateRef.current = Math.max(remoteTs, localUpdatedAtRef.current);
       pendingPushRef.current = dirtySlicesRef.current.size > 0;
     } else {
-      lastUpdateRef.current = remoteTs;
       localUpdatedAtRef.current = 0;
       dirtySlicesRef.current.clear();
       pendingPushRef.current = false;
@@ -248,7 +288,6 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
   /** 本機使用者變更：更新時間戳並標記待推送 */
   const markLocalMutation = useCallback((slice: SyncSlice) => {
     const now = Date.now();
-    lastUpdateRef.current = now;
     localUpdatedAtRef.current = now;
     dirtySlicesRef.current.add(slice);
     stateVersionRef.current += 1;
@@ -261,32 +300,20 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
       id: string,
       secret: string,
       client: SupabaseClient,
-      forceReconnect = false,
       expectExisting = false,
       preloadedData?: SyncRecord,
     ): Promise<boolean> => {
       const trimmedId = id.trim();
       const trimmedSecret = secret.trim();
-      if (!forceReconnect && realtimeChannel.current) {
-        return true;
-      }
+      if (!credentialsAreSupported(trimmedId, trimmedSecret)) return false;
       const connectionGeneration = ++connectionGenerationRef.current;
-      if (realtimeChannel.current) {
-        (realtimeClientRef.current ?? client).removeChannel(realtimeChannel.current);
-        realtimeChannel.current = null;
-        realtimeClientRef.current = null;
-      }
 
       try {
         let data: SyncRecord | null = preloadedData ?? null;
         let queryError: { message: string } | null = null;
         if (!preloadedData) {
-          const result = await client
-            .from("sync_state")
-            .select("*")
-            .eq("trip_id", trimmedId)
-            .maybeSingle();
-          data = result.data as SyncRecord | null;
+          const result = await fetchSyncRecord(client, trimmedId);
+          data = result.data;
           queryError = result.error;
         }
 
@@ -304,40 +331,28 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
         }
 
         if (data) {
-          // 雙重確認 secret（RLS 已擋，這裡是 defense-in-depth）
-          if (data.trip_secret && data.trip_secret !== trimmedSecret) {
-            console.warn("[Sync] Secret mismatch");
-            setSyncStatus("error");
-            setSyncError("行程密碼不符 (Secret mismatch)");
-            pushReady.current = true;
-            return false;
-          }
           setIsShareReady(true);
 
           const parsedRemoteTs = data.updated_at ? new Date(data.updated_at).getTime() : 0;
           const remoteTs = Number.isFinite(parsedRemoteTs) ? parsedRemoteTs : 0;
+          const parsedRevision = Number(data.revision ?? 0);
+          const remoteRevision = Number.isSafeInteger(parsedRevision) && parsedRevision >= 0
+            ? parsedRevision
+            : 0;
           const hasDirtySlices = dirtySlicesRef.current.size > 0;
-          if (
-            hasDirtySlices &&
-            legacyMigrationRef.current &&
-            remoteTs >= localUpdatedAtRef.current
-          ) {
-            // 舊版全域快取沿用既有 LWW：遠端較新時不可把舊資料誤當離線編輯。
-            applyRemoteSnapshot(data as SyncSnapshot, remoteTs);
-          } else if (hasDirtySlices) {
-            // 離線期間只保留實際改過的 slice；其餘採用較新的遠端資料，避免整包互蓋。
-            if (remoteTs > remoteUpdatedAtRef.current) {
-              applyRemoteSnapshot(data as SyncSnapshot, remoteTs, true);
-            }
+          if (hasDirtySlices) {
+            // Revision, not either device's clock, decides whether a refetch is
+            // newer. Preserve only the locally dirty slices across that pull.
+            applyRemoteSnapshot(data as SyncSnapshot, remoteRevision, remoteTs, true);
             pendingPushRef.current = true;
           } else {
-            if (remoteTs >= remoteUpdatedAtRef.current) {
-              applyRemoteSnapshot(data as SyncSnapshot, remoteTs);
+            if (remoteRevision >= remoteRevisionRef.current) {
+              applyRemoteSnapshot(data as SyncSnapshot, remoteRevision, remoteTs);
             }
           }
         } else {
           setIsShareReady(false);
-          if (expectExisting || remoteUpdatedAtRef.current > 0) {
+          if (expectExisting || remoteRevisionRef.current > 0) {
             setSyncStatus("error");
             setSyncError("找不到此行程，或同步密碼不正確。");
             pushReady.current = true;
@@ -346,37 +361,6 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
           // 雲端尚無此行程：建立 row，讓尚未編輯的空白行程也能被分享。
           pendingPushRef.current = true;
         }
-
-        const channel = client
-          .channel(`trip:${trimmedId}`)
-          .on(
-            "postgres_changes",
-            { event: "*", schema: "public", table: "sync_state", filter: `trip_id=eq.${trimmedId}` },
-            (payload) => {
-              if (activeTripIdRef.current !== trimmedId) return;
-              if (!payload.new || typeof payload.new !== "object" || !("updated_at" in payload.new)) return;
-              const remoteUpdated = payload.new.updated_at
-                ? new Date(payload.new.updated_at as string).getTime()
-                : 0;
-              if (payload.new.trip_secret === trimmedSecret) {
-                if (
-                  dirtySlicesRef.current.size > 0 &&
-                  remoteUpdated > remoteUpdatedAtRef.current
-                ) {
-                  applyRemoteSnapshot(payload.new as SyncSnapshot, remoteUpdated, true);
-                } else if (
-                  dirtySlicesRef.current.size === 0 &&
-                  remoteUpdated > lastUpdateRef.current
-                ) {
-                  applyRemoteSnapshot(payload.new as SyncSnapshot, remoteUpdated);
-                }
-              }
-            },
-          )
-          .subscribe();
-
-        realtimeChannel.current = channel;
-        realtimeClientRef.current = client;
         setSyncStatus("online");
         setSyncError(null);
         pushReady.current = true;
@@ -420,7 +404,7 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
     // 第二次仍須沿用同一組分享憑證，不能退回舊行程。
     if (initialUrlCredentialsRef.current === undefined) {
       initialUrlCredentialsRef.current = parseCredentialsFromLocation();
-      if (initialUrlCredentialsRef.current) {
+      if (locationContainsCredentialKeys()) {
         scrubCredentialsFromUrl();
       }
     }
@@ -430,7 +414,7 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
     if (fromUrl) {
       initId = fromUrl.tripId.trim();
       initSecret = fromUrl.secret.trim();
-    } else if (!initId || !initSecret) {
+    } else if (!initId || !initSecret || !credentialsAreSupported(initId, initSecret)) {
       initId = generateTripId();
       initSecret = generateTripSecret();
     }
@@ -449,16 +433,16 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
     tripSecretRef.current = activeTripSecret;
 
     const hydrateCache = (id: string, allowLegacy: boolean) => {
-      const cached = readTripCache(localStorage, id, { allowLegacy });
+      const cached = allowLegacy
+        ? migrateLegacyTripCache(localStorage, id)
+        : readTripCache(localStorage, id);
       stateRef.current = cached.snapshot;
       dirtySlicesRef.current = new Set(cached.dirtySlices);
+      remoteRevisionRef.current = cached.remoteRevision;
       remoteUpdatedAtRef.current = cached.remoteUpdatedAt;
       localUpdatedAtRef.current = cached.localUpdatedAt;
       legacyMigrationRef.current = cached.legacyMigration;
       pendingPushRef.current = cached.dirtySlices.length > 0;
-      lastUpdateRef.current = pendingPushRef.current
-        ? Math.max(1, cached.localUpdatedAt)
-        : cached.remoteUpdatedAt;
       _setItinerary(cached.snapshot.itinerary);
       _setBudgetItems(cached.snapshot.budgetItems);
       _setBudgetLimit(cached.snapshot.budgetLimit);
@@ -466,6 +450,17 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
       _setPackingList(cached.snapshot.packingList);
       persistCurrentCache();
     };
+
+    // A share link must never cause the previous trip's global legacy cache to
+    // be imported into the shared trip on the next reload. Attribute it to the
+    // previously stored trip first, then clear globals only after that write.
+    if (hasUrlCredentials && previousStoredId) {
+      try {
+        migrateLegacyTripCache(localStorage, previousStoredId);
+      } catch (err) {
+        console.warn("[Sync] legacy cache migration failed before trip switch:", err);
+      }
+    }
 
     // 每個 trip 使用獨立 cache；分享連結絕不讀取另一趟行程的舊版全域資料。
     hydrateCache(activeTripId, !hasUrlCredentials);
@@ -485,10 +480,10 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
     }
 
     let cancelled = false;
-    const client = createTripClient(activeTripSecret);
+    const client = createTripClient(activeTripId, activeTripSecret);
     supabase.current = client;
 
-    connectToTrip(activeTripId, activeTripSecret, client, false, hasUrlCredentials).then(async (connected) => {
+    connectToTrip(activeTripId, activeTripSecret, client, hasUrlCredentials).then(async (connected) => {
       if (cancelled) return;
       if (connected && hasUrlCredentials) {
         writeStorage(STORAGE_KEYS.tripId, activeTripId);
@@ -500,10 +495,10 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
         setTripId(previousStoredId);
         setTripSecret(previousStoredSecret);
         hydrateCache(previousStoredId, true);
-        const previousClient = createTripClient(previousStoredSecret);
+        const previousClient = createTripClient(previousStoredId, previousStoredSecret);
         supabase.current = previousClient;
         setSyncStatus("connecting");
-        await connectToTrip(previousStoredId, previousStoredSecret, previousClient, true);
+        await connectToTrip(previousStoredId, previousStoredSecret, previousClient);
         if (cancelled) return;
       }
       setIsLoaded(true);
@@ -512,11 +507,6 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
     return () => {
       cancelled = true;
       connectionGenerationRef.current += 1;
-      if (realtimeChannel.current) {
-        (realtimeClientRef.current ?? client).removeChannel(realtimeChannel.current);
-        realtimeChannel.current = null;
-        realtimeClientRef.current = null;
-      }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -531,8 +521,8 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
       isOnlineRef.current = true;
       if (supabase.current && tripId) {
         setSyncStatus("connecting");
-        // 重連後 connectToTrip 會比較 LWW，並在 pending 時 flush
-        void connectToTrip(tripId, tripSecretRef.current || tripSecret, supabase.current, true);
+        // 重連後先取得 server revision，並在 pending 時以 CAS flush。
+        void connectToTrip(tripId, tripSecretRef.current || tripSecret, supabase.current);
       }
     };
 
@@ -550,9 +540,9 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
     };
   }, [connectToTrip, tripId, tripSecret]);
 
-  // Supabase Realtime WebSocket 不會攜帶 REST 的自訂 x-trip-secret header；
-  // 目前 RLS 因此不能只依賴 postgres_changes。可見頁面每 30 秒、回到分頁
-  // 或重新聚焦時，用帶 secret header 的 REST SELECT 補抓跨裝置更新。
+  // Realtime WebSocket 不會攜帶 REST 自訂憑證 header，因此不訂閱/消費
+  // postgres_changes payload。改用可預期的 credential-bound REST pull：
+  // 可見頁面每 30 秒、回到分頁、聚焦與恢復連線時更新。
   useEffect(() => {
     if (!isLoaded || !tripId || !supabase.current) return;
 
@@ -567,7 +557,6 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
         tripId,
         tripSecretRef.current || tripSecret,
         supabase.current,
-        true,
       );
     };
     const handleVisibility = () => {
@@ -585,9 +574,8 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
   }, [connectToTrip, isLoaded, tripId, tripSecret]);
 
   // ── 推送到 Supabase ──
-  // 優先 SECURITY DEFINER RPC `upsert_sync_state`；
-  // 若 RPC 尚未部署（PGRST202）則 fallback：UPDATE → 必要時 INSERT。
-  // 避免 PostgREST .upsert 在 secret 不符時回模糊的 "new row violates RLS"。
+  // 所有寫入只走 server-revision CAS RPC。刻意沒有直接表寫入 fallback：
+  // fallback 會繞過 CAS、重新引入 full-snapshot lost update，必須 fail closed。
   useEffect(() => {
     if (!pushReady.current || !isLoaded || !supabase.current || !tripId) return;
     if (!isOnlineRef.current || syncStatus !== "online") return;
@@ -598,12 +586,11 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
       if (!pushReady.current || !pendingPushRef.current) return;
       if (!supabase.current || !isOnlineRef.current || syncStatus !== "online") return;
 
-      const snap = stateRef.current;
-      const pushVersion = stateVersionRef.current;
       const secret = (tripSecretRef.current || tripSecret || "").trim();
       const activeTripId = tripId.trim();
       if (activeTripIdRef.current !== activeTripId) return;
-      // 最小長度：非空即可（DB/RPC 同步放寬；自動產生的 secret 仍為長字串）
+      // Existing legacy rows may use short credentials; new-row entropy is
+      // enforced atomically by the server RPC.
       if (!activeTripId || activeTripId.length < 1 || !secret || secret.length < 1) {
         console.warn("[Sync] push skipped: invalid trip credentials");
         pendingPushRef.current = true;
@@ -612,47 +599,48 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      // login / secret rotation 已負責建立正確 header 的 client；push 不可另建
-      // client，否則 realtime channel 會失去原本的 owner，後續無法精準移除。
+      // login / secret rotation 已負責建立帶雙憑證 header 的 client。
       const client = supabase.current;
       if (!client) return;
+      const isCurrentCredential = () =>
+        activeTripIdRef.current === activeTripId &&
+        tripSecretRef.current.trim() === secret;
 
-      const now = new Date().toISOString();
-      const payload = {
-        id: "state_" + activeTripId,
-        trip_id: activeTripId,
-        trip_secret: secret,
-        itinerary: snap.itinerary,
-        budget_limit: snap.budgetLimit,
-        budget_items: snap.budgetItems,
-        custom_foods: snap.customFoods,
-        packing_list: snap.packingList,
-        updated_at: now,
-      };
-
-      const markPushOk = () => {
-        if (activeTripIdRef.current !== activeTripId) return;
-        const ts = new Date(now).getTime();
+      const markPushOk = (
+        result: Record<string, unknown>,
+        attemptedSlices: SyncSlice[],
+        pushVersion: number,
+      ) => {
+        if (!isCurrentCredential()) return;
+        const revision = Number(result.revision);
+        const ts = typeof result.updated_at === "string"
+          ? new Date(result.updated_at).getTime()
+          : Number.NaN;
+        if (!Number.isSafeInteger(revision) || revision < 0 || !Number.isFinite(ts)) {
+          markPushFail("伺服器回傳無效的同步版本");
+          return;
+        }
+        remoteRevisionRef.current = revision;
         remoteUpdatedAtRef.current = ts;
         if (stateVersionRef.current === pushVersion) {
-          lastUpdateRef.current = ts;
-          localUpdatedAtRef.current = 0;
-          dirtySlicesRef.current.clear();
-          pendingPushRef.current = false;
-          legacyMigrationRef.current = false;
+          for (const slice of attemptedSlices) dirtySlicesRef.current.delete(slice);
+          pendingPushRef.current = dirtySlicesRef.current.size > 0;
+          if (!pendingPushRef.current) {
+            localUpdatedAtRef.current = 0;
+            legacyMigrationRef.current = false;
+          }
         } else {
-          lastUpdateRef.current = Math.max(ts, localUpdatedAtRef.current);
           pendingPushRef.current = true;
-          setPushTick((tick) => tick + 1);
         }
         persistCurrentCache();
         setIsShareReady(true);
         setSyncStatus("online");
         setSyncError(null);
+        if (pendingPushRef.current) setPushTick((tick) => tick + 1);
       };
 
       const markPushFail = (msg: string) => {
-        if (activeTripIdRef.current !== activeTripId) return;
+        if (!isCurrentCredential()) return;
         console.warn("[Sync] push failed:", msg);
         pendingPushRef.current = true;
         persistCurrentCache();
@@ -660,102 +648,82 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
         const friendly =
           /row-level security|forbidden|42501|permission denied|USING expression/i.test(msg)
             ? "上傳變更失敗: 行程密碼不符或已在其他裝置輪換。請用最新分享連結重新進入。"
+            : /PGRST202|Could not find the function|schema cache|does not exist/i.test(msg)
+              ? "上傳變更失敗: 同步服務尚未完成安全升級，已停止寫入以保護資料。"
             : "上傳變更失敗: " + msg;
         setSyncError(friendly);
       };
 
-      // 1) 優先 RPC（migration 套用後最穩）
-      const rpcRes = await client.rpc("upsert_sync_state", {
-        p_trip_id: activeTripId,
-        p_trip_secret: secret,
-        p_itinerary: snap.itinerary,
-        p_budget_limit: snap.budgetLimit,
-        p_budget_items: snap.budgetItems,
-        p_custom_foods: snap.customFoods,
-        p_packing_list: snap.packingList,
-        p_updated_at: now,
-      });
-
-      if (!rpcRes.error) {
+      for (let attempt = 0; attempt < MAX_SYNC_ATTEMPTS; attempt += 1) {
         if (
-          rpcRes.data &&
-          typeof rpcRes.data === "object" &&
-          "ok" in (rpcRes.data as object) &&
-          (rpcRes.data as { ok?: boolean }).ok === false
-        ) {
+          !isCurrentCredential() ||
+          !pendingPushRef.current ||
+          !isOnlineRef.current
+        ) return;
+
+        const snap = stateRef.current;
+        const attemptedSlices = [...dirtySlicesRef.current];
+        const pushVersion = stateVersionRef.current;
+        const rpcArgs: Record<string, unknown> = {
+          p_trip_id: activeTripId,
+          p_trip_secret: secret,
+          p_expected_revision: remoteRevisionRef.current,
+          p_dirty_slices: attemptedSlices,
+        };
+        if (attemptedSlices.includes("itinerary")) rpcArgs.p_itinerary = snap.itinerary;
+        if (attemptedSlices.includes("budgetLimit")) rpcArgs.p_budget_limit = snap.budgetLimit;
+        if (attemptedSlices.includes("budgetItems")) rpcArgs.p_budget_items = snap.budgetItems;
+        if (attemptedSlices.includes("customFoods")) rpcArgs.p_custom_foods = snap.customFoods;
+        if (attemptedSlices.includes("packingList")) rpcArgs.p_packing_list = snap.packingList;
+
+        const rpcRes = await client.rpc("sync_trip_slices", rpcArgs);
+        if (!isCurrentCredential()) return;
+        if (rpcRes.error) {
+          markPushFail(rpcRes.error.message || "同步 RPC 失敗");
+          return;
+        }
+
+        const result = rpcRes.data && typeof rpcRes.data === "object"
+          ? rpcRes.data as Record<string, unknown>
+          : {};
+        if (result.conflict === true) {
+          // Another device won the same revision. Pull through the credential-
+          // bound SELECT, preserve our dirty slices, then retry against the new
+          // revision. Neither device's wall clock participates in this merge.
+          const refreshed = await fetchSyncRecord(client, activeTripId);
+          if (refreshed.error) {
+            markPushFail("同步衝突後重新讀取失敗: " + refreshed.error.message);
+            return;
+          }
+          if (!refreshed.data) {
+            markPushFail("同步衝突後找不到行程，可能已輪換密碼");
+            return;
+          }
+          const refreshedRevision = Number(refreshed.data.revision ?? 0);
+          const parsedTs = refreshed.data.updated_at
+            ? new Date(refreshed.data.updated_at).getTime()
+            : 0;
+          if (!Number.isSafeInteger(refreshedRevision) || refreshedRevision < 0) {
+            markPushFail("同步衝突後收到無效版本");
+            return;
+          }
+          applyRemoteSnapshot(
+            refreshed.data,
+            refreshedRevision,
+            Number.isFinite(parsedTs) ? parsedTs : 0,
+            true,
+          );
+          continue;
+        }
+        if (result.ok !== true) {
           markPushFail("伺服器拒絕寫入");
           return;
         }
-        markPushOk();
+        markPushOk(result, attemptedSlices, pushVersion);
         return;
       }
 
-      const rpcMsg = rpcRes.error.message || "";
-      const rpcMissing =
-        /Could not find the function|PGRST202|schema cache|does not exist/i.test(rpcMsg);
-
-      // 權限類：不要再嘗試直連寫入（會得到更模糊的 RLS 訊息）
-      if (!rpcMissing && /forbidden|42501|permission denied|row-level security/i.test(rpcMsg)) {
-        markPushFail(rpcMsg);
-        return;
-      }
-
-      if (!rpcMissing) {
-        // 其他 RPC 錯誤仍嘗試 fallback
-        console.warn("[Sync] upsert_sync_state RPC error, trying table write:", rpcMsg);
-      } else {
-        console.warn("[Sync] upsert_sync_state RPC not deployed, using UPDATE/INSERT fallback");
-      }
-
-      // 2) Fallback：先 UPDATE（既有列 + 正確 secret）
-      const updateRes = await client
-        .from("sync_state")
-        .update({
-          itinerary: payload.itinerary,
-          budget_limit: payload.budget_limit,
-          budget_items: payload.budget_items,
-          custom_foods: payload.custom_foods,
-          packing_list: payload.packing_list,
-          updated_at: payload.updated_at,
-          // 不改 trip_secret，避免踩 rotation WITH CHECK 邊界
-        })
-        .eq("trip_id", activeTripId)
-        .select("trip_id");
-
-      if (updateRes.error) {
-        markPushFail(updateRes.error.message);
-        return;
-      }
-      if (updateRes.data && updateRes.data.length > 0) {
-        markPushOk();
-        return;
-      }
-
-      // 3) 無列可更新：INSERT 新行程
-      const insertRes = await client.from("sync_state").insert(payload).select("trip_id");
-      if (!insertRes.error && insertRes.data && insertRes.data.length > 0) {
-        markPushOk();
-        return;
-      }
-
-      // INSERT 失敗常見原因：
-      // - secret 不符既有列（SELECT 看不到 → 誤當新列 → 衝突/RLS）
-      // - 無 header / 長度不足
-      // 再試一次帶 onConflict 的 upsert 作為最後手段
-      if (insertRes.error) {
-        const up = await client
-          .from("sync_state")
-          .upsert(payload, { onConflict: "id" })
-          .select("trip_id");
-        if (!up.error && up.data && up.data.length > 0) {
-          markPushOk();
-          return;
-        }
-        markPushFail(up.error?.message || insertRes.error.message);
-        return;
-      }
-
-      markPushFail("寫入未生效（可能密碼不符）");
+      markPushFail(`同步衝突重試 ${MAX_SYNC_ATTEMPTS} 次仍未成功，已保留本機變更`);
     };
 
     const timer = setTimeout(push, 2000);
@@ -772,6 +740,7 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
     pushTick,
     syncStatus,
     persistCurrentCache,
+    applyRemoteSnapshot,
   ]);
 
   const loginToTrip = async (id: string, secret: string) => {
@@ -779,7 +748,7 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
 
     const trimmedId = id.trim();
     const trimmedSecret = secret.trim();
-    if (!trimmedId || !trimmedSecret) return false;
+    if (!credentialsAreSupported(trimmedId, trimmedSecret)) return false;
     const loginAttempt = ++loginAttemptRef.current;
 
     // 暫停既有行程的 debounce push；驗證失敗時會恢復，不丟掉原本的 pending 狀態。
@@ -787,8 +756,8 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
 
     try {
       // 用帶 secret header 的 client 查詢（RLS 需要）
-      const client = createTripClient(trimmedSecret);
-      const { data, error } = await client.from("sync_state").select("*").eq("trip_id", trimmedId).maybeSingle();
+      const client = createTripClient(trimmedId, trimmedSecret);
+      const { data, error } = await fetchSyncRecord(client, trimmedId);
 
       if (loginAttemptRef.current !== loginAttempt) return false;
 
@@ -807,20 +776,7 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
         return false;
       }
 
-      // 有資料但 secret 不符（理論上 RLS 已擋，這裡再保險）
-      if (data && data.trip_secret && data.trip_secret !== trimmedSecret) {
-        console.warn("代號已存在，但密碼錯誤！");
-        pushReady.current = true;
-        if (pendingPushRef.current) setPushTick((tick) => tick + 1);
-        return false;
-      }
-
       // 切換 client / 憑證
-      if (realtimeChannel.current && supabase.current) {
-        (realtimeClientRef.current ?? supabase.current).removeChannel(realtimeChannel.current);
-        realtimeChannel.current = null;
-        realtimeClientRef.current = null;
-      }
       supabase.current = client;
       tripSecretRef.current = trimmedSecret;
 
@@ -836,13 +792,11 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
       const cached = readTripCache(localStorage, trimmedId);
       stateRef.current = cached.snapshot;
       dirtySlicesRef.current = new Set(cached.dirtySlices);
+      remoteRevisionRef.current = cached.remoteRevision;
       remoteUpdatedAtRef.current = cached.remoteUpdatedAt;
       localUpdatedAtRef.current = cached.localUpdatedAt;
       legacyMigrationRef.current = cached.legacyMigration;
       pendingPushRef.current = cached.dirtySlices.length > 0;
-      lastUpdateRef.current = pendingPushRef.current
-        ? Math.max(1, cached.localUpdatedAt)
-        : cached.remoteUpdatedAt;
       stateVersionRef.current += 1;
       _setItinerary(cached.snapshot.itinerary);
       _setBudgetItems(cached.snapshot.budgetItems);
@@ -851,13 +805,12 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
       _setPackingList(cached.snapshot.packingList);
       persistCurrentCache();
 
-      // 已用同一個 secret 驗證過 data，直接交給 connect 建立訂閱，避免第二次
+      // 已用同一個 secret 驗證過 data，直接交給 connect 套用，避免第二次
       // SELECT 失敗後出現「畫面已切 B、函式卻回登入失敗」的非原子狀態。
       await connectToTrip(
         trimmedId,
         trimmedSecret,
         client,
-        true,
         true,
         data as SyncRecord,
       );
@@ -926,8 +879,7 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
    * 2) 本地換成新 client / localStorage
    * 3) 舊分享連結立即失效
    *
-   * 注意：不可用 upsert 直接改 trip_secret——
-   * PostgREST + FORCE RLS 下會踩 INSERT/UPDATE WITH CHECK。
+   * rotation RPC 會同步增加 server revision，讓其他裝置的 CAS 立刻失效。
    */
   const rotateTripSecret = async (): Promise<{ ok: boolean; newSecret?: string; error?: string }> => {
     if (!tripId || !tripSecret) {
@@ -952,7 +904,6 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
     try {
       setSyncStatus("connecting");
 
-      const now = new Date().toISOString();
       const { data, error } = await client.rpc("rotate_trip_secret", {
         p_trip_id: tripId,
         p_old_secret: oldSecret,
@@ -970,26 +921,16 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
         return { ok: false, error: "輪換被拒絕" };
       }
 
-      // 切斷舊 realtime，改用新 secret 的 client
-      if (realtimeChannel.current) {
-        (realtimeClientRef.current ?? client).removeChannel(realtimeChannel.current);
-        realtimeChannel.current = null;
-        realtimeClientRef.current = null;
-      }
-
-      const newClient = createTripClient(newSecret);
+      const newClient = createTripClient(tripId, newSecret);
       supabase.current = newClient;
       tripSecretRef.current = newSecret;
       writeStorage(STORAGE_KEYS.tripSecret, newSecret);
       setTripSecret(newSecret);
       setIsShareReady(true);
-      remoteUpdatedAtRef.current = new Date(now).getTime();
-      lastUpdateRef.current = pendingPushRef.current
-        ? Math.max(remoteUpdatedAtRef.current, localUpdatedAtRef.current)
-        : remoteUpdatedAtRef.current;
-      persistCurrentCache();
 
-      await connectToTrip(tripId, newSecret, newClient, true, true);
+      // Authenticated pull obtains the server-issued revision/timestamp and
+      // preserves any local dirty slices before their next CAS write.
+      await connectToTrip(tripId, newSecret, newClient, true);
       return { ok: true, newSecret };
     } catch (err) {
       // 失敗時盡量維持舊 secret 可用

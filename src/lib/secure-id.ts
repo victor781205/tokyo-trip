@@ -5,22 +5,18 @@
 
 /** 產生 URL-safe 的隨機 token（預設 16 bytes → 約 22 字元 base64url） */
 export function generateSecureToken(byteLength = 16): string {
-  if (typeof crypto !== "undefined" && typeof crypto.getRandomValues === "function") {
+  if (byteLength < 1 || !Number.isSafeInteger(byteLength)) {
+    throw new RangeError("byteLength must be a positive safe integer");
+  }
+
+  if (typeof globalThis.crypto !== "undefined" && typeof globalThis.crypto.getRandomValues === "function") {
     const bytes = new Uint8Array(byteLength);
-    crypto.getRandomValues(bytes);
+    globalThis.crypto.getRandomValues(bytes);
     return base64UrlEncode(bytes);
   }
 
-  // Node / 測試環境 fallback
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const nodeCrypto = require("crypto") as typeof import("crypto");
-    return nodeCrypto.randomBytes(byteLength).toString("base64url");
-  } catch {
-    // 最後手段：仍避免 Math.random 單獨使用，混入時間戳
-    const fallback = `${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`;
-    return fallback.slice(0, Math.max(16, byteLength));
-  }
+  // Credentials must never silently downgrade to Math.random/time-based data.
+  throw new Error("A cryptographically secure random number generator is required");
 }
 
 /** trip_id：trip_ + 16 bytes */

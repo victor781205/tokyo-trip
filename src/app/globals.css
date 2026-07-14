@@ -3,10 +3,12 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
-  --color-primary: #e74c3c;
+  /* WCAG AA on white and on the common 10% brand tint. */
+  --color-primary: #c02f26;
   --color-primary-dark: #c0392b;
   --color-secondary: #2c3e50;
-  --color-accent: #f39c12;
+  /* WCAG AA against white for normal-size text (4.60:1). */
+  --color-accent: #b85c00;
   
   --font-sans: var(--font-noto-sans), ui-sans-serif, system-ui, sans-serif;
   --font-serif: var(--font-noto-serif), ui-serif, Georgia, serif;
@@ -41,6 +43,33 @@
 }
 
 @layer utilities {
+  /*
+    The darker brand tokens keep white-on-brand buttons accessible. Text and
+    icon utilities need lighter counterparts on slate dark-mode surfaces.
+  */
+  .dark .text-primary {
+    color: #ff8b80;
+  }
+  .dark .text-accent {
+    color: #ffb65c;
+  }
+  .dark .hover\:text-primary:hover,
+  .dark .focus\:text-primary:focus,
+  .dark .focus-visible\:text-primary:focus-visible {
+    color: #ff8b80;
+  }
+  .dark .hover\:text-accent:hover,
+  .dark .focus\:text-accent:focus,
+  .dark .focus-visible\:text-accent:focus-visible {
+    color: #ffb65c;
+  }
+  .dark .fill-primary {
+    fill: #ff8b80;
+  }
+  .dark .fill-accent {
+    fill: #ffb65c;
+  }
+
   .text-balance {
     text-wrap: balance;
   }
@@ -87,7 +116,7 @@
     background: transparent;
   }
   ::-webkit-scrollbar-thumb {
-    background: rgba(231, 76, 60, 0.2);
+    background: rgba(192, 47, 38, 0.2);
     border-radius: 10px;
   }
   .dark ::-webkit-scrollbar-thumb {

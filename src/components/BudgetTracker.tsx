@@ -5,7 +5,12 @@ import dynamic from "next/dynamic";
 import { Trash2, Pencil, Check, Plus, PieChart, CreditCard, Wallet, ScanLine, Loader2 } from "lucide-react";
 import { useTripState } from "@/hooks/useTripState";
 import { useDialog } from "@/context/DialogContext";
-import { getTripTimelineState } from "@/lib/trip-dates";
+import {
+  getDateInTimeZone,
+  getTripTimelineState,
+  TRIP_OUTBOUND_DATE,
+  TRIP_TOTAL_DAYS,
+} from "@/lib/trip-dates";
 
 /** 依「現在」計算行程進度相關數值 */
 function getTripProgress(now = Date.now()) {
@@ -42,7 +47,41 @@ const CATEGORIES = {
   ticket: { icon: "🎫", label: "門票", color: "#f59e0b" },
   hotel: { icon: "🏨", label: "住宿", color: "#10b981" },
   other: { icon: "💡", label: "其他", color: "#6b7280" },
-};
+} as const;
+
+const MAX_YEN_AMOUNT = 999_999_999;
+type CategoryKey = keyof typeof CATEGORIES;
+const DAILY_PACE_CATEGORIES = new Set<CategoryKey>(["food", "transport", "shopping", "other"]);
+
+function normalizeYenAmount(value: unknown): number | null {
+  const numeric = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(numeric) || numeric < 1 || numeric > MAX_YEN_AMOUNT) return null;
+  const rounded = Math.round(numeric);
+  return Number.isSafeInteger(rounded) && rounded >= 1 ? rounded : null;
+}
+
+function normalizeCategory(value: string): CategoryKey {
+  return Object.hasOwn(CATEGORIES, value) ? value as CategoryKey : "other";
+}
+
+function parseLocalDate(value: string): string | null {
+  const match = value.trim().match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const candidate = new Date(Date.UTC(year, month - 1, day));
+  if (
+    candidate.getUTCFullYear() !== year ||
+    candidate.getUTCMonth() !== month - 1 ||
+    candidate.getUTCDate() !== day
+  ) return null;
+  return `${year.toString().padStart(4, "0")}-${month.toString().padStart(2, "0")}-${day.toString().padStart(2, "0")}`;
+}
+
+function addYenSafely(total: number, amount: number): number {
+  return Math.min(Number.MAX_SAFE_INTEGER, total + amount);
+}
 
 export function BudgetTracker() {
   const { isLoaded, budgetItems, updateBudgetItems, budgetLimit, setBudgetLimit } = useTripState();
@@ -65,12 +104,15 @@ export function BudgetTracker() {
 
   const handleScanComplete = useCallback((scannedItems: ReceiptItem[]) => {
     const newItems = scannedItems
-      .filter((item) => item.name.trim() && Number.isFinite(item.amount) && item.amount > 0)
-      .map((item, index) => ({
+      .map((item) => ({ item, amount: normalizeYenAmount(item.amount) }))
+      .filter((entry): entry is { item: ReceiptItem; amount: number } => (
+        Boolean(entry.item.name.trim()) && entry.amount !== null
+      ))
+      .map(({ item, amount }, index) => ({
       id: Date.now() + index,
       name: item.name.trim(),
-      amount: Math.round(item.amount),
-      category: item.category in CATEGORIES ? item.category : "other",
+      amount,
+      category: normalizeCategory(item.category),
       date: new Date().toLocaleDateString("zh-TW"),
     }));
     if (newItems.length > 0) updateBudgetItems([...newItems, ...budgetItems]);
@@ -78,10 +120,13 @@ export function BudgetTracker() {
 
   // ── 衍生數值（useMemo，避免每次 render 重算）──
   // 注意：hooks 必須在條件 return 之前，故 isLoaded 檢查移到 useMemo 之後
-  const safeBudgetLimit = Number.isFinite(budgetLimit) && budgetLimit > 0 ? budgetLimit : 0;
+  const safeBudgetLimit = normalizeYenAmount(budgetLimit) ?? 0;
   const spent = useMemo(
     () => budgetItems.reduce(
-      (sum, item) => sum + (Number.isFinite(item.amount) && item.amount > 0 ? item.amount : 0),
+      (sum, item) => {
+        const validAmount = normalizeYenAmount(item.amount);
+        return validAmount === null ? sum : addYenSafely(sum, validAmount);
+      },
       0,
     ),
     [budgetItems],
@@ -96,53 +141,73 @@ export function BudgetTracker() {
 
   const budgetAnalysis = useMemo(() => {
     const { phase, elapsedDays, remainingDays } = tripProgress;
-    // 已過天數至少 1（用來算平均日支出）
     const elapsed = Math.max(1, elapsedDays);
-    // 平均每日支出
-    const avgDaily = spent / elapsed;
-    // 預測總支出：用平均日支出 × 總天數
+    const todayInTokyo = getDateInTimeZone(new Date(now), "Asia/Tokyo");
+    // 只用旅途中、截至今天的日常支出推算後續花費。住宿、門票等固定成本
+    // 已包含在 spent，但不可再乘上六天，否則會嚴重高估。
+    const tripSpendToDate = budgetItems.reduce((sum, item) => {
+      const amount = normalizeYenAmount(item.amount);
+      const date = parseLocalDate(item.date);
+      const itemCategory = normalizeCategory(item.category);
+      if (
+        amount === null ||
+        date === null ||
+        date < TRIP_OUTBOUND_DATE ||
+        date > todayInTokyo ||
+        !DAILY_PACE_CATEGORIES.has(itemCategory)
+      ) return sum;
+      return addYenSafely(sum, amount);
+    }, 0);
+    const avgDailyTripSpend = tripSpendToDate / elapsed;
+    const futureDays = Math.max(0, TRIP_TOTAL_DAYS - elapsedDays);
     const projectedTotal = phase === "pre"
       ? null
       : phase === "done"
         ? spent
-        : Math.round(avgDaily * 6);
+        : Math.min(
+            Number.MAX_SAFE_INTEGER,
+            Math.round(spent + avgDailyTripSpend * futureDays),
+          );
     // 建議每日預算：剩餘金額 / 剩餘天數
     const suggestedDaily = phase === "done"
       ? 0
       : Math.round(remaining / Math.max(1, remainingDays));
     const overage = projectedTotal === null ? 0 : projectedTotal - safeBudgetLimit;
     return { projectedTotal, suggestedDaily, overage, remainingDays, phase };
-  }, [remaining, safeBudgetLimit, spent, tripProgress]);
+  }, [budgetItems, now, remaining, safeBudgetLimit, spent, tripProgress]);
 
   // ── 類別支出分佈（pie chart 用，useMemo）──
   const { categoryData, grandTotal } = useMemo(() => {
     const data = Object.entries(CATEGORIES).map(([key, cat]) => {
       const total = budgetItems
-        .filter(item => item.category === key)
+        .filter(item => normalizeCategory(item.category) === key)
         .reduce(
-          (sum, item) => sum + (Number.isFinite(item.amount) && item.amount > 0 ? item.amount : 0),
+          (sum, item) => {
+            const amount = normalizeYenAmount(item.amount);
+            return amount === null ? sum : addYenSafely(sum, amount);
+          },
           0,
         );
       return { key, ...cat, total };
     }).filter(c => c.total > 0);
-    return { categoryData: data, grandTotal: data.reduce((sum, c) => sum + c.total, 0) };
+    return { categoryData: data, grandTotal: data.reduce((sum, c) => addYenSafely(sum, c.total), 0) };
   }, [budgetItems]);
 
   if (!isLoaded) return null;
 
   const handleAdd = (e: React.FormEvent) => {
     e.preventDefault();
-    const parsedAmount = Number(amount);
-    if (!name.trim() || !Number.isFinite(parsedAmount) || parsedAmount <= 0) {
-      setAmountError("請輸入大於 0 的有效金額");
+    const parsedAmount = normalizeYenAmount(amount);
+    if (!name.trim() || parsedAmount === null) {
+      setAmountError(`請輸入 1～${MAX_YEN_AMOUNT.toLocaleString()} 的有效金額`);
       return;
     }
 
     const newItem = {
       id: Date.now(),
       name: name.trim(),
-      amount: Math.round(parsedAmount),
-      category,
+      amount: parsedAmount,
+      category: normalizeCategory(category),
       date: new Date().toLocaleDateString("zh-TW"),
     };
 
@@ -153,12 +218,12 @@ export function BudgetTracker() {
   };
 
   const saveBudgetLimit = () => {
-    const parsedLimit = Number(tempLimit);
-    if (!Number.isFinite(parsedLimit) || parsedLimit <= 0) {
-      setLimitError("請輸入大於 0 的總預算");
+    const parsedLimit = normalizeYenAmount(tempLimit);
+    if (parsedLimit === null) {
+      setLimitError(`請輸入 1～${MAX_YEN_AMOUNT.toLocaleString()} 的總預算`);
       return;
     }
-    setBudgetLimit(Math.round(parsedLimit));
+    setBudgetLimit(parsedLimit);
     setLimitError("");
     setIsEditingLimit(false);
   };
@@ -191,6 +256,7 @@ export function BudgetTracker() {
                   id="budget-limit"
                   type="number"
                   min="1"
+                  max={MAX_YEN_AMOUNT}
                   step="100"
                   inputMode="numeric"
                   value={tempLimit}
@@ -411,6 +477,7 @@ export function BudgetTracker() {
               id="budget-amount"
               type="number"
               min="1"
+              max={MAX_YEN_AMOUNT}
               step="1"
               inputMode="numeric"
               placeholder="金額"
@@ -452,7 +519,11 @@ export function BudgetTracker() {
                   <div className="font-black text-sm sm:text-base text-gray-900 dark:text-white leading-tight truncate">{item.name}</div>
                   <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mt-0.5">{item.date}</div>
                 </div>
-                <span className="font-black text-sm sm:text-base tabular-nums whitespace-nowrap flex-shrink-0">¥{item.amount.toLocaleString()}</span>
+                <span className={`font-black text-sm sm:text-base tabular-nums whitespace-nowrap flex-shrink-0 ${normalizeYenAmount(item.amount) === null ? "text-red-500" : ""}`}>
+                  {normalizeYenAmount(item.amount) === null
+                    ? "無效金額"
+                    : `¥${normalizeYenAmount(item.amount)!.toLocaleString()}`}
+                </span>
                 <button onClick={() => handleDelete(item.id)} aria-label={`刪除「${item.name}」`} className="w-11 h-11 flex-shrink-0 flex items-center justify-center text-gray-300 hover:text-red-500 rounded-xl transition-all">
                   <Trash2 className="w-4 h-4" />
                 </button>

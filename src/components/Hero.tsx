@@ -127,7 +127,7 @@ export function Hero({ onNavigate, pushControls }: { onNavigate?: (tab: string) 
                     ) : (
                         <div className="relative rounded-[2rem] sm:rounded-[2.5rem] bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-white/50 dark:border-white/10 shadow-[0_20px_60px_-15px_rgba(0,0,0,0.15)] px-3 sm:px-4 py-6 sm:py-8 md:px-10 md:py-12">
                             {/* 上方 label */}
-                            <div className="text-[10px] md:text-xs font-black text-slate-400 dark:text-gray-500 uppercase tracking-[0.4em] mb-4 sm:mb-5">
+                            <div className="text-[10px] md:text-xs font-black text-slate-600 dark:text-gray-300 uppercase tracking-[0.4em] mb-4 sm:mb-5">
                                 {timeLeft.phase === "ongoing" ? "正在旅行中" : "出發倒數時間"}
                             </div>
 
@@ -173,7 +173,7 @@ export function Hero({ onNavigate, pushControls }: { onNavigate?: (tab: string) 
                                                     style={{ width: `${pct}%` }}
                                                 ></div>
                                             </div>
-                                            <div className="text-[10px] text-slate-400 dark:text-gray-500 font-bold mt-2 tracking-wider uppercase">
+                                            <div className="text-[10px] text-slate-600 dark:text-gray-300 font-bold mt-2 tracking-wider uppercase">
                                                 第 {timeLeft.currentDay} 天 / 共 {TOTAL_TRIP_DAYS} 天 · 距返程 {timeLeft.days > 0 ? `尚有 ${timeLeft.days} 天` : "即將返程"}
                                             </div>
                                         </div>
@@ -189,7 +189,7 @@ export function Hero({ onNavigate, pushControls }: { onNavigate?: (tab: string) 
                                                 style={{ width: `${pct}%` }}
                                             ></div>
                                         </div>
-                                        <div className="text-[10px] text-slate-400 dark:text-gray-500 font-bold mt-2 tracking-wider uppercase">
+                                        <div className="text-[10px] text-slate-600 dark:text-gray-300 font-bold mt-2 tracking-wider uppercase">
                                             距出發 {timeLeft.days > 0 ? `尚有 ${timeLeft.days} 天` : "即將啟程"}
                                         </div>
                                     </div>
@@ -221,9 +221,9 @@ export function Hero({ onNavigate, pushControls }: { onNavigate?: (tab: string) 
             {/* Scroll indicator */}
             <button
                 type="button"
-                aria-label="向下捲動"
+                aria-label="查看航班資訊"
                 onClick={go("flights")}
-                className="absolute bottom-4 left-1/2 -translate-x-1/2 flex h-11 w-11 items-center justify-center rounded-full opacity-40 hover:opacity-70 motion-safe:animate-bounce cursor-pointer transition-opacity"
+                className="absolute bottom-4 left-1/2 -translate-x-1/2 flex h-11 w-11 items-center justify-center rounded-full opacity-40 hover:opacity-70 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 motion-safe:animate-bounce cursor-pointer transition-opacity"
             >
                 <ArrowDownCircle className="w-7 h-7" />
             </button>

@@ -23,7 +23,7 @@ describe("flight info route source-date isolation", () => {
     vi.unstubAllGlobals();
   });
 
-  it("selects the matching TDX FlightDate and rejects a wrong-date arrival independently", async () => {
+  it("selects only the matching outbound TDX FlightDate", async () => {
     const fetchMock = vi.fn(async (input: string | URL | Request) => {
       const url = String(input);
       if (url.includes("/Departure/TPE")) {
@@ -50,51 +50,13 @@ describe("flight info route source-date isolation", () => {
           },
         ]);
       }
-      if (url.includes("/Arrival/TPE")) {
-        return jsonResponse([
-          {
-            AirlineID: "SJX",
-            FlightNumber: "805",
-            FlightDate: "2026-08-31",
-            ScheduleArrivalTime: "2026-08-31T23:20:00+08:00",
-            Gate: "OLD-ARR",
-            Terminal: "9",
-            AcType: "B77W",
-            ArrivalRemark: "取消",
-          },
-        ]);
-      }
-      if (url.includes("api.aviationstack.com")) {
-        return jsonResponse({
-          data: [
-            {
-              flight: { number: "805", iata: "JX805" },
-              flight_status: "cancelled",
-              departure: {
-                scheduled: "2026-08-31T20:40:00+09:00",
-                gate: "OLD-DEP",
-                terminal: "9",
-              },
-            },
-            {
-              flight: { number: "805", iata: "JX805" },
-              flight_status: "active",
-              departure: {
-                scheduled: "2026-09-01T20:40:00+09:00",
-                gate: "N4",
-                terminal: "2",
-              },
-            },
-          ],
-        });
-      }
       throw new Error(`Unexpected fetch: ${url}`);
     });
     vi.stubGlobal("fetch", fetchMock);
 
     const { GET } = await import("@/app/api/flight-info/route");
     const response = await GET(new Request(
-      "http://localhost/api/flight-info?flight=JX800&date=2026-09-01&inboundDate=2026-09-01",
+      "http://localhost/api/flight-info?flight=JX800&date=2026-09-01&inboundDate=2026-09-06",
       { headers: { "x-forwarded-for": "route-test-1" } },
     ));
     const body = await response.json();
@@ -111,11 +73,11 @@ describe("flight info route source-date isolation", () => {
       isLive: true,
     });
     expect(body.inbound).toMatchObject({
-      depGate: "N4",
+      depGate: "尚未公佈",
       depTerminal: "2",
-      depStatus: "active",
-      depSource: "AviationStack",
-      depSourceDate: "2026-09-01",
+      depStatus: "unknown",
+      depSource: "hardcode-Starlux",
+      depSourceDate: null,
       arrGate: "尚未公佈",
       arrTerminal: "1",
       arrStatus: "unknown",
@@ -126,29 +88,23 @@ describe("flight info route source-date isolation", () => {
       aircraftLive: false,
       aircraftSource: "hardcode-scheduled",
       sourceDate: null,
-      isLive: true,
+      isLive: false,
     });
-    expect(JSON.stringify(body)).not.toContain("OLD-ARR");
-    expect(JSON.stringify(body)).not.toContain("OLD-DEP");
-
-    const aviationUrl = fetchMock.mock.calls
-      .map(([input]) => String(input))
-      .find((url) => url.includes("api.aviationstack.com"));
-    expect(aviationUrl).toContain("flight_date=2026-09-01");
-    expect(aviationUrl).toContain("flight_number=805");
+    expect(fetchMock).not.toHaveBeenCalledWith(expect.stringContaining("/Arrival/TPE"), expect.anything());
+    expect(fetchMock).not.toHaveBeenCalledWith(expect.stringContaining("api.aviationstack.com"), expect.anything());
   });
 
   it("does not let a matching TDX arrival date authorize wrong-date AviationStack fields", async () => {
+    vi.setSystemTime(new Date("2026-09-06T03:00:00.000Z"));
     vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request) => {
       const url = String(input);
-      if (url.includes("/Departure/TPE")) return jsonResponse([]);
       if (url.includes("/Arrival/TPE")) {
         return jsonResponse([
           {
             AirlineID: "SJX",
             FlightNumber: "805",
-            FlightDate: "2026-09-01",
-            ScheduleArrivalTime: "2026-09-01T23:20:00+08:00",
+            FlightDate: "2026-09-06",
+            ScheduleArrivalTime: "2026-09-06T23:20:00+08:00",
             Gate: "B3",
             Terminal: "1",
             AcType: "A330-900neo",
@@ -162,7 +118,7 @@ describe("flight info route source-date isolation", () => {
             flight: { number: "805", iata: "JX805" },
             flight_status: "delayed",
             departure: {
-              scheduled: "2026-08-31T20:40:00+09:00",
+              scheduled: "2026-09-05T20:40:00+09:00",
               gate: "STALE-GATE",
               terminal: "9",
               delay: 120,
@@ -175,7 +131,7 @@ describe("flight info route source-date isolation", () => {
 
     const { GET } = await import("@/app/api/flight-info/route");
     const response = await GET(new Request(
-      "http://localhost/api/flight-info?flight=JX800&date=2026-09-01&inboundDate=2026-09-01",
+      "http://localhost/api/flight-info?flight=JX800&date=2026-09-01&inboundDate=2026-09-06",
       { headers: { "x-forwarded-for": "route-test-2" } },
     ));
     const body = await response.json();
@@ -197,7 +153,7 @@ describe("flight info route source-date isolation", () => {
       arrTerminal: "1",
       arrStatus: "cancelled",
       arrSource: "TDX-Arrival",
-      arrSourceDate: "2026-09-01",
+      arrSourceDate: "2026-09-06",
       aircraftIcao: "A339",
       aircraftModel: "Airbus A330-900neo",
       aircraftLive: true,
@@ -206,5 +162,44 @@ describe("flight info route source-date isolation", () => {
       isLive: true,
     });
     expect(JSON.stringify(body)).not.toContain("STALE-GATE");
+  });
+
+  it("rejects any flight, date, duplicate, or extra query outside this trip", async () => {
+    const fetchMock = vi.fn(async () => jsonResponse([]));
+    vi.stubGlobal("fetch", fetchMock);
+    const { GET } = await import("@/app/api/flight-info/route");
+    const invalidQueries = [
+      "flight=JX805&date=2026-09-01&inboundDate=2026-09-06",
+      "flight=JX900&date=2026-09-01&inboundDate=2026-09-06",
+      "flight=JX800&date=2026-09-02&inboundDate=2026-09-06",
+      "flight=JX800&date=2026-09-01&inboundDate=2026-09-05",
+      "flight=JX800&date=2026-99-99&inboundDate=2026-09-06",
+      "flight=JX800&flight=JX805&date=2026-09-01&inboundDate=2026-09-06",
+      "flight=JX800&date=2026-09-01&inboundDate=2026-09-06&debug=true",
+    ];
+
+    for (const [index, query] of invalidQueries.entries()) {
+      const response = await GET(new Request(`http://localhost/api/flight-info?${query}`, {
+        headers: { "x-forwarded-for": `invalid-query-${index}` },
+      }));
+      expect(response.status).toBe(400);
+    }
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("uses the exact trip pair when optional query parameters are omitted", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse([])));
+    const { GET } = await import("@/app/api/flight-info/route");
+    const response = await GET(new Request("http://localhost/api/flight-info", {
+      headers: { "x-forwarded-for": "default-trip-pair" },
+    }));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({
+      flight: "JX800",
+      requestedDates: { outbound: "2026-09-01", inbound: "2026-09-06" },
+    });
   });
 });

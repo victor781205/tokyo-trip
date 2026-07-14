@@ -4,6 +4,7 @@ import {
   mapInfoQuerySchema,
   flightInfoQuerySchema,
   isAllowedMapUrl,
+  looksLikeGoogleMapsUrl,
 } from "@/lib/validations";
 
 describe("validations", () => {
@@ -135,6 +136,18 @@ describe("validations", () => {
     it("rejects non-http protocols", () => {
       expect(isAllowedMapUrl("ftp://maps.google.com/maps")).toBe(false);
       expect(isAllowedMapUrl("javascript:alert(1)")).toBe(false);
+    });
+
+    it("accepts google.co.jp maps hosts", () => {
+      expect(isAllowedMapUrl("https://www.google.co.jp/maps/place/Test")).toBe(true);
+      expect(isAllowedMapUrl("https://maps.google.co.jp/?q=Tokyo")).toBe(true);
+    });
+
+    it("looksLikeGoogleMapsUrl accepts common paste formats", () => {
+      expect(looksLikeGoogleMapsUrl("https://maps.app.goo.gl/abc123")).toBe(true);
+      expect(looksLikeGoogleMapsUrl("maps.app.goo.gl/abc123")).toBe(true);
+      expect(looksLikeGoogleMapsUrl("https://maps.google.com/?q=ramen")).toBe(true);
+      expect(looksLikeGoogleMapsUrl("https://example.com")).toBe(false);
     });
   });
 });

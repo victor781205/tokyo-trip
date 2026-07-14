@@ -9,9 +9,18 @@ function jwtRole(jwt: string | undefined): string | null {
   }
 }
 
+function isElevatedServerKey(key: string | undefined): boolean {
+  if (!key) return false;
+  // Supabase's current server-only keys are opaque rather than JWTs. Keep
+  // legacy service_role JWT support during the migration period, but never
+  // treat an sb_publishable_ key as elevated.
+  return /^sb_secret_[A-Za-z0-9_-]{20,}$/.test(key) || jwtRole(key) === "service_role";
+}
+
 /**
  * 後端 Supabase client。
- * 優先 service_role；若未設定 / 誤填 anon，則退回 public anon key。
+ * 優先 server-only secret（新 sb_secret_ 或 legacy service_role JWT）；
+ * 若未設定 / 誤填 public key，才退回 anon。
  * push 表操作請改走 SECURITY DEFINER RPC，勿直接 .from("push_subscriptions")。
  */
 export function createServerSupabase(): {
@@ -31,8 +40,7 @@ export function createServerSupabase(): {
     };
   }
 
-  const serviceRole = jwtRole(service);
-  if (service && serviceRole === "service_role") {
+  if (service && isElevatedServerKey(service)) {
     return {
       client: createClient(url, service, {
         auth: { persistSession: false, autoRefreshToken: false },

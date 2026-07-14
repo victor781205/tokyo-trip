@@ -67,11 +67,11 @@ const classifyItem = (name: string): string => {
   return "other";
 };
 
-const parseReceiptText = (text: string): ReceiptItem[] => {
+export const parseReceiptText = (text: string): ReceiptItem[] => {
   const items: ReceiptItem[] = [];
   const lines = text.split("\n").map(line => line.trim()).filter(line => line.length > 0);
 
-  const skipPatterns = /^(合計|小計|税|消費税|内税|外税|お預り|お釣り|おつり|クレジット|現金|カード|レシート|領収書|日付|店名第一家|電話|TEL|残額|残高|預り|釣り|取引|時間帯|会員|メンバー|super|customer|card|point|ポイント|還元|非課税|軽減税率|税率)$/i;
+  const skipPatterns = /^(?:合計|小計|税|消費税|内税|外税|お預り|お釣り|おつり|クレジット|現金|カード|レシート|領収書|日付|店名第一家|電話|TEL|残額|残高|預り|釣り|取引|時間帯|会員|メンバー|super|customer|card|point|ポイント|還元|非課税|軽減税率|税率)(?=\s|[:：=¥￥]|\d|$)/i;
 
   const pricePatterns = [
     /(.+?)\s*[¥￥]\s*([\d,]+)(?!\d)/,

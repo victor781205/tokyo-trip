@@ -47,6 +47,7 @@ export function CurrencyConverter() {
   const [fetching, setFetching] = useState(false);
   const [twd, setTwd] = useState<string>("1000");
   const [jpy, setJpy] = useState<string>("");
+  const [lastEdited, setLastEdited] = useState<"twd" | "jpy">("twd");
 
   const rate = rateData?.rate ?? 0;
 
@@ -72,15 +73,31 @@ export function CurrencyConverter() {
   const refreshRate = async () => {
     setFetching(true);
     try {
-      setRateData(await requestRate());
+      const data = await requestRate();
+      setRateData(data);
+      if (lastEdited === "twd") {
+        const amount = Number.parseFloat(twd);
+        setJpy(Number.isFinite(amount) ? (amount * data.rate).toFixed(0) : "");
+      } else {
+        const amount = Number.parseFloat(jpy);
+        setTwd(Number.isFinite(amount) ? (amount / data.rate).toFixed(0) : "");
+      }
     } catch {
       setRateData(FALLBACK_RATE);
+      if (lastEdited === "twd") {
+        const amount = Number.parseFloat(twd);
+        setJpy(Number.isFinite(amount) ? (amount * FALLBACK_RATE.rate).toFixed(0) : "");
+      } else {
+        const amount = Number.parseFloat(jpy);
+        setTwd(Number.isFinite(amount) ? (amount / FALLBACK_RATE.rate).toFixed(0) : "");
+      }
     } finally {
       setFetching(false);
     }
   };
 
   const handleTwdChange = (val: string) => {
+    setLastEdited("twd");
     setTwd(val);
     if (!isNaN(parseFloat(val)) && rate > 0) {
       setJpy((parseFloat(val) * rate).toFixed(0));
@@ -90,6 +107,7 @@ export function CurrencyConverter() {
   };
 
   const handleJpyChange = (val: string) => {
+    setLastEdited("jpy");
     setJpy(val);
     if (!isNaN(parseFloat(val)) && rate > 0) {
       setTwd((parseFloat(val) / rate).toFixed(0));
@@ -155,7 +173,7 @@ export function CurrencyConverter() {
                 type="number"
                 value={twd}
                 onChange={(e) => handleTwdChange(e.target.value)}
-                className="w-full bg-white/10 border border-white/20 rounded-2xl p-4 sm:p-5 text-xl sm:text-2xl md:text-3xl font-black text-white focus:outline-none focus:ring-4 focus:ring-white/20 transition-all placeholder:text-white/30 tabular-nums"
+                className="w-full bg-white/10 border border-white/20 rounded-2xl p-4 pr-20 sm:p-5 sm:pr-24 text-xl sm:text-2xl md:text-3xl font-black text-white focus:outline-none focus:ring-4 focus:ring-white/20 transition-all placeholder:text-white/30 tabular-nums"
                 placeholder="0"
                 inputMode="decimal"
               />
@@ -178,7 +196,7 @@ export function CurrencyConverter() {
                 type="number"
                 value={jpy}
                 onChange={(e) => handleJpyChange(e.target.value)}
-                className="w-full bg-white/10 border border-white/20 rounded-2xl p-4 sm:p-5 text-xl sm:text-2xl md:text-3xl font-black text-white focus:outline-none focus:ring-4 focus:ring-white/20 transition-all placeholder:text-white/30 tabular-nums"
+                className="w-full bg-white/10 border border-white/20 rounded-2xl p-4 pr-20 sm:p-5 sm:pr-24 text-xl sm:text-2xl md:text-3xl font-black text-white focus:outline-none focus:ring-4 focus:ring-white/20 transition-all placeholder:text-white/30 tabular-nums"
                 placeholder="0"
                 inputMode="decimal"
               />

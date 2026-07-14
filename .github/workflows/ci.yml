@@ -26,6 +26,9 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   verify:
     name: Type-check / Lint / Test
@@ -42,6 +45,13 @@ jobs:
 
       - name: Install dependencies (strict)
         run: npm ci
+
+      - name: Environment / migration / security contracts
+        run: npx vitest run src/__tests__/release-security-contract.test.ts --reporter=verbose
+
+      # Firebase 依賴鏈目前仍有已知 moderate advisories；high/critical 才阻擋發佈。
+      - name: Production dependency audit (high and critical)
+        run: npm audit --omit=dev --audit-level=high
 
       - name: Type-check (tsc --noEmit)
         run: npx tsc --noEmit -p tsconfig.json

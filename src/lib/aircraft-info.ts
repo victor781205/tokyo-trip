@@ -26,7 +26,7 @@ const A350_1000: AircraftInfo = {
   icao: "A35K",
   modelZh: "Airbus A350-1000",
   modelEn: "Airbus A350-1000",
-  tags: ["WiFi", "USB 充電", "個人螢幕", "寬體 425 席"],
+  tags: ["WiFi", "USB 充電", "個人螢幕", "寬體 350 席"],
 };
 const A330_300: AircraftInfo = {
   icao: "A333",

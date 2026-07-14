@@ -21,6 +21,8 @@ import {
 const AVIATION_STACK_KEY = process.env.AVIATION_STACK_KEY?.trim() ?? "";
 const TDX_CLIENT_ID = process.env.TDX_CLIENT_ID?.trim() ?? "";
 const TDX_CLIENT_SECRET = process.env.TDX_CLIENT_SECRET?.trim() ?? "";
+const TRIP_OUTBOUND_FLIGHT = "JX800";
+const TRIP_INBOUND_FLIGHT = "JX805";
 
 async function getTdxToken(): Promise<string | null> {
   if (!TDX_CLIENT_ID || !TDX_CLIENT_SECRET) return null;
@@ -45,36 +47,6 @@ export async function GET(request: Request) {
   const ip = request.headers.get("x-forwarded-for") ?? "anonymous";
   const { allowed, remaining, retryAfter } = checkRateLimit(`flight:${ip}`, 20, 60_000);
 
-  const parsed = flightInfoQuerySchema.safeParse(
-    Object.fromEntries(new URL(request.url).searchParams)
-  );
-  if (!parsed.success) {
-    return NextResponse.json(
-      { error: "Invalid query", issues: parsed.error.flatten() },
-      { status: 400, headers: { "X-RateLimit-Remaining": String(remaining) } }
-    );
-  }
-  const requestedFlight = parsed.data.flight?.trim() || "JX800";
-  const requestedDate = parsed.data.date ?? TRIP_OUTBOUND_DATE;
-  const requestedInboundDate = parsed.data.inboundDate ?? TRIP_INBOUND_DATE;
-  const outboundLiveWindow = shouldFetchLiveFlight(requestedDate, new Date(), "Asia/Taipei");
-  const inboundLiveWindow = shouldFetchLiveFlight(requestedInboundDate, new Date(), "Asia/Tokyo");
-  const requestedNumber = requestedFlight.replace(/^[A-Za-z]+/, "");
-  const requestedIcao = requestedFlight.match(/^[A-Za-z]+/)?.[0]?.toUpperCase() ?? "JX";
-
-  // 回程航班號碼規則：JX800 ⇄ JX801、JX804 ⇄ JX805、…
-  // 此專案目前 hardcode JX800 去程配 JX805 回程（航空規劃已確認）
-  const inboundFlight = (() => {
-    const icao = requestedFlight.match(/^[A-Za-z]+/)?.[0]?.toUpperCase() ?? "JX";
-    const num = parseInt(requestedNumber, 10);
-    if (!Number.isNaN(num)) {
-      // JX800 -> JX805；JX805 -> JX800
-      const inboundNum = num === 800 ? 805 : num === 805 ? 800 : num + 1;
-      return `${icao}${inboundNum}`;
-    }
-    return `${icao}805`;
-  })();
-
   if (!allowed) {
     return NextResponse.json(
       { error: "Too many requests", retryAfter },
@@ -84,9 +56,52 @@ export async function GET(request: Request) {
           "Retry-After": String(retryAfter),
           "X-RateLimit-Remaining": "0",
         },
-      }
+      },
     );
   }
+
+  const searchParams = new URL(request.url).searchParams;
+  const parsed = flightInfoQuerySchema.safeParse(
+    Object.fromEntries(searchParams)
+  );
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: "Invalid query", issues: parsed.error.flatten() },
+      { status: 400, headers: { "X-RateLimit-Remaining": String(remaining) } }
+    );
+  }
+  const requestedFlight = parsed.data.flight?.trim().toUpperCase() || TRIP_OUTBOUND_FLIGHT;
+  const requestedDate = parsed.data.date ?? TRIP_OUTBOUND_DATE;
+  const requestedInboundDate = parsed.data.inboundDate ?? TRIP_INBOUND_DATE;
+
+  const hasDuplicateQuery = ["flight", "date", "inboundDate"]
+    .some((key) => searchParams.getAll(key).length > 1);
+  const hasUnknownQuery = [...searchParams.keys()]
+    .some((key) => !["flight", "date", "inboundDate"].includes(key));
+  if (
+    hasDuplicateQuery ||
+    hasUnknownQuery ||
+    requestedFlight !== TRIP_OUTBOUND_FLIGHT ||
+    requestedDate !== TRIP_OUTBOUND_DATE ||
+    requestedInboundDate !== TRIP_INBOUND_DATE
+  ) {
+    return NextResponse.json(
+      {
+        error: "Unsupported trip flight query",
+        allowed: {
+          outbound: { flight: TRIP_OUTBOUND_FLIGHT, date: TRIP_OUTBOUND_DATE },
+          inbound: { flight: TRIP_INBOUND_FLIGHT, date: TRIP_INBOUND_DATE },
+        },
+      },
+      { status: 400, headers: { "X-RateLimit-Remaining": String(remaining) } },
+    );
+  }
+
+  const outboundLiveWindow = shouldFetchLiveFlight(requestedDate, new Date(), "Asia/Taipei");
+  const inboundLiveWindow = shouldFetchLiveFlight(requestedInboundDate, new Date(), "Asia/Tokyo");
+  const requestedNumber = "800";
+  const requestedIcao = "JX";
+  const inboundFlight = TRIP_INBOUND_FLIGHT;
 
   // ── 去程 JX800（TPE 出發）— 使用 TDX 機場 FIDS ──
   let outbound: Record<string, unknown> | null = null;

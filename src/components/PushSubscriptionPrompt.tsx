@@ -25,6 +25,7 @@ export function PushSubscriptionPrompt({ tripId, tripSecret }: Props) {
   const push = usePushNotifications(tripId, tripSecret);
   const [loading, setLoading] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [unregistering, setUnregistering] = useState(false);
   const [hint, setHint] = useState<string | null>(null);
 
   const handleRegister = async () => {
@@ -87,6 +88,19 @@ export function PushSubscriptionPrompt({ tripId, tripSecret }: Props) {
     }
   };
 
+  const handleUnregister = async () => {
+    setUnregistering(true);
+    setHint(null);
+    try {
+      await push.unregister();
+      setHint("已關閉這台裝置的行程推播。");
+    } catch (error) {
+      setHint(error instanceof Error ? error.message : "取消推播失敗，請稍後再試。");
+    } finally {
+      setUnregistering(false);
+    }
+  };
+
   if (push.current === "unsupported") {
     return (
       <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
@@ -106,11 +120,20 @@ export function PushSubscriptionPrompt({ tripId, tripSecret }: Props) {
         <button
           type="button"
           onClick={handleTest}
-          disabled={testing}
+          disabled={testing || unregistering}
           className="inline-flex min-h-11 items-center gap-2 text-xs font-medium px-4 py-2 rounded-full bg-green-50 text-green-700 hover:bg-green-100 disabled:opacity-60 transition-colors dark:bg-green-500/10 dark:text-green-300 dark:hover:bg-green-500/20"
         >
           {testing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
           {testing ? "測試中…" : "發送測試推播"}
+        </button>
+        <button
+          type="button"
+          onClick={handleUnregister}
+          disabled={testing || unregistering}
+          className="inline-flex min-h-11 items-center gap-2 text-xs font-medium px-4 py-2 rounded-full border border-gray-200 text-gray-600 hover:border-red-200 hover:bg-red-50 hover:text-red-600 disabled:opacity-60 transition-colors dark:border-slate-600 dark:text-gray-300 dark:hover:border-red-800 dark:hover:bg-red-900/20 dark:hover:text-red-300"
+        >
+          {unregistering ? <Loader2 className="w-4 h-4 animate-spin" /> : <BellOff className="w-4 h-4" />}
+          {unregistering ? "關閉中…" : "關閉這台裝置推播"}
         </button>
         {hint && <span className="text-xs text-gray-500 dark:text-gray-400">{hint}</span>}
       </div>
@@ -123,7 +146,7 @@ export function PushSubscriptionPrompt({ tripId, tripSecret }: Props) {
         type="button"
         onClick={handleRegister}
         disabled={loading}
-        className="inline-flex min-h-11 items-center gap-2 text-xs font-medium px-4 py-2 rounded-full bg-brand/10 text-brand hover:bg-brand/20 disabled:opacity-60 transition-colors"
+        className="inline-flex min-h-11 items-center gap-2 text-xs font-medium px-4 py-2 rounded-full bg-primary/10 text-primary hover:ring-2 hover:ring-primary/20 disabled:opacity-60 transition-colors"
       >
         {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Bell className="w-4 h-4" />}
         {loading ? "啟用中…" : "開啟行程推播提醒"}
