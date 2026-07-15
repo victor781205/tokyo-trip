@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Volume2, ChevronDown, Search } from "lucide-react";
+import { Volume2, ChevronDown, Search, Languages } from "lucide-react";
 
 const PHRASE_CATEGORIES: Record<string, { emoji: string; phrases: { jp: string; romaji: string; zh: string }[] }> = {
   "基本問候": {
@@ -26,6 +26,7 @@ const PHRASE_CATEGORIES: Record<string, { emoji: string; phrases: { jp: string; 
       { jp: "この電車は〜に行きますか？", romaji: "Kono densha wa ... ni ikimasu ka?", zh: "這班電車有到～嗎？" },
       { jp: "次の駅はどこですか？", romaji: "Tsugi no eki wa doko desu ka?", zh: "下一站是哪裡？" },
       { jp: "タクシーを呼んでください", romaji: "Takushii wo yonde kudasai", zh: "請幫我叫計程車" },
+      { jp: "トイレはどこですか？", romaji: "Toire wa doko desu ka?", zh: "洗手間在哪裡？" },
     ],
   },
   "餐廳美食": {
@@ -75,19 +76,59 @@ const PHRASE_CATEGORIES: Record<string, { emoji: string; phrases: { jp: string; 
   },
 };
 
+/** 中文常用說法 → 可匹配到的關鍵字（日文／中文／羅馬拼音） */
+const SEARCH_ALIASES: Record<string, string[]> = {
+  "謝謝": ["感謝", "ありがとう", "arigatou", "非常感謝"],
+  "感謝": ["謝謝", "ありがとう", "arigatou", "非常感謝"],
+  "不好意思": ["對不起", "すみません", "sumimasen"],
+  "對不起": ["不好意思", "すみません", "sumimasen"],
+  "廁所": ["トイレ", "toilet", "洗手間"],
+  "洗手間": ["廁所", "トイレ", "toilet"],
+  "救命": ["幫幫", "助け", "tasukete"],
+  "幫幫": ["救命", "助け", "tasukete"],
+  "結帳": ["會計", "お会計", "okaikei", "買單"],
+  "買單": ["結帳", "會計", "お会計"],
+  "菜單": ["メニュー", "menyuu"],
+  "水": ["お水", "omizu"],
+  "醫院": ["病院", "byouin"],
+  "警察": ["けいさつ", "keisatsu"],
+  "翻譯": ["通訳", "tsuyaku"],
+};
+
+function expandSearchTerms(raw: string): string[] {
+  const trimmed = raw.trim();
+  if (!trimmed) return [];
+  const terms = new Set<string>([trimmed.toLowerCase()]);
+  for (const [key, aliases] of Object.entries(SEARCH_ALIASES)) {
+    const keyLower = key.toLowerCase();
+    if (
+      trimmed.includes(key) ||
+      key.includes(trimmed) ||
+      aliases.some((alias) => trimmed.toLowerCase().includes(alias.toLowerCase()) || alias.toLowerCase().includes(trimmed.toLowerCase()))
+    ) {
+      terms.add(keyLower);
+      aliases.forEach((alias) => terms.add(alias.toLowerCase()));
+    }
+  }
+  return Array.from(terms);
+}
+
 export function JapanesePhrases() {
   const [expanded, setExpanded] = useState<string | null>("基本問候");
   const [search, setSearch] = useState("");
+  const searchTerms = expandSearchTerms(search);
+  const isSearching = searchTerms.length > 0;
 
   const filteredCategories = Object.entries(PHRASE_CATEGORIES).map(([cat, data]) => ({
     category: cat,
     ...data,
-    phrases: search.trim()
+    phrases: searchTerms.length > 0
       ? data.phrases.filter(
-        p =>
-          p.jp.includes(search) ||
-          p.zh.includes(search) ||
-          p.romaji.toLowerCase().includes(search.toLowerCase())
+        p => searchTerms.some((term) =>
+          p.jp.toLowerCase().includes(term) ||
+          p.zh.toLowerCase().includes(term) ||
+          p.romaji.toLowerCase().includes(term)
+        )
       )
       : data.phrases,
   })).filter(c => c.phrases.length > 0);
@@ -102,13 +143,19 @@ export function JapanesePhrases() {
   };
 
   return (
-    <section id="phrases" className="py-6 md:py-20 transition-colors duration-300">
+    <section id="phrases" className="py-4 md:py-9 transition-colors duration-300 scroll-mt-28">
       {/* Header */}
-      <div className="text-center mb-10">
+      <div className="text-center mb-7">
         <div className="inline-block bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 px-4 py-1 rounded-full text-xs font-black uppercase tracking-widest mb-4">Travel Phrases</div>
-        <h2 className="text-2xl sm:text-3xl md:text-5xl font-black mb-4">🇯🇵 實用日語短語</h2>
+        <h2 className="flex items-center justify-center gap-2 text-2xl sm:text-3xl font-black mb-3"><Languages className="h-7 w-7 text-purple-600" />實用日語短語</h2>
         <p className="text-gray-600 dark:text-gray-400">旅遊必備日語，點擊喇叭圖示可聆聽發音</p>
       </div>
+
+      {isSearching && (
+        <p role="status" className="mb-3 text-sm font-bold text-gray-600 dark:text-gray-300">
+          找到 {filteredCategories.reduce((total, category) => total + category.phrases.length, 0)} 句符合「{search.trim()}」的短語，結果已自動展開。
+        </p>
+      )}
 
       {/* Search */}
       <div className="relative mb-8 max-w-md mx-auto">
@@ -126,11 +173,11 @@ export function JapanesePhrases() {
       {/* Phrase Categories */}
       <div className="space-y-4">
         {filteredCategories.map((cat) => {
-          const isExpanded = expanded === cat.category;
+          const isExpanded = isSearching || expanded === cat.category;
           return (
-            <div key={cat.category} className="bg-white dark:bg-slate-800 rounded-3xl shadow-lg border border-gray-100 dark:border-slate-700 overflow-hidden">
+            <div key={cat.category} className="trip-card bg-white dark:bg-slate-800 rounded-3xl shadow-lg border border-gray-100 dark:border-slate-700 overflow-hidden">
               <button
-                onClick={() => setExpanded(isExpanded ? null : cat.category)}
+                onClick={() => { if (!isSearching) setExpanded(isExpanded ? null : cat.category); }}
                 aria-expanded={isExpanded}
                 className="w-full flex items-center justify-between p-5 hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors"
               >
@@ -153,7 +200,7 @@ export function JapanesePhrases() {
                             <button
                               onClick={() => handleSpeak(phrase.jp)}
                               aria-label={`播放發音：${phrase.jp}`}
-                              className="p-2 sm:p-3 rounded-xl text-gray-400 hover:text-primary hover:bg-primary/10 transition-colors opacity-100 md:opacity-0 md:group-hover:opacity-100"
+                              className="w-11 h-11 shrink-0 inline-flex items-center justify-center rounded-xl text-gray-400 hover:text-primary hover:bg-primary/10 focus-visible:text-primary focus-visible:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 transition-colors opacity-100 md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
                               title="聆聽發音"
                             >
                               <Volume2 className="w-4 h-4" />
@@ -170,6 +217,11 @@ export function JapanesePhrases() {
             </div>
           );
         })}
+        {filteredCategories.length === 0 && (
+          <div role="status" className="text-center py-10 rounded-3xl border-2 border-dashed border-gray-200 dark:border-slate-700 text-gray-400 font-bold">
+            找不到符合「{search.trim()}」的短語，試試較短的關鍵字。
+          </div>
+        )}
       </div>
     </section>
   );

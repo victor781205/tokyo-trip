@@ -1,9 +1,77 @@
 "use client";
 
-import { useState, useRef, useMemo } from "react";
-import { Calendar, Check, ChevronLeft, ChevronRight, Pencil, Plus, Trash2, X, Download, Loader2, CalendarPlus, AlertTriangle, MapPin, BarChart3, List } from "lucide-react";
-import { useTripState, Itinerary as ItineraryType, Activity } from "@/hooks/useTripState";
+import { useState, useRef, useMemo, useCallback } from "react";
+import { Calendar, Check, CheckCircle2, CircleSlash2, ChevronLeft, ChevronRight, Pencil, Plus, Trash2, X, Download, Loader2, CalendarPlus, AlertTriangle, MapPin, BarChart3, List, Wallet, UtensilsCrossed, MoreHorizontal, Navigation2 } from "lucide-react";
+import { useTripState, type Activity } from "@/hooks/useTripState";
+import { useDialog } from "@/context/DialogContext";
 import { downloadICS } from "@/lib/ics-export";
+import { DEFAULT_ITINERARY } from "@/lib/default-itinerary";
+import { useModalAccessibility } from "@/hooks/useModalAccessibility";
+import {
+  createBudgetItem,
+  getBudgetDateForTripDay,
+  getTokyoBudgetDate,
+  MAX_YEN_AMOUNT,
+  TRIP_TRAVELERS,
+} from "@/lib/budget";
+import { generateShortId } from "@/lib/secure-id";
+import { ensureStableItineraryActivityIds } from "@/lib/trip-cache";
+
+const BUDGET_CATEGORIES: Record<string, { icon: string; label: string }> = {
+  food: { icon: "🍜", label: "餐飲" },
+  transport: { icon: "🚆", label: "交通" },
+  shopping: { icon: "🛍️", label: "購物" },
+  ticket: { icon: "🎫", label: "門票" },
+  hotel: { icon: "🏨", label: "住宿" },
+  other: { icon: "💡", label: "其他" },
+};
+
+const BUDGET_SUGGESTED_AMOUNTS: Record<string, number> = {
+  food: 1500,
+  transport: 300,
+  shopping: 3000,
+  ticket: 2000,
+  hotel: 10000,
+  other: 1000,
+};
+/** 依活動名稱／標籤粗估預算類別 */
+function guessBudgetCategory(act: Activity): string {
+  const blob = `${act.tag || ""} ${act.name} ${act.desc || ""}`;
+  if (/餐|食|lunch|dinner|breakfast|拉麵|美食|定食|燒肉|cafe|咖啡/i.test(blob)) return "food";
+  if (/交通|電車|巴士|taxi|機場|移動|train|地鐵|metro|jr/i.test(blob)) return "transport";
+  if (/購|shopping|店|伴手禮|藥妝|百貨/i.test(blob)) return "shopping";
+  if (/門票|ticket|美術館|teamlab|展望|入場|票/i.test(blob)) return "ticket";
+  if (/hotel|住宿|check-?\s?in|check-?\s?out|飯店|旅館/i.test(blob)) return "hotel";
+  return "other";
+}
+
+/** 從活動名稱推測美食區（對齊 Food 的 district id） */
+function guessFoodDistrict(act: Activity): string {
+  const blob = `${act.name} ${act.desc || ""}`;
+  const districts = [
+    "錦糸町", "淺草", "上野", "秋葉原", "銀座", "新宿", "澀谷", "六本木",
+    "東京車站", "押上", "豐洲", "築地", "原宿", "表參道", "中目黑", "惠比壽",
+    "日比谷", "池袋", "晴空塔", "台場", "吉祥寺", "下北澤",
+  ];
+  for (const d of districts) {
+    if (blob.includes(d)) return d === "晴空塔" ? "押上" : d === "台場" ? "豐洲" : d;
+  }
+  return "all";
+}
+
+/** 僅為具體地點提供導航；流程、休息與交通動作不應被當成地標搜尋。 */
+function getActivityNavigationUrl(activity: Activity): string | null {
+  const name = activity.name.trim();
+  if (!name) return null;
+
+  const blob = `${activity.tag || ""} ${name} ${activity.desc || ""}`;
+  const isPlaceCategory = /景點|美食|餐飲|購物|住宿|神社|寺|展覽|咖啡/i.test(activity.tag || "");
+  const isProcedure = /入境|領取行李|安檢|海關|登機|休息|自由活動|起床|出發|前往|移動|搭乘|轉乘|回程|班機|check-?\s?out/i.test(blob);
+  if (isProcedure && !isPlaceCategory) return null;
+
+  const query = name.replace(/^用餐[：:]\s*/, "");
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${query} 東京`)}`;
+}
 
 // ── 景點座標資料（用於估算移動時間）──
 const PLACE_COORDS: Record<string, { lat: number; lng: number }> = {
@@ -22,7 +90,8 @@ const PLACE_COORDS: Record<string, { lat: number; lng: number }> = {
   "豐洲市場": { lat: 35.6462, lng: 139.7786 },
   "台場": { lat: 35.6267, lng: 139.7806 },
   "DiverCity": { lat: 35.6267, lng: 139.7806 },
-  "teamLab": { lat: 35.6267, lng: 139.7833 },
+  "DiverCity 台場": { lat: 35.6267, lng: 139.7806 },
+  "teamLab Planets TOKYO": { lat: 35.6491, lng: 139.7897 },
   "下北澤": { lat: 35.6609, lng: 139.6684 },
   "吉祥寺": { lat: 35.7029, lng: 139.5700 },
   "吉卜力美術館": { lat: 35.6961, lng: 139.5704 },
@@ -46,7 +115,7 @@ function haversineDistance(lat1: number, lng1: number, lat2: number, lng2: numbe
   const R = 6371;
   const dLat = (lat2 - lat1) * Math.PI / 180;
   const dLng = (lng2 - lng1) * Math.PI / 180;
-  const a = Math.sin(dLat/2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng/2) ** 2;
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
@@ -111,101 +180,47 @@ function timeDifferenceMinutes(time1: string, time2: string): number {
   return (h2 * 60 + m2) - (h1 * 60 + m1);
 }
 
-const DEFAULT_ITINERARY: ItineraryType = {
-  day1: {
-    title: "🛬 Day 1 - 抵達東京",
-    date: "9/1 (二)",
-    activities: [
-      { time: "12:55", name: "抵達成田機場", desc: "辦理入境手續、領取行李", tag: "交通" },
-      { time: "14:30", name: "前往飯店", desc: "搭乘成田特快 → 錦糸町站", tag: "交通" },
-      { time: "16:00", name: "飯店 Check-in", desc: "東武黎凡特飯店", tag: "" },
-      { time: "16:30", name: "淺草寺・雷門", desc: "東京最古老的寺廟", tag: "景點" },
-      { time: "18:30", name: "晴空塔", desc: "欣賞夜景", tag: "景點" },
-      { time: "20:00", name: "晚餐", desc: "淺草老字號天婦羅", tag: "美食" },
-      { time: "21:30", name: "回飯店休息", desc: "享受大浴場", tag: "" }
-    ]
-  },
-  day2: {
-    title: "⛩️ Day 2 - 澀谷・新宿",
-    date: "9/2 (三)",
-    activities: [
-      { time: "08:00", name: "飯店早餐", desc: "享用日式早餐", tag: "美食" },
-      { time: "09:30", name: "明治神宮", desc: "東京最大的神社", tag: "景點" },
-      { time: "11:30", name: "原宿竹下通", desc: "年輕人潮流聖地", tag: "購物" },
-      { time: "13:00", name: "午餐：拉麵", desc: "一蘭拉麵", tag: "美食" },
-      { time: "14:30", name: "澀谷 Scramble Square", desc: "Sky 展望台", tag: "景點" },
-      { time: "17:00", name: "新宿御苑", desc: "欣賞日式庭園", tag: "景點" },
-      { time: "19:00", name: "晚餐：思出橫丁", desc: "串燒與關東煮", tag: "美食" }
-    ]
-  },
-  day3: {
-    title: "🏰 Day 3 - 秋葉原・東京車站",
-    date: "9/3 (四)",
-    activities: [
-      { time: "08:00", name: "飯店早餐", desc: "享用日式早餐", tag: "美食" },
-      { time: "09:30", name: "秋葉原電氣街", desc: "動漫、電器", tag: "購物" },
-      { time: "12:00", name: "午餐", desc: "秋葉原女僕咖啡廳", tag: "美食" },
-      { time: "14:00", name: "東京車站一番街", desc: "地下街購物", tag: "購物" },
-      { time: "15:30", name: "皇居外苑", desc: "二重橋散步", tag: "景點" },
-      { time: "17:00", name: "銀座逛街", desc: "東京最高級商店街", tag: "購物" },
-      { time: "19:00", name: "晚餐：銀座壽司", desc: "新鮮握壽司", tag: "美食" }
-    ]
-  },
-  day4: {
-    title: "🌊 Day 4 - 台場・豐洲",
-    date: "9/4 (五)",
-    activities: [
-      { time: "08:00", name: "飯店早餐", desc: "享用日式早餐", tag: "美食" },
-      { time: "09:30", name: "豐洲市場", desc: "新鮮海鮮早餐", tag: "美食" },
-      { time: "11:30", name: "台場海濱公園", desc: "自由女神、彩虹大橋", tag: "景點" },
-      { time: "14:30", name: "DiverCity", desc: "1:1 鋼彈模型", tag: "景點" },
-      { time: "16:30", name: "teamLab Borderless", desc: "沉浸式數位藝術", tag: "景點" },
-      { time: "19:00", name: "晚餐：燒肉", desc: "欣賞夜景", tag: "美食" },
-      { time: "21:00", name: "台場夜景", desc: "摩天輪", tag: "景點" }
-    ]
-  },
-  day5: {
-    title: "🌸 Day 5 - 下北澤・吉祥寺",
-    date: "9/5 (六)",
-    activities: [
-      { time: "08:00", name: "飯店早餐", desc: "享用日式早餐", tag: "美食" },
-      { time: "09:30", name: "下北澤古著街", desc: "二手服飾", tag: "購物" },
-      { time: "12:00", name: "午餐：咖哩", desc: "日式咖哩名店", tag: "美食" },
-      { time: "13:30", name: "吉祥寺井之頭公園", desc: "划船、散步", tag: "景點" },
-      { time: "16:30", name: "吉卜力美術館", desc: "宮崎駿動畫迷必訪", tag: "景點" },
-      { time: "19:00", name: "晚餐：迴轉壽司", desc: "最後一晚的壽司", tag: "美食" },
-      { time: "21:00", name: "飯店收拾行李", desc: "準備明天回程", tag: "" }
-    ]
-  },
-  day6: {
-    title: "🛫 Day 6 - 回家",
-    date: "9/6 (日)",
-    activities: [
-      { time: "08:00", name: "飯店早餐", desc: "最後一頓日式早餐", tag: "美食" },
-      { time: "09:30", name: "上野阿美橫丁", desc: "採購伴手禮", tag: "購物" },
-      { time: "12:00", name: "午餐", desc: "上野周邊用餐", tag: "美食" },
-      { time: "14:00", name: "飯店 Check-out", desc: "寄放行李", tag: "" },
-      { time: "16:00", name: "前往成田機場", desc: "JR總武線", tag: "交通" },
-      { time: "20:40", name: "登機 JX805", desc: "返回台北", tag: "交通" }
-    ]
-  }
-};
-
-export function Itinerary() {
-  const { isLoaded, itinerary, updateItinerary } = useTripState();
+export function Itinerary({ onNavigate }: { onNavigate?: (tab: string) => void } = {}) {
+  const { isLoaded, itinerary, updateItinerary, updateBudgetItems } = useTripState();
+  const { confirm, alert } = useDialog();
   const [activeDayIndex, setActiveDayIndex] = useState(0);
-  const [editingModal, setEditingModal] = useState<{ day: string; index: number } | null>(null);
+  const [editingModal, setEditingModal] = useState<{ day: string; activitySyncId: string | null } | null>(null);
   const [formData, setFormData] = useState<Activity>({ time: "", name: "", desc: "", tag: "" });
+  const [formErrors, setFormErrors] = useState<{ time?: string; name?: string; conflict?: string }>({});
   const [isExporting, setIsExporting] = useState(false);
   const [editingTitleDay, setEditingTitleDay] = useState<string | null>(null);
   const [titleInput, setTitleInput] = useState("");
   const [viewMode, setViewMode] = useState<"timeline" | "stats">("timeline");
+  const [budgetModal, setBudgetModal] = useState<{
+    name: string;
+    amount: string;
+    category: string;
+    day: string;
+  } | null>(null);
+  const [budgetError, setBudgetError] = useState("");
   const tabScrollRef = useRef<HTMLDivElement>(null);
   const itineraryRef = useRef<HTMLDivElement>(null);
+  const timeInputRef = useRef<HTMLInputElement>(null);
+  const nameInputRef = useRef<HTMLInputElement>(null);
+  const budgetAmountInputRef = useRef<HTMLInputElement>(null);
+  const closeEditingModal = useCallback(() => {
+    setEditingModal(null);
+    setFormErrors({});
+  }, []);
+  const closeBudgetModal = useCallback(() => {
+    setBudgetModal(null);
+    setBudgetError("");
+  }, []);
+  const editingDialogRef = useModalAccessibility(Boolean(editingModal), closeEditingModal);
+  const budgetDialogRef = useModalAccessibility(Boolean(budgetModal), closeBudgetModal);
 
-const currentItin = Object.keys(itinerary).length > 0 ? itinerary : DEFAULT_ITINERARY;
+  const currentItin = useMemo(
+    () => ensureStableItineraryActivityIds(Object.keys(itinerary).length > 0 ? itinerary : DEFAULT_ITINERARY),
+    [itinerary],
+  );
   const dayKeys = Object.keys(currentItin);
-  const activeDayKey = dayKeys[activeDayIndex];
+  const safeActiveDayIndex = Math.min(activeDayIndex, Math.max(dayKeys.length - 1, 0));
+  const activeDayKey = dayKeys[safeActiveDayIndex];
   const activeDayData = currentItin[activeDayKey];
 
   // ── 衝突檢測（Hooks 必須在任何 early return 之前宣告）──
@@ -307,7 +322,11 @@ const currentItin = Object.keys(itinerary).length > 0 ? itinerary : DEFAULT_ITIN
         link.click();
       } catch (error) {
         console.error("Export failed:", error);
-        alert("匯出圖片失敗，請稍後再試。");
+        void alert({
+          title: "匯出失敗",
+          message: "匯出圖片失敗，請稍後再試。",
+          accent: "danger",
+        });
       } finally {
         setIsExporting(false);
       }
@@ -315,45 +334,208 @@ const currentItin = Object.keys(itinerary).length > 0 ? itinerary : DEFAULT_ITIN
   };
 
   /** 編輯 / 新增 */
-  const openModal = (day: string, index: number = -1) => {
-    if (index >= 0) {
-      setFormData({ ...currentItin[day].activities[index] });
+  const openModal = (day: string, activity?: Activity) => {
+    if (activity) {
+      setFormData({ ...activity });
     } else {
-      setFormData({ time: "", name: "", desc: "", tag: "" });
+      setFormData({
+        time: "",
+        name: "",
+        desc: "",
+        tag: "",
+        syncId: `activity:${generateShortId()}`,
+      });
     }
-    setEditingModal({ day, index });
+    setFormErrors({});
+    setEditingModal({ day, activitySyncId: activity?.syncId ?? null });
   };
 
   const handleSave = () => {
-    if (!editingModal || !formData.name || !formData.time) return;
+    if (!editingModal) return;
 
-    const newItin = { ...currentItin };
-    const { day, index } = editingModal;
-
-    if (index >= 0) {
-      newItin[day].activities[index] = formData;
-    } else {
-      newItin[day].activities.push(formData);
+    const errors: { time?: string; name?: string; conflict?: string } = {};
+    if (!formData.time) errors.time = "請選擇抵達時間";
+    if (!formData.name.trim()) errors.name = "請輸入景點或店名";
+    if (errors.time || errors.name) {
+      setFormErrors(errors);
+      if (errors.time) timeInputRef.current?.focus();
+      else nameInputRef.current?.focus();
+      return;
     }
 
-    newItin[day].activities.sort((a, b) => a.time.localeCompare(b.time));
-    updateItinerary(newItin);
+    const { day, activitySyncId } = editingModal;
+    const normalizedFormData = {
+      ...formData,
+      name: formData.name.trim(),
+      syncId: formData.syncId || `activity:${generateShortId()}`,
+    };
+    let didSave = false;
+    updateItinerary((latest) => {
+      const source = ensureStableItineraryActivityIds(
+        Object.keys(latest).length > 0 ? latest : DEFAULT_ITINERARY,
+      );
+      const latestDay = source[day];
+      if (!latestDay) return latest;
+
+      let activities: Activity[];
+      if (activitySyncId) {
+        const targetIndex = latestDay.activities.findIndex((activity) => activity.syncId === activitySyncId);
+        if (targetIndex < 0) return latest;
+        activities = latestDay.activities.map((activity, index) => index === targetIndex
+          ? { ...activity, ...normalizedFormData, syncId: activitySyncId }
+          : activity);
+      } else {
+        activities = [...latestDay.activities, normalizedFormData];
+      }
+      didSave = true;
+      return {
+        ...source,
+        [day]: {
+          ...latestDay,
+          activities: [...activities].sort((a, b) => a.time.localeCompare(b.time)),
+        },
+      };
+    });
+    if (!didSave) {
+      setFormErrors({
+        conflict: activitySyncId
+          ? "這項活動已在其他裝置被移除或移動。為避免覆寫最新行程，本次變更尚未儲存。"
+          : "這個日期已在其他裝置被移除。為避免覆寫最新行程，本次變更尚未儲存。",
+      });
+      return;
+    }
     setEditingModal(null);
+    setFormErrors({});
   };
 
   const handleTitleSave = (dayKey: string) => {
     if (!titleInput.trim()) return;
-    const newItin = { ...currentItin };
-    newItin[dayKey] = { ...newItin[dayKey], title: titleInput.trim() };
-    updateItinerary(newItin);
+    const title = titleInput.trim();
+    updateItinerary((latest) => {
+      const source = ensureStableItineraryActivityIds(
+        Object.keys(latest).length > 0 ? latest : DEFAULT_ITINERARY,
+      );
+      const latestDay = source[dayKey];
+      if (!latestDay) return latest;
+      return {
+        ...source,
+        [dayKey]: { ...latestDay, title },
+      };
+    });
     setEditingTitleDay(null);
   };
 
-  const deleteActivity = (day: string, idx: number) => {
-    if (!confirm("確定要刪除這項行程嗎？")) return;
-    const newItin = { ...currentItin };
-    newItin[day].activities.splice(idx, 1);
-    updateItinerary(newItin);
+  const deleteActivity = async (day: string, activity: Activity) => {
+    const activitySyncId = activity.syncId;
+    if (!activitySyncId) {
+      await alert({
+        title: "行程尚未同步完成",
+        message: "這項活動的同步識別尚未建立，請重新整理後再試一次。",
+        accent: "danger",
+      });
+      return;
+    }
+    const ok = await confirm({
+      title: "刪除行程",
+      message: `確定要刪除「${activity.name}」嗎？`,
+      accent: "danger",
+      confirmText: "刪除",
+    });
+    if (!ok) return;
+    let didDelete = false;
+    updateItinerary((latest) => {
+      const source = ensureStableItineraryActivityIds(
+        Object.keys(latest).length > 0 ? latest : DEFAULT_ITINERARY,
+      );
+      const latestDay = source[day];
+      if (!latestDay || !latestDay.activities.some((item) => item.syncId === activitySyncId)) return latest;
+      didDelete = true;
+      return {
+        ...source,
+        [day]: {
+          ...latestDay,
+          activities: latestDay.activities.filter((item) => item.syncId !== activitySyncId),
+        },
+      };
+    });
+    if (!didDelete) {
+      await alert({
+        title: "行程已在其他裝置變更",
+        message: "這項活動已被移除或移到其他日期，未覆寫最新行程。",
+        accent: "danger",
+      });
+    }
+  };
+
+  /** 開啟「記錄支出」彈窗（可填金額／類別） */
+  const openBudgetModal = (act: Activity) => {
+    const category = guessBudgetCategory(act);
+    setBudgetModal({
+      name: act.name,
+      amount: String(BUDGET_SUGGESTED_AMOUNTS[category] ?? BUDGET_SUGGESTED_AMOUNTS.other),
+      category,
+      day: activeDayKey,
+    });
+    setBudgetError("");
+  };
+
+  const confirmAddToBudget = async () => {
+    if (!budgetModal) return;
+    const amountNum = Number(budgetModal.amount);
+    if (
+      !budgetModal.name.trim()
+      || !Number.isSafeInteger(amountNum)
+      || amountNum < 1
+      || amountNum > MAX_YEN_AMOUNT
+    ) {
+      setBudgetError(`請輸入 1～${MAX_YEN_AMOUNT.toLocaleString()} 的整數日圓金額；0 元不會列入支出。`);
+      budgetAmountInputRef.current?.focus();
+      return;
+    }
+    const dayMatch = budgetModal.day.match(/^day(\d+)$/);
+    const spendDate = dayMatch
+      ? getBudgetDateForTripDay(Number(dayMatch[1])) ?? getTokyoBudgetDate()
+      : getTokyoBudgetDate();
+    const newItem = createBudgetItem({
+      id: Date.now(),
+      name: budgetModal.name,
+      amount: amountNum,
+      category: budgetModal.category,
+      date: spendDate,
+    });
+    if (!newItem) {
+      setBudgetError("支出資料無法建立，請重新確認日期與金額。");
+      budgetAmountInputRef.current?.focus();
+      return;
+    }
+    updateBudgetItems((prev) => [newItem, ...prev]);
+    setBudgetModal(null);
+    setBudgetError("");
+    await alert({
+      title: "支出已記錄",
+      message: `「${newItem.name}」¥${amountNum.toLocaleString()} 已記到 ${spendDate}。`,
+      accent: "primary",
+    });
+  };
+
+  /** 一鍵跳美食並帶區域篩選（sessionStorage） */
+  const findNearbyFood = (act: Activity) => {
+    const district = guessFoodDistrict(act);
+    try {
+      sessionStorage.setItem(
+        "tokyo-trip-food-focus",
+        JSON.stringify({ district, q: act.name, t: Date.now() }),
+      );
+    } catch {
+      // ignore
+    }
+    if (onNavigate) {
+      onNavigate("food");
+    } else {
+      const url = new URL(window.location.href);
+      url.searchParams.set("tab", "food");
+      window.location.href = url.pathname + url.search + url.hash;
+    }
   };
 
   const getTagColor = (tag: string) => {
@@ -370,7 +552,7 @@ const currentItin = Object.keys(itinerary).length > 0 ? itinerary : DEFAULT_ITIN
   const renderExportView = () => (
     <div ref={itineraryRef} className="p-8 space-y-8">
       <div className="text-center mb-10 pb-10 border-b border-gray-200 dark:border-gray-700">
-        <h1 className="text-4xl font-black text-primary mb-2">東京自由行</h1>
+        <h2 className="text-4xl font-black text-primary mb-2">東京自由行</h2>
         <p className="text-xl font-bold text-gray-500">2026.09.01 - 09.06</p>
       </div>
       {dayKeys.map((dayKey) => {
@@ -383,13 +565,12 @@ const currentItin = Object.keys(itinerary).length > 0 ? itinerary : DEFAULT_ITIN
               <span className="ml-auto text-sm font-black bg-white/20 px-3 py-1 rounded-full">{dayData.date}</span>
             </div>
             <div className="space-y-3 relative before:absolute before:left-[2.5rem] before:inset-y-0 before:w-0.5 before:bg-gray-200 dark:before:bg-slate-700">
-              {dayData.activities.map((act, idx) => (
-                <div key={idx} className="relative flex items-start gap-4 group">
-                  <div className="flex items-center justify-center w-5 h-5 rounded-full border-2 border-white dark:border-slate-800 bg-primary absolute left-[2.5rem] -translate-x-1/2 z-10"></div>
-                  <div className="w-[5rem] text-right text-primary font-black text-lg pt-0.5 shrink-0">{act.time}</div>
+              {dayData.activities.map((act) => (
+                <div key={act.syncId} className="relative flex items-start gap-4 group">
+                  <div className="w-[5rem] text-right text-primary font-black text-lg pt-0.5 shrink-0 relative z-10 bg-transparent px-1">{act.time}</div>
                   <div className="flex-1 bg-gray-50 dark:bg-slate-900/50 p-4 rounded-xl border border-gray-100 dark:border-slate-800">
                     <div className="flex items-center gap-2 mb-1">
-                      <h4 className="font-black text-lg text-gray-900 dark:text-white">{act.name}</h4>
+                      <p className="font-black text-lg text-gray-900 dark:text-white">{act.name}</p>
                       {act.tag && <span className={`text-[10px] font-black px-2 py-0.5 rounded-lg ${getTagColor(act.tag)}`}>{act.tag}</span>}
                     </div>
                     {act.desc && <p className="text-sm text-gray-500">{act.desc}</p>}
@@ -405,48 +586,54 @@ const currentItin = Object.keys(itinerary).length > 0 ? itinerary : DEFAULT_ITIN
   );
 
   return (
-    <section id="itinerary" className="py-6 md:py-20 px-4 md:px-6 lg:px-8 max-w-7xl mx-auto transition-colors duration-300">
-      {/* ── Header ── */}
-      <div className="text-center mb-10 relative">
-        <div className="inline-block bg-primary/10 text-primary px-4 py-1 rounded-full text-xs font-black uppercase tracking-widest mb-4">Travel Timeline</div>
-        <h2 className="text-3xl md:text-5xl font-black mb-4">📅 行程詳情</h2>
-        <p className="text-gray-600 dark:text-gray-400 mb-6">桌面版可一次瀏覽所有天數，手機版左右滑動切換</p>
-
+    <section id="itinerary" className="py-4 md:py-8 max-w-7xl mx-auto transition-colors duration-300">
+      {/* ── View toolbar ── */}
+      <div className="text-center mb-5 md:mb-7 relative">
         {/* ── View Mode Toggle + Actions ── */}
         <div className="flex flex-wrap justify-center gap-3">
           {/* View Mode Toggle */}
           <div className="flex bg-gray-100 dark:bg-slate-800 rounded-full p-1">
             <button
               onClick={() => setViewMode("timeline")}
-              className={`flex items-center gap-2 px-4 py-2 rounded-full font-bold text-sm transition-all ${viewMode === "timeline" ? "bg-white dark:bg-slate-700 shadow-md" : "text-gray-500 hover:text-gray-700"}`}
+              className={`flex min-h-11 items-center gap-2 px-4 py-2 rounded-full font-bold text-sm transition-all ${viewMode === "timeline" ? "bg-white dark:bg-slate-700 shadow-md" : "text-gray-500 hover:text-gray-700"}`}
               aria-pressed={viewMode === "timeline"}
             >
               <List className="w-4 h-4" /> 時間線
             </button>
             <button
               onClick={() => setViewMode("stats")}
-              className={`flex items-center gap-2 px-4 py-2 rounded-full font-bold text-sm transition-all ${viewMode === "stats" ? "bg-white dark:bg-slate-700 shadow-md" : "text-gray-500 hover:text-gray-700"}`}
+              className={`flex min-h-11 items-center gap-2 px-4 py-2 rounded-full font-bold text-sm transition-all ${viewMode === "stats" ? "bg-white dark:bg-slate-700 shadow-md" : "text-gray-500 hover:text-gray-700"}`}
               aria-pressed={viewMode === "stats"}
             >
               <BarChart3 className="w-4 h-4" /> 統計
             </button>
           </div>
 
-          <button
-            onClick={handleExport}
-            disabled={isExporting}
-            className="flex items-center justify-center gap-2 bg-gray-900 dark:bg-white text-white dark:text-gray-900 px-6 py-3 rounded-full font-black text-sm shadow-xl hover:scale-105 transition-all disabled:opacity-50"
-          >
-            {isExporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-            {isExporting ? "正在產生圖片..." : "匯出圖片"}
-          </button>
-          <button
-            onClick={() => downloadICS(currentItin)}
-            className="flex items-center justify-center gap-2 bg-primary text-white px-6 py-3 rounded-full font-black text-sm shadow-xl hover:scale-105 transition-all"
-          >
-            <CalendarPlus className="w-4 h-4" />
-            匯出 ICS
-          </button>
+          <details className="relative group text-left">
+            <summary className="min-h-11 cursor-pointer list-none [&::-webkit-details-marker]:hidden inline-flex items-center justify-center gap-2 bg-white dark:bg-slate-800 text-gray-800 dark:text-gray-100 border border-gray-200 dark:border-slate-700 px-4 py-2 rounded-full font-black text-sm shadow-sm hover:border-primary/40 transition-colors">
+              <MoreHorizontal aria-hidden="true" className="w-4 h-4" />
+              更多
+            </summary>
+            <div role="group" aria-label="匯出行程" className="absolute right-0 z-30 mt-2 w-52 space-y-2 rounded-2xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-2 shadow-2xl">
+              <button
+                type="button"
+                onClick={handleExport}
+                disabled={isExporting}
+                className="min-h-11 w-full flex items-center gap-2 bg-gray-900 dark:bg-white text-white dark:text-gray-900 px-4 py-2 rounded-xl font-black text-sm transition-colors disabled:opacity-50"
+              >
+                {isExporting ? <Loader2 aria-hidden="true" className="w-4 h-4 animate-spin" /> : <Download aria-hidden="true" className="w-4 h-4" />}
+                {isExporting ? "正在產生圖片..." : "匯出圖片"}
+              </button>
+              <button
+                type="button"
+                onClick={() => downloadICS(currentItin)}
+                className="min-h-11 w-full flex items-center gap-2 bg-primary text-white px-4 py-2 rounded-xl font-black text-sm transition-colors"
+              >
+                <CalendarPlus aria-hidden="true" className="w-4 h-4" />
+                匯出 ICS
+              </button>
+            </div>
+          </details>
         </div>
       </div>
 
@@ -466,7 +653,7 @@ const currentItin = Object.keys(itinerary).length > 0 ? itinerary : DEFAULT_ITIN
               <div className="text-sm text-gray-500 font-bold">移動時間</div>
             </div>
             <div className="bg-gray-50 dark:bg-slate-900 p-6 rounded-2xl text-center">
-              <div className="text-4xl font-black text-green-500 mb-2">{dayKeys.length}</div>
+              <div className="text-4xl font-black text-green-700 dark:text-green-300 mb-2">{dayKeys.length}</div>
               <div className="text-sm text-gray-500 font-bold">天數</div>
             </div>
             <div className="bg-gray-50 dark:bg-slate-900 p-6 rounded-2xl text-center">
@@ -518,7 +705,7 @@ const currentItin = Object.keys(itinerary).length > 0 ? itinerary : DEFAULT_ITIN
               <div ref={tabScrollRef} className="flex-1 flex gap-2 overflow-x-auto scrollbar-hide pb-1 snap-x snap-mandatory scroll-smooth">
                 {dayKeys.map((dayKey, i) => {
                   const dayData = currentItin[dayKey];
-                  const isActive = i === activeDayIndex;
+                  const isActive = i === safeActiveDayIndex;
                   const emoji = dayData.title.split(" ")[0];
                   const label = dayData.title.replace(/^[^\s]+\s+Day\s+\d+\s*[-–—:：]?\s*/, "");
                   return (
@@ -533,7 +720,7 @@ const currentItin = Object.keys(itinerary).length > 0 ? itinerary : DEFAULT_ITIN
                     >
                       <span className="text-lg">{emoji}</span>
                       <div className="text-left leading-tight">
-                        <div className="text-[10px] uppercase tracking-widest opacity-70">Day {i + 1}</div>
+                        <div className={`text-[10px] uppercase tracking-widest ${isActive ? "text-white" : "text-gray-600 dark:text-gray-300"}`}>Day {i + 1}</div>
                         <div className="text-xs font-black truncate max-w-[6rem]">{label}</div>
                       </div>
                     </button>
@@ -543,43 +730,62 @@ const currentItin = Object.keys(itinerary).length > 0 ? itinerary : DEFAULT_ITIN
             </div>
 
             {/* ── Active Day Header ── */}
-            <div className="bg-gradient-to-r from-primary to-accent text-white p-5 rounded-[2rem] shadow-xl mb-6 flex items-center gap-4">
+            <div className="bg-gradient-to-r from-primary to-accent text-white p-4 sm:p-5 rounded-[2rem] shadow-xl mb-6 flex items-center gap-3 sm:gap-4">
               <div className="bg-white/20 p-3 rounded-2xl backdrop-blur-sm">
                 <Calendar className="w-6 h-6" />
               </div>
-              <div className="flex-1">
-                <h3 className="text-xl font-black leading-tight">{activeDayData.title}</h3>
-                <p className="text-sm font-bold text-white/70 mt-0.5">{activeDayData.date}・{activeDayData.activities.length} 項行程</p>
+              <div className="min-w-0 flex-1">
+                <h3 className="text-lg sm:text-xl font-black leading-tight text-balance">{activeDayData.title}</h3>
+                <p className="text-xs sm:text-sm font-bold text-white mt-0.5 leading-snug">{activeDayData.date}・{activeDayData.activities.length} 項行程</p>
               </div>
               <div className="flex items-center gap-1">
-                <button onClick={() => goToDay(activeDayIndex - 1)} disabled={activeDayIndex === 0} className="p-2 rounded-xl bg-white/20 disabled:opacity-30 transition-all">
+                <button onClick={() => goToDay(safeActiveDayIndex - 1)} aria-label="前一天" disabled={safeActiveDayIndex === 0} className="w-11 h-11 shrink-0 inline-flex items-center justify-center rounded-xl bg-white/20 disabled:opacity-30 transition-all">
                   <ChevronLeft className="w-5 h-5" />
                 </button>
-                <button onClick={() => goToDay(activeDayIndex + 1)} disabled={activeDayIndex === dayKeys.length - 1} className="p-2 rounded-xl bg-white/20 disabled:opacity-30 transition-all">
+                <button onClick={() => goToDay(safeActiveDayIndex + 1)} aria-label="後一天" disabled={safeActiveDayIndex === dayKeys.length - 1} className="w-11 h-11 shrink-0 inline-flex items-center justify-center rounded-xl bg-white/20 disabled:opacity-30 transition-all">
                   <ChevronRight className="w-5 h-5" />
                 </button>
               </div>
             </div>
 
             {/* ── Activities Timeline (mobile) ── */}
-            <div className="relative space-y-6 before:absolute before:inset-0 before:ml-[4.5rem] before:-translate-x-px before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-gray-200 dark:before:via-slate-700 before:to-transparent animate-in fade-in slide-in-from-right-4 duration-400" key={activeDayKey}>
+            <div className="relative space-y-6 before:absolute before:inset-0 before:left-[2.25rem] before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-gray-200 dark:before:via-slate-700 before:to-transparent animate-in fade-in slide-in-from-right-4 duration-400" key={activeDayKey}>
               {activeDayData.activities.map((act, idx) => (
-                <div key={idx} className="relative flex items-start gap-6 group">
-                  <div className="flex items-center justify-center w-6 h-6 rounded-full border-4 border-white dark:border-slate-900 bg-primary absolute left-[4.5rem] -translate-x-1/2 z-10 shadow-lg group-hover:scale-125 transition-transform"></div>
-                  <div className="w-[4.5rem] pr-2 text-right text-primary font-black text-xl pt-0.5 shrink-0 tabular-nums">{act.time}</div>
+                <div key={act.syncId} className="relative flex items-start gap-6 group">
+                  <div className="w-[4.5rem] pr-2 text-right text-primary font-black text-xl pt-0.5 shrink-0 tabular-nums relative z-10 px-1">{act.time}</div>
                   <div className="flex-1 pb-2">
-                    <div className="bg-white dark:bg-slate-800 p-5 rounded-[1.5rem] shadow-sm border border-gray-100 dark:border-slate-700 hover:shadow-xl transition-all relative group/card overflow-hidden">
+                    {activeConflicts.find((conflict) => conflict.index === idx) && (
+                      <div className="mb-2 flex items-start gap-1.5 rounded-xl bg-orange-50 px-3 py-2 text-xs font-bold text-orange-800 dark:bg-orange-900/20 dark:text-orange-200">
+                        <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                        {activeConflicts.find((conflict) => conflict.index === idx)?.message}
+                      </div>
+                    )}
+                    <div className={`trip-card bg-white dark:bg-slate-800 p-5 rounded-[1.5rem] shadow-sm border border-gray-100 dark:border-slate-700 hover:shadow-xl transition-shadow relative group/card overflow-hidden ${act.status === "done" ? "opacity-75" : act.status === "skipped" ? "opacity-60" : ""}`}>
                       <div className="absolute top-0 right-0 w-2 h-full bg-primary opacity-0 group-hover/card:opacity-100 transition-opacity"></div>
                       <div className="flex flex-col justify-between gap-3 mb-3">
-                        <h4 className="font-black text-xl text-gray-900 dark:text-white leading-tight">{act.name}</h4>
-                        {act.tag && <span className={`self-start text-[10px] font-black px-3 py-1 rounded-lg uppercase tracking-widest ${getTagColor(act.tag)}`}>{act.tag}</span>}
+                        <p className="font-black text-xl text-gray-900 dark:text-white leading-tight">{act.name}</p>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          {act.status === "done" && <span className="inline-flex items-center gap-1 rounded-lg bg-emerald-100 px-2 py-1 text-[10px] font-black text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200"><CheckCircle2 className="h-3 w-3" /> 已完成</span>}
+                          {act.status === "skipped" && <span className="inline-flex items-center gap-1 rounded-lg bg-slate-200 px-2 py-1 text-[10px] font-black text-slate-700 dark:bg-slate-700 dark:text-slate-200"><CircleSlash2 className="h-3 w-3" /> 已略過</span>}
+                          {act.tag && <span className={`self-start text-[10px] font-black px-3 py-1 rounded-lg uppercase tracking-widest ${getTagColor(act.tag)}`}>{act.tag}</span>}
+                        </div>
                       </div>
                       {act.desc && <p className="text-base text-gray-500 dark:text-gray-400 leading-relaxed mb-4">{act.desc}</p>}
-                      <div className="flex gap-2 transition-all duration-300">
-                        <button onClick={() => openModal(activeDayKey, idx)} aria-label={`編輯「${act.name}」`} className="w-11 h-11 flex items-center justify-center text-primary hover:bg-primary/10 rounded-xl transition-colors active:scale-90"><Pencil className="w-4 h-4" /></button>
-                        <button onClick={() => deleteActivity(activeDayKey, idx)} aria-label={`刪除「${act.name}」`} className="w-11 h-11 flex items-center justify-center text-red-500 hover:bg-red-50 rounded-xl transition-colors active:scale-90"><Trash2 className="w-4 h-4" /></button>
+                      <div className="grid grid-cols-3 gap-2 transition-colors duration-300">
+                        <button onClick={() => openModal(activeDayKey, act)} aria-label={`編輯「${act.name}」`} className="w-full min-w-11 h-11 flex items-center justify-center text-primary hover:bg-primary/10 rounded-xl transition-colors active:scale-90"><Pencil className="w-4 h-4" /></button>
+                        <button onClick={() => openBudgetModal(act)} aria-label={`記錄「${act.name}」支出`} className="w-full min-w-11 h-11 flex items-center justify-center text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded-xl transition-colors active:scale-90"><Wallet className="w-4 h-4" /></button>
+                        <button onClick={() => findNearbyFood(act)} aria-label={`找「${act.name}」附近美食`} className="w-full min-w-11 h-11 flex items-center justify-center text-orange-500 hover:bg-orange-50 dark:hover:bg-orange-900/20 rounded-xl transition-colors active:scale-90"><UtensilsCrossed className="w-4 h-4" /></button>
+                        {getActivityNavigationUrl(act) && <a href={getActivityNavigationUrl(act)!} target="_blank" rel="noopener noreferrer" aria-label={`導航至「${act.name}」`} className="w-full min-w-11 h-11 flex items-center justify-center text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-xl transition-colors active:scale-90"><Navigation2 className="w-4 h-4" /></a>}
+                        <button onClick={() => deleteActivity(activeDayKey, act)} aria-label={`刪除「${act.name}」`} className="w-full min-w-11 h-11 flex items-center justify-center text-red-500 hover:bg-red-50 rounded-xl transition-colors active:scale-90"><Trash2 className="w-4 h-4" /></button>
                       </div>
                     </div>
+                    {travelTimes.get(idx) && (
+                      <div className="mt-2 flex items-center gap-2 rounded-xl border border-dashed border-gray-200 px-3 py-2 text-xs text-gray-500 dark:border-slate-700 dark:text-gray-300">
+                        <MapPin className="h-4 w-4 shrink-0 text-primary" />
+                        <span className="font-bold">下一站約 {travelTimes.get(idx)!.duration} 分鐘</span>
+                        <span>· {travelTimes.get(idx)!.mode}</span>
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}
@@ -591,7 +797,15 @@ const currentItin = Object.keys(itinerary).length > 0 ? itinerary : DEFAULT_ITIN
             {/* ── Progress Dots ── */}
             <div className="flex justify-center gap-2 mt-8">
               {dayKeys.map((_, i) => (
-                <button key={i} onClick={() => goToDay(i)} className={`rounded-full transition-all duration-300 ${i === activeDayIndex ? "w-8 h-2.5 bg-primary" : "w-2.5 h-2.5 bg-gray-300 dark:bg-slate-600"}`} />
+                <button
+                  key={i}
+                  onClick={() => goToDay(i)}
+                  aria-label={`前往第 ${i + 1} 天`}
+                  aria-current={i === safeActiveDayIndex ? "step" : undefined}
+                  className="w-11 h-11 inline-flex items-center justify-center rounded-full transition-transform active:scale-90"
+                >
+                  <span aria-hidden className={`rounded-full transition-all duration-300 ${i === safeActiveDayIndex ? "w-8 h-2.5 bg-primary" : "w-2.5 h-2.5 bg-gray-300 dark:bg-slate-600"}`} />
+                </button>
               ))}
             </div>
           </div>
@@ -602,7 +816,7 @@ const currentItin = Object.keys(itinerary).length > 0 ? itinerary : DEFAULT_ITIN
             <div className="grid grid-cols-6 gap-3 mb-6">
               {dayKeys.map((dayKey, i) => {
                 const dayData = currentItin[dayKey];
-                const isActive = i === activeDayIndex;
+                const isActive = i === safeActiveDayIndex;
                 return (
                   <button
                     key={dayKey}
@@ -613,9 +827,9 @@ const currentItin = Object.keys(itinerary).length > 0 ? itinerary : DEFAULT_ITIN
                       : "bg-white dark:bg-slate-800 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-slate-700 hover:border-primary/40 hover:shadow-lg"
                       }`}
                   >
-                    <div className={`text-xs font-black uppercase tracking-widest ${isActive ? "text-white/60" : "text-gray-400"}`}>Day {i + 1}</div>
+                    <div className={`text-xs font-black uppercase tracking-widest ${isActive ? "text-white" : "text-gray-400"}`}>Day {i + 1}</div>
                     <div className="font-black text-sm leading-tight line-clamp-1 mt-1" title={dayData.title}>{dayData.title.replace(/^[^\s]+\s+Day\s+\d+\s*[-–—:：]?\s*/, "")}</div>
-                    <div className={`text-xs font-extrabold mt-1 ${isActive ? "text-white/70" : "text-gray-500"}`}>{dayData.date}・{dayData.activities.length} 項</div>
+                    <div className={`text-xs font-extrabold mt-1 ${isActive ? "text-white" : "text-gray-500"}`}>{dayData.date}・{dayData.activities.length} 項</div>
                     {isActive && (
                       <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 w-6 h-6 bg-gradient-to-r from-primary to-accent rotate-45 rounded-sm shadow-lg"></div>
                     )}
@@ -631,61 +845,67 @@ const currentItin = Object.keys(itinerary).length > 0 ? itinerary : DEFAULT_ITIN
                   <div className="flex items-center gap-2 flex-1">
                     <input
                       autoFocus
+                      aria-label="行程標題"
                       value={titleInput}
                       onChange={e => setTitleInput(e.target.value)}
                       onKeyDown={e => { if (e.key === "Enter") handleTitleSave(activeDayKey); if (e.key === "Escape") setEditingTitleDay(null); }}
                       className="flex-1 text-2xl font-black bg-transparent border-b-2 border-primary outline-none py-1 text-gray-900 dark:text-white"
                     />
-                    <button onClick={() => handleTitleSave(activeDayKey)} className="p-2 bg-primary text-white rounded-xl hover:bg-primary-dark transition-colors"><Check className="w-4 h-4" /></button>
-                    <button onClick={() => setEditingTitleDay(null)} className="p-2 bg-gray-200 dark:bg-slate-700 rounded-xl hover:bg-gray-300 dark:hover:bg-slate-600 transition-colors"><X className="w-4 h-4" /></button>
+                    <button onClick={() => handleTitleSave(activeDayKey)} aria-label="儲存行程標題" className="w-11 h-11 inline-flex items-center justify-center bg-primary text-white rounded-xl hover:bg-primary-dark transition-colors"><Check className="w-4 h-4" /></button>
+                    <button onClick={() => setEditingTitleDay(null)} aria-label="取消編輯行程標題" className="w-11 h-11 inline-flex items-center justify-center bg-gray-200 dark:bg-slate-700 rounded-xl hover:bg-gray-300 dark:hover:bg-slate-600 transition-colors"><X className="w-4 h-4" /></button>
                   </div>
                 ) : (
                   <button
                     aria-label="點擊編輯標題"
-                    className="text-2xl font-black text-gray-900 dark:text-white flex items-center gap-3 cursor-pointer hover:text-primary transition-colors group/title text-left"
+                    className="min-h-11 text-2xl font-black text-gray-900 dark:text-white flex items-center gap-3 cursor-pointer hover:text-primary transition-colors group/title text-left"
                     onClick={() => { setEditingTitleDay(activeDayKey); setTitleInput(activeDayData.title); }}
                   >
                     <Calendar className="w-6 h-6 text-primary" />
-                    {activeDayData.title}
-                    <Pencil className="w-4 h-4 opacity-0 group-hover/title:opacity-100 transition-opacity hidden md:inline" />
+                    <h3>{activeDayData.title}</h3>
+                    <Pencil className="w-4 h-4 opacity-0 group-hover/title:opacity-100 group-focus-visible/title:opacity-100 transition-opacity hidden md:inline" />
                   </button>
                 )}
                 <span className="text-sm font-bold text-gray-400">{activeDayData.date}・{activeDayData.activities.length} 項行程</span>
               </div>
 
-              <div className="relative space-y-4 before:absolute before:inset-0 before:ml-[5rem] before:-translate-x-px before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-gray-200 dark:before:via-slate-700 before:to-transparent">
+              <div className="relative space-y-4 before:absolute before:inset-0 before:left-[2.5rem] before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-gray-200 dark:before:via-slate-700 before:to-transparent">
                 {activeDayData.activities.map((act, idx) => (
-                  <div key={idx} className="relative flex items-start gap-8 group">
-                    <div className="flex items-center justify-center w-5 h-5 rounded-full border-4 border-white dark:border-slate-800 bg-primary absolute left-[5rem] -translate-x-1/2 z-10 shadow-lg group-hover:scale-125 transition-transform"></div>
-                    <div className="w-[5rem] pr-3 text-right text-primary font-black text-xl pt-0.5 shrink-0 tabular-nums">{act.time}</div>
+                  <div key={act.syncId} className="relative flex items-start gap-8 group">
+                    <div className="w-[5rem] pr-3 text-right text-primary font-black text-xl pt-0.5 shrink-0 tabular-nums relative z-10 px-1">{act.time}</div>
                     <div className="flex-1 pb-1">
                       {/* Conflict Warning */}
                       {activeConflicts.find(c => c.index === idx) && (
-                        <div className="flex items-center gap-1.5 text-xs text-orange-500 font-bold mb-2 px-3 py-1.5 bg-orange-50 dark:bg-orange-900/20 rounded-lg w-fit">
+                        <div className="flex items-center gap-1.5 text-xs text-orange-800 dark:text-orange-200 font-bold mb-2 px-3 py-1.5 bg-orange-50 dark:bg-orange-900/20 rounded-lg w-fit">
                           <AlertTriangle className="w-3.5 h-3.5" /> {activeConflicts.find(c => c.index === idx)?.message}
                         </div>
                       )}
-                      <div className="bg-gray-50 dark:bg-slate-900/50 p-4 rounded-2xl hover:shadow-md transition-all relative group/card overflow-hidden">
+                      <div className={`bg-gray-50 dark:bg-slate-900/50 p-4 rounded-2xl hover:shadow-md transition-shadow relative group/card overflow-hidden ${act.status === "done" ? "opacity-75" : act.status === "skipped" ? "opacity-60" : ""}`}>
                         <div className="absolute top-0 right-0 w-1.5 h-full bg-primary opacity-0 group-hover/card:opacity-100 transition-opacity"></div>
                         <div className="flex items-center justify-between gap-3 mb-1">
-                          <h4 className="font-black text-lg text-gray-900 dark:text-white leading-tight">{act.name}</h4>
-                          {act.tag && <span className={`text-xs font-black px-2.5 py-0.5 rounded-lg uppercase tracking-widest ${getTagColor(act.tag)}`}>{act.tag}</span>}
+                          <p className="font-black text-lg text-gray-900 dark:text-white leading-tight">{act.name}</p>
+                          <div className="flex flex-wrap items-center justify-end gap-1.5">
+                            {act.status === "done" && <span className="inline-flex items-center gap-1 rounded-lg bg-emerald-100 px-2 py-1 text-[10px] font-black text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200"><CheckCircle2 className="h-3 w-3" /> 已完成</span>}
+                            {act.status === "skipped" && <span className="inline-flex items-center gap-1 rounded-lg bg-slate-200 px-2 py-1 text-[10px] font-black text-slate-700 dark:bg-slate-700 dark:text-slate-200"><CircleSlash2 className="h-3 w-3" /> 已略過</span>}
+                            {act.tag && <span className={`text-xs font-black px-2.5 py-0.5 rounded-lg uppercase tracking-widest ${getTagColor(act.tag)}`}>{act.tag}</span>}
+                          </div>
                         </div>
                         {act.desc && <p className="text-sm text-gray-500 dark:text-gray-400 leading-relaxed">{act.desc}</p>}
-                        <div className="flex gap-1 md:opacity-0 md:group-hover:opacity-100 transition-all duration-300 mt-2">
-                          <button onClick={() => openModal(activeDayKey, idx)} aria-label={`編輯「${act.name}」`} className="w-11 h-11 flex items-center justify-center text-primary hover:bg-primary/10 rounded-xl transition-colors active:scale-90"><Pencil className="w-3.5 h-3.5" /></button>
-                          <button onClick={() => deleteActivity(activeDayKey, idx)} aria-label={`刪除「${act.name}」`} className="w-11 h-11 flex items-center justify-center text-red-500 hover:bg-red-50 rounded-xl transition-colors active:scale-90"><Trash2 className="w-3.5 h-3.5" /></button>
+                        <div className="flex flex-wrap gap-1 transition-opacity duration-300 mt-2">
+                          <button onClick={() => openModal(activeDayKey, act)} aria-label={`編輯「${act.name}」`} className="w-11 h-11 shrink-0 flex items-center justify-center text-primary hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded-xl transition-colors active:scale-90"><Pencil className="w-3.5 h-3.5" /></button>
+                          <button onClick={() => openBudgetModal(act)} aria-label={`記錄「${act.name}」支出`} className="w-11 h-11 shrink-0 flex items-center justify-center text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 rounded-xl transition-colors active:scale-90"><Wallet className="w-3.5 h-3.5" /></button>
+                          <button onClick={() => findNearbyFood(act)} aria-label={`找「${act.name}」附近美食`} className="w-11 h-11 shrink-0 flex items-center justify-center text-orange-500 hover:bg-orange-50 dark:hover:bg-orange-900/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 rounded-xl transition-colors active:scale-90"><UtensilsCrossed className="w-3.5 h-3.5" /></button>
+                          {getActivityNavigationUrl(act) && <a href={getActivityNavigationUrl(act)!} target="_blank" rel="noopener noreferrer" aria-label={`導航至「${act.name}」`} className="w-11 h-11 shrink-0 flex items-center justify-center text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded-xl transition-colors active:scale-90"><Navigation2 className="w-3.5 h-3.5" /></a>}
+                          <button onClick={() => deleteActivity(activeDayKey, act)} aria-label={`刪除「${act.name}」`} className="w-11 h-11 shrink-0 flex items-center justify-center text-red-500 hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 rounded-xl transition-colors active:scale-90"><Trash2 className="w-3.5 h-3.5" /></button>
                         </div>
                       </div>
+                      {travelTimes.get(idx) && (
+                        <div className="mt-2 flex items-center gap-2 rounded-xl border border-dashed border-gray-200 px-3 py-2 text-xs text-gray-500 dark:border-slate-700 dark:text-gray-300">
+                          <MapPin className="h-4 w-4 shrink-0 text-primary" />
+                          <span className="font-bold">下一站約 {travelTimes.get(idx)!.duration} 分鐘</span>
+                          <span>· {travelTimes.get(idx)!.mode}</span>
+                        </div>
+                      )}
                     </div>
-                    {/* Travel Time to Next Activity */}
-                    {travelTimes.get(idx) && (
-                      <div className="flex items-center gap-2 ml-16 sm:ml-20 md:ml-[5rem] mt-2 text-xs sm:text-sm text-gray-400">
-                        <MapPin className="w-4 h-4" />
-                        <span className="font-medium">↓ {travelTimes.get(idx)!.duration} 分鐘</span>
-                        <span className="text-gray-300">({travelTimes.get(idx)!.mode})</span>
-                      </div>
-                    )}
                   </div>
                 ))}
                 <button onClick={() => openModal(activeDayKey)} className="w-full p-4 border-2 border-dashed border-gray-200 dark:border-slate-700 rounded-2xl text-gray-400 hover:text-primary hover:border-primary hover:bg-primary/5 transition-all flex items-center justify-center gap-2 font-black text-sm uppercase tracking-widest">
@@ -699,32 +919,62 @@ const currentItin = Object.keys(itinerary).length > 0 ? itinerary : DEFAULT_ITIN
 
       {/* ── Edit/Add Modal ── */}
       {editingModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-300">
-          <div className="bg-white dark:bg-slate-800 w-full max-w-lg rounded-[2.5rem] shadow-2xl overflow-hidden animate-in zoom-in-95 slide-in-from-bottom-10 duration-300">
-            <div className="p-6 md:p-8 bg-gradient-to-r from-primary to-accent text-white flex justify-between items-center">
+        <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-300">
+          <div
+            ref={editingDialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="itinerary-edit-title"
+            aria-describedby={formErrors.conflict ? "itinerary-edit-conflict" : undefined}
+            tabIndex={-1}
+            className="bg-white dark:bg-slate-800 w-full max-w-lg max-h-[calc(100dvh-1.5rem-var(--sat)-var(--sab))] sm:max-h-[calc(100dvh-2rem-var(--sat)-var(--sab))] rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 slide-in-from-bottom-10 duration-300 outline-none"
+          >
+            <div className="p-6 md:p-8 bg-gradient-to-r from-primary to-accent text-white flex justify-between items-center shrink-0">
               <div className="flex items-center gap-3">
                 <div className="bg-white/20 p-2 rounded-xl"><Calendar className="w-5 h-5" /></div>
-                <h3 className="text-2xl font-black">{editingModal.index >= 0 ? "編輯計畫" : "新增計畫"}</h3>
+                <h3 id="itinerary-edit-title" className="text-2xl font-black">{editingModal.activitySyncId ? "編輯計畫" : "新增計畫"}</h3>
               </div>
-              <button onClick={() => setEditingModal(null)} className="p-2 hover:bg-white/20 rounded-full transition-colors">
+              <button onClick={closeEditingModal} data-autofocus aria-label="關閉行程編輯" className="w-11 h-11 inline-flex items-center justify-center hover:bg-white/20 rounded-full transition-colors">
                 <X className="w-6 h-6" />
               </button>
             </div>
 
-            <div className="p-6 md:p-10 space-y-6">
-              <div className="grid grid-cols-2 gap-4">
+            <form
+              noValidate
+              onSubmit={(event) => {
+                event.preventDefault();
+                handleSave();
+              }}
+              className="p-6 md:p-10 space-y-6 overflow-y-auto overscroll-contain"
+            >
+              {formErrors.conflict && (
+                <div id="itinerary-edit-conflict" role="alert" className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm font-black leading-relaxed text-amber-950 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-100">
+                  {formErrors.conflict}
+                </div>
+              )}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <label className="text-[10px] sm:text-xs font-black text-gray-400 uppercase tracking-widest ml-1">抵達時間</label>
+                  <label htmlFor="itinerary-time" className="text-[10px] sm:text-xs font-black text-gray-400 uppercase tracking-widest ml-1">抵達時間 <span aria-hidden="true">*</span></label>
                   <input
+                    ref={timeInputRef}
+                    id="itinerary-time"
                     type="time"
                     value={formData.time}
-                    onChange={e => setFormData({ ...formData, time: e.target.value })}
+                    onChange={e => {
+                      setFormData({ ...formData, time: e.target.value });
+                      if (formErrors.time) setFormErrors(previous => ({ ...previous, time: undefined }));
+                    }}
+                    required
+                    aria-invalid={Boolean(formErrors.time)}
+                    aria-describedby={formErrors.time ? "itinerary-time-error" : undefined}
                     className="w-full p-4 rounded-2xl border-2 border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 focus:border-primary focus:outline-none transition-all font-black text-lg"
                   />
+                  {formErrors.time && <p id="itinerary-time-error" role="alert" className="text-sm font-bold text-red-600 dark:text-red-400">{formErrors.time}</p>}
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[10px] sm:text-xs font-black text-gray-400 uppercase tracking-widest ml-1">活動類型</label>
+                  <label htmlFor="itinerary-tag" className="text-[10px] sm:text-xs font-black text-gray-400 uppercase tracking-widest ml-1">活動類型</label>
                   <select
+                    id="itinerary-tag"
                     value={formData.tag}
                     onChange={e => setFormData({ ...formData, tag: e.target.value })}
                     className="w-full p-4 rounded-2xl border-2 border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 focus:border-primary focus:outline-none transition-all font-bold"
@@ -739,19 +989,29 @@ const currentItin = Object.keys(itinerary).length > 0 ? itinerary : DEFAULT_ITIN
               </div>
 
               <div className="space-y-2">
-                <label className="text-[10px] sm:text-xs font-black text-gray-400 uppercase tracking-widest ml-1">景點或店名</label>
+                <label htmlFor="itinerary-name" className="text-[10px] sm:text-xs font-black text-gray-400 uppercase tracking-widest ml-1">景點或店名 <span aria-hidden="true">*</span></label>
                 <input
+                  ref={nameInputRef}
+                  id="itinerary-name"
                   type="text"
                   placeholder="例如：東京鐵塔、築地市場..."
                   value={formData.name}
-                  onChange={e => setFormData({ ...formData, name: e.target.value })}
+                  onChange={e => {
+                    setFormData({ ...formData, name: e.target.value });
+                    if (formErrors.name) setFormErrors(previous => ({ ...previous, name: undefined }));
+                  }}
+                  required
+                  aria-invalid={Boolean(formErrors.name)}
+                  aria-describedby={formErrors.name ? "itinerary-name-error" : undefined}
                   className="w-full p-5 rounded-2xl border-2 border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 focus:border-primary focus:outline-none transition-all font-black text-xl"
                 />
+                {formErrors.name && <p id="itinerary-name-error" role="alert" className="text-sm font-bold text-red-600 dark:text-red-400">{formErrors.name}</p>}
               </div>
 
               <div className="space-y-2">
-                <label className="text-[10px] sm:text-xs font-black text-gray-400 uppercase tracking-widest ml-1">詳細說明</label>
+                <label htmlFor="itinerary-description" className="text-[10px] sm:text-xs font-black text-gray-400 uppercase tracking-widest ml-1">詳細說明</label>
                 <textarea
+                  id="itinerary-description"
                   placeholder="補充交通資訊、門票價格、想吃的料理..."
                   value={formData.desc}
                   onChange={e => setFormData({ ...formData, desc: e.target.value })}
@@ -761,12 +1021,114 @@ const currentItin = Object.keys(itinerary).length > 0 ? itinerary : DEFAULT_ITIN
 
               <div className="pt-4 flex gap-4">
                 <button
-                  onClick={handleSave}
+                  type="submit"
                   className="flex-1 py-5 rounded-[1.5rem] font-black bg-primary text-white hover:bg-primary-dark shadow-xl shadow-primary/30 transition-all flex items-center justify-center gap-3 uppercase tracking-widest"
                 >
                   <Check className="w-6 h-6" /> 儲存變更
                 </button>
               </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── 記錄支出 Modal ── */}
+      {budgetModal && (
+        <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-300">
+          <div
+            ref={budgetDialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="itinerary-budget-title"
+            tabIndex={-1}
+            className="bg-white dark:bg-slate-800 w-full max-w-md max-h-[calc(100dvh-1.5rem-var(--sat)-var(--sab))] sm:max-h-[calc(100dvh-2rem-var(--sat)-var(--sab))] rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 slide-in-from-bottom-10 duration-300 outline-none"
+          >
+            <div className="p-6 bg-gradient-to-r from-emerald-500 to-teal-500 text-white flex justify-between items-center shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="bg-white/20 p-2 rounded-xl"><Wallet className="w-5 h-5" /></div>
+                <h3 id="itinerary-budget-title" className="text-xl font-black">記錄實際支出</h3>
+              </div>
+              <button onClick={closeBudgetModal} data-autofocus className="w-11 h-11 inline-flex items-center justify-center hover:bg-white/20 rounded-full transition-colors" aria-label="關閉記錄支出">
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            <div className="p-6 space-y-5 overflow-y-auto overscroll-contain">
+              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs font-bold text-emerald-900 dark:border-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-100">
+                <p>將記錄在 {DEFAULT_ITINERARY[budgetModal.day]?.date ?? "目前行程日"}。請在實際支付後使用，避免尚未消費的計畫提前扣除預算。</p>
+                <p className="mt-1 text-emerald-800 dark:text-emerald-200">
+                  預設由 {TRIP_TRAVELERS[0]} 付款、{TRIP_TRAVELERS.join(" 與 ")}共同分攤；可在旅費工具內修改。
+                </p>
+              </div>
+              <div className="space-y-2">
+                <label htmlFor="itinerary-budget-name" className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">項目名稱</label>
+                <input
+                  id="itinerary-budget-name"
+                  type="text"
+                  value={budgetModal.name}
+                  onChange={(e) => setBudgetModal({ ...budgetModal, name: e.target.value })}
+                  className="w-full p-4 rounded-2xl border-2 border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 focus:border-emerald-500 focus:outline-none transition-all font-bold text-lg"
+                />
+              </div>
+              <div className="space-y-2">
+                <label htmlFor="itinerary-budget-amount" className="text-[10px] font-black text-gray-600 dark:text-gray-300 uppercase tracking-widest ml-1">金額（日圓 ¥，最低 ¥1）</label>
+                <input
+                  ref={budgetAmountInputRef}
+                  id="itinerary-budget-amount"
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  max={MAX_YEN_AMOUNT}
+                  step={1}
+                  placeholder="例如 1200"
+                  value={budgetModal.amount}
+                  onChange={(e) => {
+                    setBudgetModal({ ...budgetModal, amount: e.target.value });
+                    setBudgetError("");
+                  }}
+                  aria-invalid={Boolean(budgetError)}
+                  aria-describedby={budgetError ? "itinerary-budget-error" : "itinerary-budget-hint"}
+                  className="w-full p-4 rounded-2xl border-2 border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 focus:border-emerald-500 focus:outline-none transition-all font-black text-xl tabular-nums"
+                  autoFocus
+                />
+                <p id="itinerary-budget-hint" className="text-xs font-bold text-gray-600 dark:text-gray-300">已依活動類別帶入建議金額，可按實際費用修改。</p>
+                {budgetError && <p id="itinerary-budget-error" role="alert" className="text-sm font-black text-red-700 dark:text-red-300">{budgetError}</p>}
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">類別</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {Object.entries(BUDGET_CATEGORIES).map(([key, cat]) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => {
+                        const oldSuggestion = BUDGET_SUGGESTED_AMOUNTS[budgetModal.category];
+                        setBudgetModal({
+                          ...budgetModal,
+                          category: key,
+                          amount: Number(budgetModal.amount) === oldSuggestion
+                            ? String(BUDGET_SUGGESTED_AMOUNTS[key] ?? BUDGET_SUGGESTED_AMOUNTS.other)
+                            : budgetModal.amount,
+                        });
+                        setBudgetError("");
+                      }}
+                      className={`p-3 rounded-2xl border-2 text-sm font-bold transition-all ${budgetModal.category === key
+                        ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300"
+                        : "border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 text-gray-500"
+                        }`}
+                    >
+                      <span className="block text-xl mb-0.5">{cat.icon}</span>
+                      {cat.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => void confirmAddToBudget()}
+                className="w-full py-4 rounded-2xl font-black bg-emerald-500 hover:bg-emerald-600 text-white shadow-xl shadow-emerald-500/30 transition-all active:scale-95 flex items-center justify-center gap-2"
+              >
+                <Check className="w-5 h-5" /> 確認記錄
+              </button>
             </div>
           </div>
         </div>

@@ -1,191 +1,166 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { differenceInDays, differenceInHours, differenceInMinutes, differenceInSeconds } from "date-fns";
-import { Heart, ArrowDownCircle, CalendarDays, Compass, Utensils, Train } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { differenceInHours, differenceInMinutes, differenceInSeconds } from "date-fns";
+import { ArrowDown, ArrowRight, CalendarDays, Plane } from "lucide-react";
+import { TRIP_END_AT, TRIP_START_AT, getTripTimelineState } from "@/lib/trip-dates";
+import { TokyoMark } from "@/components/TokyoBrand";
 
-const TRIP_DATE = new Date("2026-09-01T08:30:00+09:00");
-const TRIP_END = new Date("2026-09-06T23:59:59+09:00");
-const TOTAL_TRIP_DAYS = 6;
+const TRIP_DATE = new Date(TRIP_START_AT);
+const TRIP_END = new Date(TRIP_END_AT);
+const MS_PER_DAY = 1000 * 60 * 60 * 24;
 
-export function Hero({ onNavigate }: { onNavigate?: (tab: string) => void }) {
-    const [timeLeft, setTimeLeft] = useState({
-        days: 0, hours: 0, minutes: 0, seconds: 0, isDone: false,
+type Phase = "pre" | "ongoing" | "done";
+type TimerState = {
+    phase: Phase;
+    days: number;
+    hours: number;
+    minutes: number;
+    seconds: number;
+    // 旅程進行中用：目前已過第幾天（1-based）、距返程的剩餘時間
+    currentDay?: number;
+};
+const STATE_ZERO: TimerState = { phase: "done", days: 0, hours: 0, minutes: 0, seconds: 0 };
+const pad = (n: number, w = 2) => String(Math.max(0, n)).padStart(w, "0");
+
+const padDays = (n: number) => n >= 100 ? String(n).padStart(3, "0") : String(Math.max(0, n)).padStart(2, "0");
+
+export function Hero({ onNavigate, pushControls }: { onNavigate?: (tab: string) => void; pushControls?: React.ReactNode }) {
+    const [timeLeft, setTimeLeft] = useState<TimerState>({
+        phase: "pre", days: 0, hours: 0, minutes: 0, seconds: 0,
     });
 
     useEffect(() => {
-        const timer = setInterval(() => {
-            const now = new Date();
-            if (now > TRIP_END) {
-                setTimeLeft({ days: 0, hours: 0, minutes: 0, seconds: 0, isDone: true });
-                clearInterval(timer);
-                return;
+        const tick = () => {
+            const now = Date.now();
+            const startMs = TRIP_DATE.getTime();
+            const endMs = TRIP_END.getTime();
+
+            if (now > endMs) {
+                setTimeLeft({ ...STATE_ZERO, phase: "done" });
+                return false;
             }
 
-            if (now > TRIP_DATE && now < TRIP_END) {
-                setTimeLeft({ days: 0, hours: 0, minutes: 0, seconds: 0, isDone: false });
-            } else {
+            if (now < startMs) {
+                // 出發前：倒數到 TRIP_DATE
+                const diff = startMs - now;
                 setTimeLeft({
-                    days: differenceInDays(TRIP_DATE, now),
+                    phase: "pre",
+                    days: Math.floor(diff / MS_PER_DAY),
                     hours: differenceInHours(TRIP_DATE, now) % 24,
                     minutes: differenceInMinutes(TRIP_DATE, now) % 60,
                     seconds: differenceInSeconds(TRIP_DATE, now) % 60,
-                    isDone: false,
                 });
+                return true;
             }
+
+            // 旅程進行中：顯示「第 N 天」與距返程的剩餘時間
+            const diff = endMs - now;
+            setTimeLeft({
+                phase: "ongoing",
+                currentDay: getTripTimelineState(new Date(now)).dayNumber,
+                days: Math.floor(diff / MS_PER_DAY),
+                hours: differenceInHours(TRIP_END, now) % 24,
+                minutes: differenceInMinutes(TRIP_END, now) % 60,
+                seconds: differenceInSeconds(TRIP_END, now) % 60,
+            });
+            return true;
+        };
+
+        // 首次立即執行，避免初始延遲一秒
+        if (tick() === false) return;
+
+        const timer = setInterval(() => {
+            if (tick() === false) clearInterval(timer);
         }, 1000);
 
         return () => clearInterval(timer);
     }, []);
 
-    const quickNavItems = [
-        { id: "itinerary", label: "行程", icon: CalendarDays },
-        { id: "transport", label: "交通", icon: Train },
-        { id: "food", label: "美食", icon: Utensils },
-        { id: "assistant", label: "助手", icon: Compass },
-    ];
-
-    const go = (tab: string) => () => {
+    const go = useCallback((tab: string) => () => {
         onNavigate?.(tab);
         // 體驗 fallback：直接 scroll 到內容區（防 onNavigate 沒傳）
         if (!onNavigate) document.getElementById("flights")?.scrollIntoView({ behavior: "smooth" });
-    };
+    }, [onNavigate]);
 
     return (
-        <section
-            id="hero"
-            className="relative min-h-screen md:min-h-[88vh] flex items-center justify-center overflow-hidden bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white transition-colors duration-700"
-        >
-            {/* Soft Ethereal Background */}
-            <div className="absolute inset-0 overflow-hidden pointer-events-none">
-                <div className="absolute top-[-20%] left-[-10%] w-[60%] h-[60%] bg-red-100/50 dark:bg-primary/10 rounded-full blur-[120px] motion-safe:animate-pulse"></div>
-                <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-blue-100/50 dark:bg-indigo-600/10 rounded-full blur-[100px] motion-safe:animate-pulse" style={{ animationDelay: "2s" }}></div>
-                <div className="absolute top-1/3 left-1/2 -translate-x-1/2 w-[40%] h-[40%] bg-amber-100/30 dark:bg-amber-500/5 rounded-full blur-[160px] motion-safe:animate-pulse" style={{ animationDelay: "4s" }}></div>
-            </div>
+        <section id="hero" className="trip-hero">
+            <div className="trip-hero__grid" aria-hidden="true" />
+            <div className="trip-hero__sun" aria-hidden="true" />
+            <TokyoMark className="trip-hero__tower" aria-hidden="true" />
+            <div className="trip-hero__kanji" aria-hidden="true">東京</div>
 
-            <div
-                role="presentation"
-                className="relative z-10 w-full max-w-3xl mx-auto px-6 py-12 flex flex-col items-center text-center animate-in fade-in duration-1000"
-            >
-                {/* 頂部 tag */}
-                <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/70 dark:bg-white/5 border border-slate-200 dark:border-white/10 shadow text-xs md:text-sm font-black uppercase tracking-[0.25em] text-primary mb-6 animate-in fade-in slide-in-from-top-2 duration-700">
-                    <Heart className="w-3.5 h-3.5 fill-current motion-safe:animate-pulse" /> 愛的專屬旅程
+            <div className="trip-hero__canvas">
+                <div className="trip-hero__topline">
+                    <span className="font-metric">TOKYO PRIVATE JOURNEY · 2026</span>
+                    <span className="trip-hero__edition">6 DAYS / 5 NIGHTS</span>
                 </div>
 
-                {/* 上方細標題 */}
-                <div className="mb-8 animate-in fade-in slide-in-from-bottom-2 duration-700 delay-100">
-                    <h1 className="text-2xl md:text-3xl font-serif font-black tracking-[0.25em] text-slate-900 dark:text-white mb-2">
-                        TOKYO <span className="text-primary">6D5N</span>
-                    </h1>
-                    <p className="text-sm md:text-base text-slate-500 dark:text-gray-400 font-medium tracking-tight">
-                        與毓寧愛的
-                        <span className="text-slate-900 dark:text-white font-black underline decoration-primary/40 decoration-2 underline-offset-4 mx-1">六天五夜</span>
-                        東京旅行
-                    </p>
-                </div>
+                <div className="trip-hero__layout">
+                    <div className="trip-hero__story">
+                        <p className="trip-hero__eyebrow">與毓寧的東京旅行</p>
+                        <h1>東京，<br /><em>一起出發。</em></h1>
+                        <p className="trip-hero__lede">六天五夜，把航班、每日路線與想吃的店，收進同一份會同步的旅行手冊。</p>
 
-                {/* 中央倒數 — 視覺主角 */}
-                <div className="w-full max-w-2xl mb-8 animate-in fade-in zoom-in duration-1000 delay-200">
-                    {timeLeft.isDone ? (
-                        <div className="rounded-[2rem] bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-white/50 dark:border-white/10 shadow-xl px-8 py-10 md:py-12">
-                            <div className="text-6xl md:text-7xl mb-4">🗼</div>
-                            <div className="text-xl md:text-2xl font-black text-slate-800 dark:text-white">旅程已圓滿結束</div>
-                            <div className="text-sm text-slate-500 dark:text-gray-400 font-medium mt-2">感謝陪伴這趟愛的旅程</div>
-                        </div>
-                    ) : (
-                        <div className="relative rounded-[2.5rem] bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-white/50 dark:border-white/10 shadow-[0_20px_60px_-15px_rgba(0,0,0,0.15)] px-4 py-8 md:px-10 md:py-12">
-                            {/* 上方 label */}
-                            <div className="text-[10px] md:text-xs font-black text-slate-400 dark:text-gray-500 uppercase tracking-[0.4em] mb-5">
-                                出發倒數時間
+                        <div className="trip-hero__route" aria-label="去程航班摘要">
+                            <div>
+                                <span>SEP 01 · TUE</span>
+                                <strong className="font-metric">TPE</strong>
+                                <small>08:30 · TAOYUAN</small>
                             </div>
-
-                            {/* 數字 row */}
-                            <div className="flex items-center justify-center gap-2 md:gap-4 font-black tabular-nums text-slate-900 dark:text-white leading-none">
-                                {/* 天 */}
-                                <div className="flex flex-col items-center">
-                                    <span className="text-6xl md:text-8xl bg-gradient-to-b from-slate-900 to-slate-600 dark:from-white dark:to-white/60 bg-clip-text text-transparent">
-                                        {String(timeLeft.days).padStart(3, "0")}
-                                    </span>
-                                    <span className="text-[10px] md:text-xs font-black text-primary uppercase tracking-widest mt-2">DAYS</span>
-                                </div>
-                                <span className="text-5xl md:text-7xl text-primary/40 font-thin -translate-y-2 md:-translate-y-3">:</span>
-                                <div className="flex flex-col items-center">
-                                    <span className="text-5xl md:text-7xl">{String(timeLeft.hours).padStart(2, "0")}</span>
-                                    <span className="text-[10px] md:text-xs font-black text-primary uppercase tracking-widest mt-2">HRS</span>
-                                </div>
-                                <span className="text-5xl md:text-7xl text-primary/40 font-thin -translate-y-2 md:-translate-y-3">:</span>
-                                <div className="flex flex-col items-center">
-                                    <span className="text-5xl md:text-7xl">{String(timeLeft.minutes).padStart(2, "0")}</span>
-                                    <span className="text-[10px] md:text-xs font-black text-primary uppercase tracking-widest mt-2">MIN</span>
-                                </div>
-                                <span className="text-5xl md:text-7xl text-primary/40 font-thin -translate-y-2 md:-translate-y-3">:</span>
-                                <div className="flex flex-col items-center">
-                                    <span className="text-5xl md:text-7xl tabular-nums motion-safe:animate-pulse">
-                                        {String(timeLeft.seconds).padStart(2, "0")}
-                                    </span>
-                                    <span className="text-[10px] md:text-xs font-black text-primary uppercase tracking-widest mt-2">SEC</span>
-                                </div>
+                            <div className="trip-hero__route-line" aria-hidden="true">
+                                <Plane />
                             </div>
-
-                            {/* 進度條 */}
-                            {(() => {
-                                const elapsedDays = TOTAL_TRIP_DAYS - Math.min(timeLeft.days, TOTAL_TRIP_DAYS);
-                                const pct = Math.min(100, Math.max((elapsedDays / TOTAL_TRIP_DAYS) * 100, 5));
-                                return (
-                                    <div className="mt-7 max-w-md mx-auto">
-                                        <div className="h-1 bg-slate-200/80 dark:bg-white/10 rounded-full overflow-hidden">
-                                            <div
-                                                className="h-full bg-gradient-to-r from-primary/60 to-primary rounded-full transition-all duration-500"
-                                                style={{ width: `${pct}%` }}
-                                            ></div>
-                                        </div>
-                                        <div className="text-[10px] text-slate-400 dark:text-gray-500 font-bold mt-2 tracking-wider uppercase">
-                                            距出發 {timeLeft.days > 0 ? `尚有 ${timeLeft.days} 天` : "即將啟程"}
-                                        </div>
-                                    </div>
-                                );
-                            })()}
+                            <div className="text-right">
+                                <span>JX800</span>
+                                <strong className="font-metric">NRT</strong>
+                                <small>12:55 · TOKYO</small>
+                            </div>
                         </div>
-                    )}
-                </div>
 
-                {/* 底部資訊條 + 快速跳轉 */}
-                <div className="w-full max-w-2xl animate-in fade-in slide-in-from-bottom-3 duration-700 delay-300">
-                    {/* 日期 / 地點 一行小字 */}
-                    <div className="flex items-center justify-center gap-3 text-xs md:text-sm text-slate-500 dark:text-gray-400 font-bold mb-5">
-                        <span className="flex items-center gap-1.5">
-                            <CalendarDays className="w-3.5 h-3.5 text-primary" />
-                            2026.09.01 - 09.06
-                        </span>
-                        <span className="text-slate-300 dark:text-white/20">•</span>
-                        <span>日本, 東京</span>
-                    </div>
-
-                    {/* 快速跳轉 chips */}
-                    <div className="flex flex-wrap items-center justify-center gap-2 md:gap-3">
-                        {quickNavItems.map(({ id, label, icon: Icon }) => (
-                            <button
-                                key={id}
-                                type="button"
-                                onClick={go(id)}
-                                className="group inline-flex items-center gap-2 px-4 md:px-5 py-2 md:py-2.5 rounded-full bg-white/70 dark:bg-white/5 backdrop-blur border border-slate-200 dark:border-white/10 hover:border-primary hover:bg-primary/5 dark:hover:bg-primary/10 hover:text-primary shadow-sm transition-all active:scale-95"
-                            >
-                                <Icon className="w-3.5 h-3.5 md:w-4 md:h-4 shrink-0" />
-                                <span className="text-xs md:text-sm font-black tracking-wider">{label}</span>
+                        <div className="trip-hero__actions">
+                            <button type="button" onClick={go("itinerary")} className="trip-hero__primary-action">
+                                查看六日行程 <ArrowRight />
                             </button>
-                        ))}
+                            <button type="button" aria-label="查看航班資訊" onClick={go("flights")} className="trip-hero__secondary-action focus-visible:ring-2 focus-visible:ring-primary">航班詳情</button>
+                        </div>
+                    </div>
+
+                    <div className="trip-hero__countdown">
+                        <div className="trip-hero__countdown-head">
+                            <div>
+                                <span>{timeLeft.phase === "ongoing" ? "JOURNEY IN PROGRESS" : timeLeft.phase === "done" ? "MEMORIES ARCHIVE" : "DEPARTURE COUNTDOWN"}</span>
+                                <strong>{timeLeft.phase === "ongoing" ? `旅程第 ${timeLeft.currentDay ?? 1} 天` : timeLeft.phase === "done" ? "旅程圓滿完成" : "距離東京還有"}</strong>
+                            </div>
+                            <CalendarDays />
+                        </div>
+
+                        {timeLeft.phase === "done" ? (
+                            <div className="trip-hero__done">
+                                <TokyoMark />
+                                <p>謝謝一起完成這趟東京旅程。</p>
+                            </div>
+                        ) : (
+                            <div className="trip-hero__timer font-metric" aria-live="polite" aria-label={`${timeLeft.days} 天 ${timeLeft.hours} 小時 ${timeLeft.minutes} 分 ${timeLeft.seconds} 秒`}>
+                                <div><strong>{padDays(timeLeft.days)}</strong><span>DAYS</span></div>
+                                <div><strong>{pad(timeLeft.hours)}</strong><span>HOURS</span></div>
+                                <div><strong>{pad(timeLeft.minutes)}</strong><span>MINUTES</span></div>
+                                <div className="trip-hero__seconds"><strong>{pad(timeLeft.seconds)}</strong><span>SECONDS</span></div>
+                            </div>
+                        )}
+
+                        <div className="trip-hero__ticket-foot">
+                            <span>STARLUX JX800</span>
+                            <span>A350-1000</span>
+                            <span>2026.09.01</span>
+                        </div>
+                        {pushControls && <div className="trip-hero__push">{pushControls}</div>}
                     </div>
                 </div>
             </div>
 
-            {/* Scroll indicator */}
-            <button
-                type="button"
-                aria-label="向下捲動"
-                onClick={go("flights")}
-                className="absolute bottom-6 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 opacity-30 hover:opacity-60 motion-safe:animate-bounce cursor-pointer transition-opacity"
-            >
-                <ArrowDownCircle className="w-6 h-6" />
+            <button type="button" aria-label="查看今日焦點" onClick={() => document.getElementById("today-focus")?.scrollIntoView({ behavior: "smooth" })} className="trip-hero__scroll">
+                <span>SCROLL</span><ArrowDown />
             </button>
         </section>
     );

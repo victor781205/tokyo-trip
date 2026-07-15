@@ -3,6 +3,8 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import Image from "next/image";
 import { Camera, Upload, X, Loader2, Check, RotateCcw, ScanLine } from "lucide-react";
+import { useDialog } from "@/context/DialogContext";
+import { useModalAccessibility } from "@/hooks/useModalAccessibility";
 
 export interface ReceiptItem {
   name: string;
@@ -65,11 +67,11 @@ const classifyItem = (name: string): string => {
   return "other";
 };
 
-const parseReceiptText = (text: string): ReceiptItem[] => {
+export const parseReceiptText = (text: string): ReceiptItem[] => {
   const items: ReceiptItem[] = [];
   const lines = text.split("\n").map(line => line.trim()).filter(line => line.length > 0);
 
-  const skipPatterns = /^(合計|小計|税|消費税|内税|外税|お預り|お釣り|おつり|クレジット|現金|カード|レシート|領収書|日付|店名第一家|電話|TEL|残額|残高|預り|釣り|取引|時間帯|会員|メンバー|super|customer|card|point|ポイント|還元|非課税|軽減税率|税率)$/i;
+  const skipPatterns = /^(?:合計|小計|税|消費税|内税|外税|お預り|お釣り|おつり|クレジット|現金|カード|レシート|領収書|日付|店名第一家|電話|TEL|残額|残高|預り|釣り|取引|時間帯|会員|メンバー|super|customer|card|point|ポイント|還元|非課税|軽減税率|税率)(?=\s|[:：=¥￥]|\d|$)/i;
 
   const pricePatterns = [
     /(.+?)\s*[¥￥]\s*([\d,]+)(?!\d)/,
@@ -115,6 +117,7 @@ const parseReceiptText = (text: string): ReceiptItem[] => {
 
 export function ReceiptScanner({ onScanComplete, onClose }: ReceiptScannerProps) {
   const [isScanning, setIsScanning] = useState(false);
+  const { alert } = useDialog();
   const [scanProgress, setScanProgress] = useState(0);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [recognizedItems, setRecognizedItems] = useState<ReceiptItem[]>([]);
@@ -126,36 +129,57 @@ export function ReceiptScanner({ onScanComplete, onClose }: ReceiptScannerProps)
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const isMountedRef = useRef(true);
 
   const [isCameraActive, setIsCameraActive] = useState(false);
+  const [isStartingCamera, setIsStartingCamera] = useState(false);
+  const [isVideoReady, setIsVideoReady] = useState(false);
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
-
-  const startCamera = useCallback(async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } }
-      });
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        streamRef.current = stream;
-        setIsCameraActive(true);
-      }
-    } catch (error) {
-      console.error("相機啟動失敗:", error);
-      alert("無法啟動相機，請檢查權限設定");
-    }
-  }, []);
+  const dialogRef = useModalAccessibility(true, onClose);
 
   const stopCamera = useCallback(() => {
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop());
       streamRef.current = null;
     }
-    setIsCameraActive(false);
+    if (isMountedRef.current) {
+      setIsVideoReady(false);
+      setIsCameraActive(false);
+    }
   }, []);
 
+  const startCamera = useCallback(async () => {
+    if (isStartingCamera) return;
+    setIsStartingCamera(true);
+    try {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        throw new Error("getUserMedia is unavailable");
+      }
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } }
+      });
+      if (!isMountedRef.current) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
+      streamRef.current?.getTracks().forEach((track) => track.stop());
+      streamRef.current = stream;
+      setIsCameraActive(true);
+    } catch (error) {
+      if (!isMountedRef.current) return;
+      console.error("相機啟動失敗:", error);
+      void alert({
+        title: "相機無法啟動",
+        message: "無法啟動相機，請檢查瀏覽器權限設定是否已開啟鏡頭存取。也可以改用「上傳圖片」。",
+        accent: "danger",
+      });
+    } finally {
+      if (isMountedRef.current) setIsStartingCamera(false);
+    }
+  }, [alert, isStartingCamera]);
+
   const capturePhoto = useCallback(() => {
-    if (!videoRef.current || !canvasRef.current) return;
+    if (!videoRef.current || !canvasRef.current || !isVideoReady) return;
     const video = videoRef.current;
     const canvas = canvasRef.current;
     const context = canvas.getContext("2d");
@@ -167,13 +191,14 @@ export function ReceiptScanner({ onScanComplete, onClose }: ReceiptScannerProps)
     setCapturedImage(imageDataUrl);
     setPreviewUrl(imageDataUrl);
     stopCamera();
-  }, [stopCamera]);
+  }, [isVideoReady, stopCamera]);
 
   const handleFileUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
     reader.onload = (event) => {
+      if (!isMountedRef.current) return;
       const result = event.target?.result as string;
       setCapturedImage(result);
       setPreviewUrl(result);
@@ -191,26 +216,36 @@ export function ReceiptScanner({ onScanComplete, onClose }: ReceiptScannerProps)
       const result = await Tesseract.recognize(capturedImage, "jpn+jpn_vert+eng", {
         logger: (info) => {
           if (info.status === "recognizing text") {
-            setScanProgress(Math.round(info.progress * 100));
+            if (isMountedRef.current) setScanProgress(Math.round(info.progress * 100));
           }
         }
       });
 
+      if (!isMountedRef.current) return;
       const text = result.data.text;
       setOcrText(text);
       const items = parseReceiptText(text);
       setRecognizedItems(items);
       setShowConfirm(true);
     } catch (error) {
+      if (!isMountedRef.current) return;
       console.error("OCR 錯誤:", error);
-      alert("掃描失敗，請重新嘗試");
+      void alert({
+        title: "掃描失敗",
+        message: "掃描失敗，請重新拍攝一張光線充足、對焦清楚的收據再嘗試。",
+        accent: "danger",
+      });
     } finally {
-      setIsScanning(false);
+      if (isMountedRef.current) setIsScanning(false);
     }
-  }, [capturedImage]);
+  }, [capturedImage, alert]);
 
   const confirmAddItems = useCallback(() => {
-    onScanComplete(recognizedItems);
+    const validItems = recognizedItems.filter(
+      (item) => item.name.trim() && Number.isFinite(item.amount) && item.amount > 0,
+    );
+    if (validItems.length === 0) return;
+    onScanComplete(validItems);
     onClose();
   }, [recognizedItems, onScanComplete, onClose]);
 
@@ -225,8 +260,30 @@ export function ReceiptScanner({ onScanComplete, onClose }: ReceiptScannerProps)
   }, []);
 
   useEffect(() => {
-    return () => { stopCamera(); };
-  }, [stopCamera]);
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      streamRef.current?.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isCameraActive || !videoRef.current || !streamRef.current) return;
+    const video = videoRef.current;
+    const stream = streamRef.current;
+    video.srcObject = stream;
+    void video.play().catch(() => {
+      if (isMountedRef.current) setIsVideoReady(false);
+    });
+    return () => {
+      if (video.srcObject === stream) video.srcObject = null;
+    };
+  }, [isCameraActive]);
+
+  const validRecognizedItems = recognizedItems.filter(
+    (item) => item.name.trim() && Number.isFinite(item.amount) && item.amount > 0,
+  );
 
   const updateItem = useCallback((index: number, field: keyof ReceiptItem, value: string | number) => {
     setRecognizedItems(prev => {
@@ -246,13 +303,20 @@ export function ReceiptScanner({ onScanComplete, onClose }: ReceiptScannerProps)
 
   return (
     <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-      <div className="bg-white dark:bg-slate-800 rounded-3xl w-full max-w-md max-h-[90vh] overflow-hidden flex flex-col">
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="receipt-scanner-title"
+        tabIndex={-1}
+        className="bg-white dark:bg-slate-800 rounded-3xl w-full max-w-md max-h-[90vh] overflow-hidden flex flex-col outline-none"
+      >
         <div className="flex items-center justify-between p-4 border-b border-gray-100 dark:border-slate-700">
           <div className="flex items-center gap-2">
             <ScanLine className="w-5 h-5 text-primary" />
-            <h2 className="text-lg font-black">掃描發票</h2>
+            <h2 id="receipt-scanner-title" className="text-lg font-black">掃描發票</h2>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-full transition-colors" aria-label="關閉">
+          <button onClick={() => { stopCamera(); onClose(); }} data-autofocus className="w-11 h-11 inline-flex items-center justify-center hover:bg-gray-100 dark:hover:bg-slate-700 rounded-full transition-colors" aria-label="關閉發票掃描">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -263,7 +327,7 @@ export function ReceiptScanner({ onScanComplete, onClose }: ReceiptScannerProps)
               <Image src={previewUrl} alt="發票預覽" fill className="object-contain rounded-2xl bg-gray-50 dark:bg-slate-900" />
               <button
                 onClick={resetScanner}
-                className="absolute top-2 right-2 p-2.5 bg-black/50 text-white rounded-full hover:bg-black/70 transition-colors"
+                className="absolute top-2 right-2 w-11 h-11 inline-flex items-center justify-center bg-black/50 text-white rounded-full hover:bg-black/70 transition-colors"
                 aria-label="重新拍攝"
               >
                 <RotateCcw className="w-4 h-4" />
@@ -271,13 +335,21 @@ export function ReceiptScanner({ onScanComplete, onClose }: ReceiptScannerProps)
             </div>
           ) : isCameraActive ? (
             <div className="relative mb-4">
-              <video ref={videoRef} autoPlay playsInline className="w-full h-48 object-cover rounded-2xl bg-black" />
+              <video
+                ref={videoRef}
+                autoPlay
+                muted
+                playsInline
+                onLoadedMetadata={() => setIsVideoReady(true)}
+                className="w-full h-48 object-cover rounded-2xl bg-black"
+              />
               <canvas ref={canvasRef} className="hidden" />
               <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2">
                 <button
                   onClick={capturePhoto}
+                  disabled={!isVideoReady}
                   aria-label="拍照"
-                  className="w-20 h-20 bg-white rounded-full border-4 border-primary shadow-lg active:scale-95 transition-transform flex items-center justify-center"
+                  className="w-20 h-20 bg-white rounded-full border-4 border-primary shadow-lg active:scale-95 transition-transform flex items-center justify-center disabled:opacity-50"
                 >
                   <Camera className="w-9 h-9 text-primary" />
                 </button>
@@ -287,10 +359,11 @@ export function ReceiptScanner({ onScanComplete, onClose }: ReceiptScannerProps)
             <div className="grid grid-cols-2 gap-3 mb-4">
               <button
                 onClick={startCamera}
-                className="flex flex-col items-center justify-center gap-3 p-6 bg-gray-50 dark:bg-slate-900 rounded-2xl border-2 border-dashed border-gray-200 dark:border-slate-700 hover:border-primary hover:bg-primary/5 transition-colors"
+                disabled={isStartingCamera}
+                className="flex flex-col items-center justify-center gap-3 p-6 bg-gray-50 dark:bg-slate-900 rounded-2xl border-2 border-dashed border-gray-200 dark:border-slate-700 hover:border-primary hover:bg-primary/5 transition-colors disabled:opacity-60"
               >
-                <Camera className="w-8 h-8 text-gray-400" />
-                <span className="font-bold text-sm">拍照掃描</span>
+                {isStartingCamera ? <Loader2 className="w-8 h-8 text-primary animate-spin" /> : <Camera className="w-8 h-8 text-gray-400" />}
+                <span className="font-bold text-sm">{isStartingCamera ? "正在開啟相機…" : "拍照掃描"}</span>
               </button>
 
               <button
@@ -335,7 +408,7 @@ export function ReceiptScanner({ onScanComplete, onClose }: ReceiptScannerProps)
 
           {ocrText && (
             <div className="mt-4">
-              <button onClick={() => setShowRawText(!showRawText)} className="text-sm text-gray-500 hover:text-primary transition-colors">
+              <button onClick={() => setShowRawText(!showRawText)} className="inline-flex min-h-11 items-center text-sm text-gray-500 hover:text-primary transition-colors">
                 {showRawText ? "隱藏原始辨識文字" : "顯示原始辨識文字"}
               </button>
               {showRawText && (
@@ -362,7 +435,7 @@ export function ReceiptScanner({ onScanComplete, onClose }: ReceiptScannerProps)
                       <select
                         value={item.category}
                         onChange={(e) => updateItem(index, "category", e.target.value)}
-                        className="w-12 text-center text-xl bg-white dark:bg-slate-800 rounded-lg border border-gray-200 dark:border-slate-700"
+                        className="w-12 min-h-11 text-center text-xl bg-white dark:bg-slate-800 rounded-lg border border-gray-200 dark:border-slate-700"
                         aria-label="選擇分類"
                       >
                         <option value="food">🍜</option>
@@ -377,7 +450,7 @@ export function ReceiptScanner({ onScanComplete, onClose }: ReceiptScannerProps)
                         type="text"
                         value={item.name}
                         onChange={(e) => updateItem(index, "name", e.target.value)}
-                        className="flex-1 min-w-0 px-3 py-2 bg-white dark:bg-slate-800 rounded-lg border border-gray-200 dark:border-slate-700 text-sm"
+                        className="flex-1 min-w-0 min-h-11 px-3 py-2 bg-white dark:bg-slate-800 rounded-lg border border-gray-200 dark:border-slate-700 text-sm"
                         aria-label="商品名稱"
                       />
 
@@ -385,14 +458,17 @@ export function ReceiptScanner({ onScanComplete, onClose }: ReceiptScannerProps)
                         <span className="text-gray-400 text-sm">¥</span>
                         <input
                           type="number"
+                          min="1"
+                          step="1"
                           value={item.amount}
                           onChange={(e) => updateItem(index, "amount", e.target.value)}
-                          className="w-20 px-2 py-2 bg-white dark:bg-slate-800 rounded-lg border border-gray-200 dark:border-slate-700 text-sm font-bold"
+                          aria-invalid={!Number.isFinite(item.amount) || item.amount <= 0}
+                          className="w-20 min-h-11 px-2 py-2 bg-white dark:bg-slate-800 rounded-lg border border-gray-200 dark:border-slate-700 text-sm font-bold"
                           aria-label="金額"
                         />
                       </div>
 
-                      <button onClick={() => removeItem(index)} className="p-2 text-gray-400 hover:text-red-500 transition-colors" aria-label="刪除">
+                      <button onClick={() => removeItem(index)} className="w-11 h-11 shrink-0 inline-flex items-center justify-center text-gray-400 hover:text-red-500 transition-colors rounded-xl" aria-label={`刪除「${item.name}」`}>
                         <X className="w-4 h-4" />
                       </button>
                     </div>
@@ -409,11 +485,11 @@ export function ReceiptScanner({ onScanComplete, onClose }: ReceiptScannerProps)
                 </button>
                 <button
                   onClick={confirmAddItems}
-                  disabled={recognizedItems.length === 0}
+                  disabled={validRecognizedItems.length === 0}
                   className="flex-1 py-3.5 bg-primary text-white rounded-2xl font-bold shadow-lg shadow-primary/20 disabled:opacity-50 disabled:cursor-not-allowed active:scale-95 transition-all flex items-center justify-center gap-2"
                 >
                   <Check className="w-5 h-5" />
-                  <span>確認新增 ({recognizedItems.length} 項)</span>
+                  <span>確認新增 ({validRecognizedItems.length} 項)</span>
                 </button>
               </div>
             </div>

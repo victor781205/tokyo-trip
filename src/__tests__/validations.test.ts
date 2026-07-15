@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { currencyQuerySchema, mapInfoQuerySchema, flightInfoQuerySchema } from "@/lib/validations";
+import {
+  currencyQuerySchema,
+  mapInfoQuerySchema,
+  flightInfoQuerySchema,
+  isAllowedMapUrl,
+  looksLikeGoogleMapsUrl,
+} from "@/lib/validations";
 
 describe("validations", () => {
   describe("currencyQuerySchema", () => {
@@ -36,8 +42,17 @@ describe("validations", () => {
     });
 
     it("accepts valid flight number", () => {
-      const result = flightInfoQuerySchema.safeParse({ flight: "JX800" });
+      const result = flightInfoQuerySchema.safeParse({
+        flight: "JX800",
+        date: "2026-09-01",
+        inboundDate: "2026-09-06",
+      });
       expect(result.success).toBe(true);
+    });
+
+    it("rejects malformed travel dates", () => {
+      const result = flightInfoQuerySchema.safeParse({ flight: "JX800", date: "09/01/2026" });
+      expect(result.success).toBe(false);
     });
 
     it("rejects flight number that is too long", () => {
@@ -102,6 +117,37 @@ describe("validations", () => {
         url: "https://www.bing.com/maps?cp=35.6762~139.6503",
       });
       expect(result.success).toBe(false);
+    });
+
+    it("rejects www.google.com open-redirect style paths", () => {
+      const result = mapInfoQuerySchema.safeParse({
+        url: "https://www.google.com/url?q=https://evil.example",
+      });
+      expect(result.success).toBe(false);
+      expect(isAllowedMapUrl("https://www.google.com/url?q=https://evil.example")).toBe(false);
+    });
+
+    it("rejects goo.gl non-maps paths", () => {
+      expect(isAllowedMapUrl("https://goo.gl/evil")).toBe(false);
+      const result = mapInfoQuerySchema.safeParse({ url: "https://goo.gl/evil" });
+      expect(result.success).toBe(false);
+    });
+
+    it("rejects non-http protocols", () => {
+      expect(isAllowedMapUrl("ftp://maps.google.com/maps")).toBe(false);
+      expect(isAllowedMapUrl("javascript:alert(1)")).toBe(false);
+    });
+
+    it("accepts google.co.jp maps hosts", () => {
+      expect(isAllowedMapUrl("https://www.google.co.jp/maps/place/Test")).toBe(true);
+      expect(isAllowedMapUrl("https://maps.google.co.jp/?q=Tokyo")).toBe(true);
+    });
+
+    it("looksLikeGoogleMapsUrl accepts common paste formats", () => {
+      expect(looksLikeGoogleMapsUrl("https://maps.app.goo.gl/abc123")).toBe(true);
+      expect(looksLikeGoogleMapsUrl("maps.app.goo.gl/abc123")).toBe(true);
+      expect(looksLikeGoogleMapsUrl("https://maps.google.com/?q=ramen")).toBe(true);
+      expect(looksLikeGoogleMapsUrl("https://example.com")).toBe(false);
     });
   });
 });

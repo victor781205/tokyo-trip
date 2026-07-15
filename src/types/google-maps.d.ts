@@ -24,7 +24,7 @@ declare namespace google {
 
     class InfoWindow {
       constructor(options?: any);
-      setContent(content: string): void;
+      setContent(content: string | Element | null): void;
       open(map?: Map, anchor?: any): void;
     }
 

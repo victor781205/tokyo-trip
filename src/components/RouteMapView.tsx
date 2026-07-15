@@ -1,72 +1,83 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import {
+  GoogleMapsLoadError,
+  loadGoogleMaps,
+  subscribeToGoogleMapsAuthFailure,
+} from "@/lib/google-maps-loader";
 
-// 動態載入 Google Maps JS API
-function loadGoogleMaps(apiKey: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (typeof window === "undefined") return reject("no window");
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const w = window as any;
-    if (w.google?.maps) return resolve();
+type RouteMapViewState =
+  | { queryKey: string; status: "loading"; message: string }
+  | { queryKey: string; status: "ok"; warning: string | null }
+  | { queryKey: string; status: "error"; title: string; message: string };
 
-    if (w._googleMapsLoading) {
-      w._googleMapsCallbacks.push(resolve);
-      return;
-    }
-    w._googleMapsCallbacks = [resolve];
-    w._googleMapsLoading = true;
+type RouteEndpoint = {
+  kind: "origin" | "destination";
+  label: "起點" | "目的地";
+  markerLabel: "起" | "終";
+  name: string;
+};
 
-    const script = document.createElement("script");
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places&language=zh-TW&region=JP`;
-    script.async = true;
-    script.defer = true;
+const INITIAL_LOADING_MESSAGE = "載入地圖與大眾運輸路線中...";
+const GEOCODING_LOADING_MESSAGE = "路線無法直接繪製，正在確認起點與目的地位置...";
+const MISSING_KEY_MESSAGE = "Google Maps 金鑰尚未設定，請改用外部導航。";
+const GEOCODING_TIMEOUT_MS = 8_000;
 
-    // script.onload 時 google.maps 不一定 ready（async/defer 載入有 race condition）
-    // 用 polling 等 window.google.maps 出現才 resolve，避免 setStatus("error") 誤判
-    const fire = () => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const w = window as any;
-      if (w.google?.maps) {
-        /* eslint-disable @typescript-eslint/no-explicit-any */
-        (window as any)._googleMapsCallbacks.forEach((cb: () => void) => cb());
-        (window as any)._googleMapsCallbacks = [];
-        (window as any)._googleMapsLoading = false;
-        /* eslint-enable @typescript-eslint/no-explicit-any */
-        return true;
-      }
-      return false;
-    };
+export function getRoutePlanningStatusMessage(status: string) {
+  switch (status) {
+    case "ZERO_RESULTS":
+      return "找不到可用的大眾運輸路線。";
+    case "NOT_FOUND":
+      return "Google Maps 無法直接辨識這組路線。";
+    case "OVER_QUERY_LIMIT":
+      return "目前路線查詢量較大，請稍後再試。";
+    case "REQUEST_DENIED":
+      return "Google Maps 暫時無法提供路線規劃。";
+    case "INVALID_REQUEST":
+      return "路線查詢資料不完整，請確認起點與目的地後重新查詢。";
+    case "UNKNOWN_ERROR":
+      return "Google Maps 暫時無法完成路線規劃。";
+    default:
+      return "目前無法完成大眾運輸路線規劃。";
+  }
+}
 
-    script.onload = () => {
-      if (fire()) return;
-      // onload 但 google.maps 還沒初始化，polling 等
-      let tries = 0;
-      const timer = setInterval(() => {
-        if (fire() || ++tries > 100) clearInterval(timer);  // 最多等 10 秒
-      }, 100);
-    };
-    script.onerror = () => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (window as any)._googleMapsLoading = false;
-      reject("Google Maps script failed");
-    };
-    document.head.appendChild(script);
-  });
+function getNoLocationsMessage(originName: string, destName: string) {
+  return `起點「${originName}」與目的地「${destName}」都無法辨識。請修正地名後重新查詢，或改用外部 Google Maps。`;
 }
 
 export function RouteMapView({ originName, destName }: { originName: string; destName: string }) {
+  const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
   const mapRef = useRef<HTMLDivElement>(null);
-  const [status, setStatus] = useState<"loading" | "ok" | "error">("loading");
+  const [retryKey, setRetryKey] = useState(0);
+  const queryKey = `${apiKey ?? ""}\n${originName}\n${destName}\n${retryKey}`;
+  const [viewState, setViewState] = useState<RouteMapViewState>(() => apiKey
+    ? { queryKey, status: "loading", message: INITIAL_LOADING_MESSAGE }
+    : { queryKey, status: "error", title: "地圖無法載入", message: MISSING_KEY_MESSAGE });
+
+  const currentState: RouteMapViewState = viewState.queryKey === queryKey
+    ? viewState
+    : apiKey
+      ? { queryKey, status: "loading", message: INITIAL_LOADING_MESSAGE }
+      : { queryKey, status: "error", title: "地圖無法載入", message: MISSING_KEY_MESSAGE };
 
   useEffect(() => {
-    const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
-    if (!apiKey || !mapRef.current) {
-      setStatus("error");
-      return;
-    }
+    if (!mapRef.current || !apiKey) return;
 
     let cancelled = false;
+    let geocodingTimeoutId: number | undefined;
+    setViewState({ queryKey, status: "loading", message: INITIAL_LOADING_MESSAGE });
+
+    const unsubscribeAuthFailure = subscribeToGoogleMapsAuthFailure(() => {
+      if (cancelled) return;
+      setViewState({
+        queryKey,
+        status: "error",
+        title: "Google Maps 驗證失敗",
+        message: "Google Maps 驗證失敗，請改用外部導航。",
+      });
+    });
 
     loadGoogleMaps(apiKey)
       .then(() => {
@@ -92,22 +103,18 @@ export function RouteMapView({ originName, destName }: { originName: string; des
           ],
         });
 
-        // 顯示地鐵/大眾運輸路網（彩色線條）
         const transitLayer = new google.maps.TransitLayer();
         transitLayer.setMap(map);
 
         const directionsService = new google.maps.DirectionsService();
         const directionsRenderer = new google.maps.DirectionsRenderer({
           suppressMarkers: false,
-          polylineOptions: { strokeColor: "#e74c3c", strokeWeight: 5 },
+          polylineOptions: { strokeColor: "#c02f26", strokeWeight: 5 },
         });
         directionsRenderer.setMap(map);
 
-        // 直接傳「字串地名 + 區域 context」給 Google，提高命中率避免 ZERO_RESULTS
-        // 純「迪士尼」「機場」這類短字可能 Google 找不到，加上「日本」區域提示
-        const normalize = (s: string) => {
-          const trimmed = s.trim();
-          // 已含明確地點（如「東京迪士尼」「東京車站」）就不再加後綴
+        const normalize = (value: string) => {
+          const trimmed = value.trim();
           if (/東京|日本|機場|駅|站|JP$/i.test(trimmed)) return trimmed;
           return `${trimmed}, 日本`;
         };
@@ -121,70 +128,176 @@ export function RouteMapView({ originName, destName }: { originName: string; des
             region: "JP",
           },
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          (result: any, status: string) => {
+          (result: any, directionsStatus: string) => {
             if (cancelled) return;
-            if (status === "OK" && result) {
+            if (directionsStatus === "OK" && result) {
               directionsRenderer.setDirections(result);
-              // 路線畫好後，自動縮放到包含整條路線的範圍
-              if (result.routes && result.routes[0]?.bounds) {
-                map.fitBounds(result.routes[0].bounds);
-              }
-            } else {
-              // 路線規劃失敗（例如輸入已存在但 transit destinations 過遠、或跨國），
-              // 退回 geocode 兩個地點並放 marker + fitBounds，至少看得到「起」「終」位置
-              const geocoder = new google.maps.Geocoder();
-              const q: Array<[string, "起" | "終"]> = [[originName, "起"], [destName, "終"]];
-              const bounds = new google.maps.LatLngBounds();
-              let done = 0;
-              let okCount = 0;
-              q.forEach(([addr, label]) => {
-                geocoder.geocode(
-                  { address: normalize(addr), region: "JP" },
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  (res: any, st: string) => {
-                    done += 1;
-                    if (st === "OK" && res && res[0]) {
-                      okCount += 1;
-                      const pos = res[0].geometry.location;
-                      new google.maps.Marker({ position: pos, map, label });
-                      bounds.extend(pos);
-                      if (done === q.length && okCount > 0) map.fitBounds(bounds);
-                    }
-                  }
-                );
-              });
+              if (result.routes?.[0]?.bounds) map.fitBounds(result.routes[0].bounds);
+              setViewState({ queryKey, status: "ok", warning: null });
+              return;
             }
-          }
-        );
 
-        setStatus("ok");
+            // Directions 失敗後不能先宣告成功；等兩端 geocode 都結束，
+            // 才知道能顯示完整 fallback、單一 marker，或完全無法顯示。
+            setViewState({ queryKey, status: "loading", message: GEOCODING_LOADING_MESSAGE });
+            const endpoints: RouteEndpoint[] = [
+              { kind: "origin", label: "起點", markerLabel: "起", name: originName },
+              { kind: "destination", label: "目的地", markerLabel: "終", name: destName },
+            ];
+            const geocoder = new google.maps.Geocoder();
+            const results = new Map<RouteEndpoint["kind"], { endpoint: RouteEndpoint; location: unknown | null }>();
+
+            const finishGeocoding = () => {
+              if (cancelled || results.size !== endpoints.length) return;
+              if (geocodingTimeoutId !== undefined) window.clearTimeout(geocodingTimeoutId);
+              const resolved = endpoints
+                .map((endpoint) => results.get(endpoint.kind))
+                .filter((entry): entry is { endpoint: RouteEndpoint; location: unknown } => Boolean(entry?.location));
+
+              if (resolved.length === 0) {
+                setViewState({
+                  queryKey,
+                  status: "error",
+                  title: "找不到起點與目的地",
+                  message: getNoLocationsMessage(originName, destName),
+                });
+                return;
+              }
+
+              const bounds = new google.maps.LatLngBounds();
+              resolved.forEach(({ endpoint, location }) => {
+                new google.maps.Marker({ position: location, map, label: endpoint.markerLabel });
+                bounds.extend(location);
+              });
+
+              if (resolved.length === 1) {
+                const validEndpoint = resolved[0];
+                const failedEndpoint = endpoints.find((endpoint) => endpoint.kind !== validEndpoint.endpoint.kind)!;
+                map.setCenter?.(validEndpoint.location);
+                map.setZoom?.(15);
+                setViewState({
+                  queryKey,
+                  status: "ok",
+                  warning: `${failedEndpoint.label}「${failedEndpoint.name}」無法辨識。目前只標示${validEndpoint.endpoint.label}「${validEndpoint.endpoint.name}」；此畫面不是完整路線，請修正${failedEndpoint.label}後重試。`,
+                });
+                return;
+              }
+
+              map.fitBounds(bounds);
+              setViewState({
+                queryKey,
+                status: "ok",
+                warning: `${getRoutePlanningStatusMessage(directionsStatus)}目前僅顯示起點與目的地標記，未繪製大眾運輸路線。`,
+              });
+            };
+
+            const settleEndpoint = (endpoint: RouteEndpoint, location: unknown | null) => {
+              if (cancelled || results.has(endpoint.kind)) return;
+              results.set(endpoint.kind, { endpoint, location });
+              finishGeocoding();
+            };
+
+            // Google 通常會回呼，但仍加上上限，避免網路異常時永遠停在 loading。
+            geocodingTimeoutId = window.setTimeout(() => {
+              endpoints.forEach((endpoint) => settleEndpoint(endpoint, null));
+            }, GEOCODING_TIMEOUT_MS);
+
+            endpoints.forEach((endpoint) => {
+              try {
+                geocoder.geocode(
+                  { address: normalize(endpoint.name), region: "JP" },
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  (geocodeResults: any, geocodeStatus: string) => {
+                    const location = geocodeStatus === "OK"
+                      ? geocodeResults?.[0]?.geometry?.location ?? null
+                      : null;
+                    settleEndpoint(endpoint, location);
+                  },
+                );
+              } catch {
+                settleEndpoint(endpoint, null);
+              }
+            });
+          },
+        );
       })
-      .catch(() => {
-        if (!cancelled) setStatus("error");
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        setViewState({
+          queryKey,
+          status: "error",
+          title: "地圖載入失敗",
+          message: error instanceof GoogleMapsLoadError
+            ? error.message
+            : "Google Maps 暫時無法載入，請重試或改用外部導航。",
+        });
       });
 
     return () => {
       cancelled = true;
+      if (geocodingTimeoutId !== undefined) window.clearTimeout(geocodingTimeoutId);
+      unsubscribeAuthFailure();
     };
-  }, [originName, destName]);
+  }, [apiKey, originName, destName, queryKey]);
 
-  if (status === "error") {
+  const externalMapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(originName)}&destination=${encodeURIComponent(destName)}&travelmode=transit`;
+
+  if (currentState.status === "error") {
     return (
-      <div className="w-full h-full flex flex-col items-center justify-center bg-gray-100" style={{ minHeight: "450px" }}>
-        <div className="text-gray-500 font-bold mb-2">地圖載入失敗</div>
-        <a
-          href={`https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(originName)}&destination=${encodeURIComponent(destName)}&travelmode=transit`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-primary text-sm underline font-bold"
-        >
-          開啟 Google Maps →
-        </a>
+      <div className="flex h-full min-h-[360px] w-full flex-col items-center justify-center bg-gray-100 px-5 py-8 text-center dark:bg-slate-900 md:min-h-[450px]">
+        <div className="mb-2 text-lg font-black text-gray-700 dark:text-gray-200">{currentState.title}</div>
+        <p className="mb-5 max-w-md text-sm font-medium leading-relaxed text-gray-600 dark:text-gray-300" role="alert">
+          {currentState.message}
+        </p>
+        <div className="grid w-full max-w-sm grid-cols-1 gap-3 sm:flex sm:w-auto sm:flex-wrap sm:items-center sm:justify-center">
+          {apiKey && (
+            <button
+              type="button"
+              onClick={() => setRetryKey((value) => value + 1)}
+              className="inline-flex min-h-11 w-full items-center justify-center rounded-xl border border-gray-200 bg-white px-4 text-sm font-black text-gray-700 shadow-sm dark:border-slate-700 dark:bg-slate-800 dark:text-gray-100 sm:w-auto"
+            >
+              重新載入
+            </button>
+          )}
+          <a
+            href={externalMapsUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex min-h-11 w-full items-center justify-center rounded-xl bg-primary px-4 text-sm font-black text-white shadow-sm sm:w-auto"
+          >
+            開啟 Google Maps →
+          </a>
+        </div>
       </div>
     );
   }
 
   return (
-    <div ref={mapRef} className="w-full h-full" style={{ minHeight: "450px" }} />
+    <div className="relative h-full min-h-[360px] w-full bg-slate-100 dark:bg-slate-900 md:min-h-[450px]">
+      <div ref={mapRef} className="h-full min-h-[360px] w-full md:min-h-[450px]" aria-label="路線地圖" />
+
+      {currentState.status === "loading" && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-gray-100/95 px-6 text-center text-sm font-bold leading-relaxed text-gray-600 backdrop-blur-sm dark:bg-slate-900/95 dark:text-gray-300"
+        >
+          <span className="h-7 w-7 animate-spin rounded-full border-2 border-primary/25 border-t-primary" aria-hidden="true" />
+          {currentState.message}
+        </div>
+      )}
+
+      {currentState.status === "ok" && currentState.warning && (
+        <div
+          role="alert"
+          className="absolute inset-x-3 top-3 max-h-[45%] overflow-y-auto rounded-2xl border border-amber-200 bg-amber-50/95 px-4 py-3 text-sm font-bold leading-relaxed text-amber-900 shadow-lg backdrop-blur-sm dark:border-amber-800 dark:bg-amber-950/95 dark:text-amber-100 sm:inset-x-4 sm:top-4"
+        >
+          <span className="mb-1 block text-xs font-black uppercase tracking-[0.14em] text-amber-700 dark:text-amber-300">
+            地點標記 · 非完整路線
+          </span>
+          {currentState.warning}
+        </div>
+      )}
+    </div>
   );
 }
