@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ChevronDown, Cloud, CloudRain, Sun, Snowflake, Calendar } from "lucide-react";
+import { Calendar, ChevronDown, Clock3, Cloud, CloudRain, Snowflake, Sun } from "lucide-react";
 import {
   getJmaWeatherKind,
   getJmaWeatherLabel,
@@ -9,6 +9,41 @@ import {
   type TokyoForecastDay,
 } from "@/lib/jma-forecast";
 import { getTripTimelineState } from "@/lib/trip-dates";
+
+const FORECAST_STALE_AFTER_MS = 18 * 60 * 60 * 1000;
+
+function record(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null
+    ? value as Record<string, unknown>
+    : null;
+}
+
+export function getWeatherFreshnessNotice(
+  updatedAt: unknown,
+  now = new Date(),
+): string | null {
+  if (typeof updatedAt !== "string") return null;
+  const sourceTime = Date.parse(updatedAt);
+  if (!Number.isFinite(sourceTime)) return null;
+  const ageMs = now.getTime() - sourceTime;
+  if (ageMs <= FORECAST_STALE_AFTER_MS) return null;
+  const ageHours = Math.floor(ageMs / (60 * 60 * 1000));
+  return `日本氣象廳預報已 ${ageHours} 小時未更新，請重新取得後再安排行程。`;
+}
+
+function formatWeatherUpdatedAt(updatedAt: string | null): string | null {
+  if (!updatedAt) return null;
+  const sourceTime = new Date(updatedAt);
+  if (Number.isNaN(sourceTime.getTime())) return null;
+  return new Intl.DateTimeFormat("zh-TW", {
+    timeZone: "Asia/Tokyo",
+    month: "numeric",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(sourceTime);
+}
 
 export function getForecastScopeNotice(now = new Date()): string | null {
   if (getTripTimelineState(now).phase !== "pre") return null;
@@ -19,6 +54,8 @@ export function WeatherForecast() {
   const [forecast, setForecast] = useState<TokyoForecastDay[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [updatedAt, setUpdatedAt] = useState<string | null>(null);
+  const [sourceMarkedStale, setSourceMarkedStale] = useState(false);
   const [requestKey, setRequestKey] = useState(0);
   const [showAllForecast, setShowAllForecast] = useState(false);
 
@@ -28,11 +65,14 @@ export function WeatherForecast() {
       try {
         const res = await fetch("/api/weather");
         if (!res.ok) throw new Error(`JMA 回應錯誤 (${res.status})`);
-        const data = await res.json();
+        const data: unknown = await res.json();
         const nextForecast = parseTokyoForecastResponse(data);
         if (nextForecast.length === 0) throw new Error("JMA 回傳內容不完整");
         if (cancelled) return;
+        const metadata = record(data);
         setForecast(nextForecast);
+        setUpdatedAt(typeof metadata?.updatedAt === "string" ? metadata.updatedAt : null);
+        setSourceMarkedStale(metadata?.stale === true);
         setError(null);
       } catch (e) {
         console.error("Weather fetch failed", e);
@@ -65,6 +105,9 @@ export function WeatherForecast() {
   };
 
   const scopeNotice = getForecastScopeNotice();
+  const updatedAtLabel = formatWeatherUpdatedAt(updatedAt);
+  const freshnessNotice = getWeatherFreshnessNotice(updatedAt)
+    ?? (sourceMarkedStale ? "日本氣象廳預報目前標示為過期，請重新取得後再安排行程。" : null);
 
   if (loading) {
     return (
@@ -116,13 +159,16 @@ export function WeatherForecast() {
 
   return (
     <section id="weather" className="py-4 md:py-12 max-w-5xl mx-auto scroll-mt-28">
-      <div className="bg-white dark:bg-slate-800 rounded-[3rem] p-8 md:p-12 shadow-xl border border-gray-100 dark:border-slate-700">
+      <div className="trip-card bg-white dark:bg-slate-800 rounded-[3rem] p-6 md:p-10 shadow-xl border border-gray-100 dark:border-slate-700">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-12">
           <div>
             <h2 className="text-3xl font-bold mb-2 flex items-center gap-2">
               <Calendar className="text-primary w-8 h-8" /> 東京一週天氣
             </h2>
-            <p className="text-gray-500">資料來源：日本氣象廳 (JMA)</p>
+            <p className="text-gray-500">
+              資料來源：日本氣象廳 (JMA)
+              {updatedAtLabel && ` · 東京時間 ${updatedAtLabel} 更新`}
+            </p>
             {scopeNotice && (
               <p className="mt-2 max-w-xl text-sm font-bold text-amber-700 dark:text-amber-300">
                 {scopeNotice}
@@ -134,6 +180,26 @@ export function WeatherForecast() {
           </div>
         </div>
 
+        {freshnessNotice && (
+          <div
+            className="mb-6 flex flex-col gap-3 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-100 sm:flex-row sm:items-center sm:justify-between"
+            role="status"
+            aria-live="polite"
+          >
+            <p className="flex items-start gap-2 text-sm font-bold">
+              <Clock3 aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
+              {freshnessNotice}
+            </p>
+            <button
+              type="button"
+              onClick={retry}
+              className="min-h-11 shrink-0 rounded-xl border border-amber-400 px-4 text-sm font-black hover:bg-amber-100 dark:border-amber-600 dark:hover:bg-amber-900/50"
+            >
+              重新取得
+            </button>
+          </div>
+        )}
+
         <div id="weather-forecast-days" className="grid grid-cols-1 min-[360px]:grid-cols-3 sm:grid-cols-4 lg:grid-cols-7 gap-3 sm:gap-4">
           {forecast.map((day, i) => (
             <div
@@ -143,11 +209,19 @@ export function WeatherForecast() {
               <span className="text-base font-bold text-gray-500 mb-3">{day.date}</span>
               <div className="mb-3" role="img" aria-label={`天氣：${getJmaWeatherLabel(day.weather)}`}>{getWeatherIcon(day.weather)}</div>
               <div className="flex flex-col sm:flex-row items-center gap-0.5 sm:gap-2 text-sm sm:text-base font-black">
-                <span className="text-red-700 dark:text-red-300">
-                  {day.tempMax === "--" ? "高溫 —" : `${day.tempMax}°`}
+                <span
+                  className="inline-flex items-baseline gap-1 text-red-700 dark:text-red-300"
+                  aria-label={`最高溫 ${day.tempMax === "--" ? "未提供" : `${day.tempMax} 度`}`}
+                >
+                  <span aria-hidden="true" className="text-[10px] font-bold opacity-70">高</span>
+                  <span aria-hidden="true">{day.tempMax === "--" ? "—" : `${day.tempMax}°`}</span>
                 </span>
-                <span className="text-blue-700 dark:text-blue-300">
-                  {day.tempMin === "--" ? "低溫 —" : `${day.tempMin}°`}
+                <span
+                  className="inline-flex items-baseline gap-1 text-blue-700 dark:text-blue-300"
+                  aria-label={`最低溫 ${day.tempMin === "--" ? "未提供" : `${day.tempMin} 度`}`}
+                >
+                  <span aria-hidden="true" className="text-[10px] font-bold opacity-70">低</span>
+                  <span aria-hidden="true">{day.tempMin === "--" ? "—" : `${day.tempMin}°`}</span>
                 </span>
               </div>
               {day.temperatureNote && (
@@ -177,11 +251,17 @@ export function WeatherForecast() {
 
         {/* Outfit Suggestion */}
         {forecast.length > 0 && (() => {
-          const avgTemp = forecast.reduce((sum, d) => {
-            const max = parseInt(d.tempMax) || 25;
-            const min = parseInt(d.tempMin) || 20;
-            return sum + (max + min) / 2;
-          }, 0) / forecast.length;
+          const dailyAverages = forecast.flatMap((day) => {
+            const values = [day.tempMax, day.tempMin]
+              .map((value) => Number(value))
+              .filter((value) => Number.isFinite(value));
+            return values.length > 0
+              ? [values.reduce((sum, value) => sum + value, 0) / values.length]
+              : [];
+          });
+          if (dailyAverages.length === 0) return null;
+          const avgTemp = dailyAverages.reduce((sum, value) => sum + value, 0)
+            / dailyAverages.length;
           const hasRain = forecast.some(d => parseInt(d.pop) >= 50);
           let suggestion = "";
           let icon = "👔";
@@ -193,8 +273,13 @@ export function WeatherForecast() {
           return (
             <div className="mt-8 p-6 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-slate-800 dark:to-slate-800 rounded-[2rem]">
               <h3 className="text-lg font-black mb-3 flex items-center gap-2">
-                <span className="text-2xl">{icon}</span> 穿搭建議
+                <span aria-hidden="true" className="text-2xl">{icon}</span> 本週穿搭參考
               </h3>
+              {scopeNotice && (
+                <p className="mb-3 text-sm font-bold text-amber-800 dark:text-amber-200">
+                  這是依目前一週預報提供的參考，不是 9/1–9/6 旅程的穿搭建議。
+                </p>
+              )}
               <p className="text-gray-700 dark:text-gray-300 font-medium mb-3">{suggestion}</p>
               {hasRain && (
                 <div className="flex items-center gap-2 text-sm text-blue-600 dark:text-blue-400 font-bold">

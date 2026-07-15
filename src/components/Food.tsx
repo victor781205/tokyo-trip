@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { Loader2, MapPin, Navigation, Plus, Search, Trash2, Utensils, Map, List, Clock, Footprints, Filter, Edit3, Heart, CalendarPlus, CheckCircle2, X } from "lucide-react";
+import { Loader2, MapPin, Navigation, Plus, Search, Trash2, Utensils, Map, List, Clock, Filter, Edit3, Heart, CalendarPlus, CheckCircle2, X } from "lucide-react";
 import { useTripState, type Activity, type CustomFood } from "@/hooks/useTripState";
 import { useDialog } from "@/context/DialogContext";
 import { activitySyncIdFromSource } from "@/lib/activity-identity";
@@ -26,8 +26,12 @@ type FoodItem = {
     officialUrl?: string;
 };
 
-function foodStatusKey(item: Pick<FoodItem, "name" | "loc">) {
+function legacyRecommendedFoodStatusKey(item: Pick<FoodItem, "name" | "loc">) {
     return `recommended:${encodeURIComponent(item.name.trim())}:${encodeURIComponent(item.loc.trim())}`;
+}
+
+function foodStatusKey(item: Pick<FoodItem, "lat" | "lng">) {
+    return `recommended:geo:${item.lat.toFixed(6)}:${item.lng.toFixed(6)}`;
 }
 
 function customFoodStatusKey(food: Pick<CustomFood, "id" | "syncId">) {
@@ -47,8 +51,13 @@ function scheduleDayLabel(dayKey: string) {
     return `D${dayKey.replace(/^day/, "")}`;
 }
 
-function isScheduledFoodActivity(activity: Activity, item: FoodItem, statusKey: string) {
-    if (activity.sourceId) return activity.sourceId === foodSourceId(statusKey);
+function isScheduledFoodActivity(activity: Activity, item: FoodItem, statusKey: string, legacyStatusKey?: string) {
+    if (activity.sourceId) {
+        return activity.sourceId === foodSourceId(statusKey)
+            || (legacyStatusKey != null && activity.sourceId === foodSourceId(legacyStatusKey))
+            || (statusKey.startsWith("recommended:")
+                && activity.sourceId === foodSourceId(legacyRecommendedFoodStatusKey(item)));
+    }
     // Backward compatibility for meals scheduled before sourceId existed.
     // All fields must match so a same-name shop or a hand-written activity is not removed.
     return activity.name === `用餐：${item.name}`
@@ -328,10 +337,10 @@ export function Food() {
         [itinerary],
     );
 
-    const getPlannedFoodDays = useCallback((item: FoodItem, statusKey: string) => (
+    const getPlannedFoodDays = useCallback((item: FoodItem, statusKey: string, legacyStatusKey?: string) => (
         Object.entries(itinerarySource)
             .filter(([, day]) => day.activities.some(
-                (activity) => isScheduledFoodActivity(activity, item, statusKey),
+                (activity) => isScheduledFoodActivity(activity, item, statusKey, legacyStatusKey),
             ))
             .map(([dayKey]) => dayKey)
             .sort((left, right) => left.localeCompare(right, "en", { numeric: true }))
@@ -390,9 +399,14 @@ export function Food() {
 
     const openScheduleDialog = (item: FoodItem, statusKey: string, trigger: HTMLElement, legacyStatusKey?: string) => {
         scheduleTriggerRef.current = trigger;
-        const existingDay = getPlannedFoodDays(item, statusKey)[0];
+        const existingDay = getPlannedFoodDays(item, statusKey, legacyStatusKey)[0];
+        const existingActivity = existingDay
+            ? itinerarySource[existingDay]?.activities.find((activity) => (
+                isScheduledFoodActivity(activity, item, statusKey, legacyStatusKey)
+            ))
+            : undefined;
         setScheduleDay(existingDay ?? "day1");
-        setScheduleTime("12:00");
+        setScheduleTime(existingActivity?.time ?? "12:00");
         setScheduleTarget({ item, statusKey, legacyStatusKey });
     };
 
@@ -407,7 +421,7 @@ export function Food() {
                     dayKey,
                     {
                         ...day,
-                        activities: day.activities.filter((activity) => !isScheduledFoodActivity(activity, item, statusKey)),
+                        activities: day.activities.filter((activity) => !isScheduledFoodActivity(activity, item, statusKey, legacyStatusKey)),
                     },
                 ]),
             );
@@ -442,11 +456,11 @@ export function Food() {
 
     const removeFoodFromItinerary = () => {
         if (!scheduleTarget || !updateItinerary) return;
-        const { item, statusKey } = scheduleTarget;
+        const { item, statusKey, legacyStatusKey } = scheduleTarget;
         updateItinerary((prev) => Object.fromEntries(
             Object.entries(prev).map(([dayKey, day]) => [
                 dayKey,
-                { ...day, activities: day.activities.filter((activity) => !isScheduledFoodActivity(activity, item, statusKey)) },
+                { ...day, activities: day.activities.filter((activity) => !isScheduledFoodActivity(activity, item, statusKey, legacyStatusKey)) },
             ]),
         ));
         setScheduleTarget(null);
@@ -465,14 +479,18 @@ export function Food() {
         markersRef.current.forEach(m => { m.map = null; });
         markersRef.current = [];
 
-        const allItems = RECOMMENDED_FOODS[activeCat] || [];
+        const allItems = searchQuery.trim()
+            ? Object.values(RECOMMENDED_FOODS).flat()
+            : (RECOMMENDED_FOODS[activeCat] || []);
         const filtered = allItems.filter((item) => (
             (activeDistrict === "all" || item.loc === activeDistrict)
             && matchesFoodSearch(item, searchQuery)
         ));
 
         filtered.forEach((item, index) => {
-            const catInfo = FOOD_CATEGORIES.find(c => c.id === activeCat);
+            const catInfo = FOOD_CATEGORIES.find((category) => (
+                (RECOMMENDED_FOODS[category.id] || []).includes(item)
+            ));
             const emoji = catInfo?.icon || "🍽️";
 
             const markerEl = createStyledMarkerChip(
@@ -480,7 +498,7 @@ export function Food() {
                 {
                     background: "white",
                     color: "#111",
-                    border: "2px solid #e74c3c",
+                    border: "2px solid #c02f26",
                     padding: "4px 8px",
                     borderRadius: "10px",
                     fontSize: "12px",
@@ -551,7 +569,7 @@ export function Food() {
             map,
             title: "🏨 飯店（錦糸町）",
             content: createStyledMarkerChip("🏨 飯店", {
-                background: "#e74c3c",
+                background: "#c02f26",
                 color: "white",
                 padding: "6px 10px",
                 borderRadius: "12px",
@@ -787,10 +805,38 @@ export function Food() {
         // 同步尚未完成前禁止寫入，避免本機空陣列 + 新項目在 LWW 下覆蓋雲端完整名單
         if (!isLoaded || !formData.name) return;
         if (editingId) {
+            const previousFood = customFoods.find((food) => food.id === editingId);
             // 編輯模式：用 functional update 避免與 realtime 同步的 stale closure 互相覆蓋
             updateCustomFoods((prev) =>
                 prev.map((f) => (f.id === editingId ? { ...f, ...formData, id: editingId, syncId: f.syncId } : f)),
             );
+            if (previousFood && updateItinerary) {
+                const statusKey = customFoodStatusKey(previousFood);
+                const legacyStatusKey = legacyCustomFoodStatusKey(previousFood.id);
+                const previousItem: FoodItem = {
+                    name: previousFood.name,
+                    loc: previousFood.location,
+                    desc: previousFood.desc,
+                    lat: previousFood.lat ?? HOTEL_COORDS.lat,
+                    lng: previousFood.lng ?? HOTEL_COORDS.lng,
+                };
+                updateItinerary((prev) => Object.fromEntries(
+                    Object.entries(prev).map(([dayKey, day]) => [dayKey, {
+                        ...day,
+                        activities: day.activities.map((activity) => (
+                            isScheduledFoodActivity(activity, previousItem, statusKey, legacyStatusKey)
+                                ? {
+                                    ...activity,
+                                    name: `用餐：${formData.name}`,
+                                    desc: `${formData.location} · ${formData.desc}`,
+                                    sourceId: foodSourceId(statusKey),
+                                    syncId: activitySyncIdFromSource(foodSourceId(statusKey)),
+                                }
+                                : activity
+                        )),
+                    }]),
+                ));
+            }
         } else {
             // 新增模式：offset 避免同毫秒連點造成 id 碰撞（與 BudgetTracker.tsx 做法一致）
             updateCustomFoods((prev) => [{ ...formData, id: Date.now() + prev.length }, ...prev]);
@@ -821,7 +867,7 @@ export function Food() {
         const id = food.id;
         const ok = await confirm({
             title: "刪除美食紀錄",
-            message: "確定要刪除這筆美食嗎？",
+            message: "確定要刪除這筆美食嗎？若已排入行程，也會一併移除該用餐安排。",
             accent: "danger",
             confirmText: "刪除",
         });
@@ -836,6 +882,25 @@ export function Food() {
             delete next[legacyKey];
             return next;
         });
+        if (updateItinerary) {
+            const statusKey = customFoodStatusKey(food);
+            const legacyStatusKey = legacyCustomFoodStatusKey(id);
+            const item: FoodItem = {
+                name: food.name,
+                loc: food.location,
+                desc: food.desc,
+                lat: food.lat ?? HOTEL_COORDS.lat,
+                lng: food.lng ?? HOTEL_COORDS.lng,
+            };
+            updateItinerary((prev) => Object.fromEntries(
+                Object.entries(prev).map(([dayKey, day]) => [dayKey, {
+                    ...day,
+                    activities: day.activities.filter((activity) => (
+                        !isScheduledFoodActivity(activity, item, statusKey, legacyStatusKey)
+                    )),
+                }]),
+            ));
+        }
         // 若刪除的正是正在編輯的項目，重置表單
         if (editingId === id) resetForm();
     };
@@ -853,7 +918,10 @@ export function Food() {
     };
 
     // ── 篩選後的餐廳列表 ──
-    const currentFoods = RECOMMENDED_FOODS[activeCat] || [];
+    const categoryFoods = RECOMMENDED_FOODS[activeCat] || [];
+    const currentFoods = searchQuery.trim()
+        ? Object.values(RECOMMENDED_FOODS).flat()
+        : categoryFoods;
     const filteredFoods = currentFoods.filter((item) => (
         (activeDistrict === "all" || item.loc === activeDistrict)
         && matchesFoodSearch(item, searchQuery)
@@ -862,17 +930,17 @@ export function Food() {
     // ── 當前分類可用的區域 ──
     const availableDistricts = DISTRICT_FILTERS.filter(d => d.id === "all" || currentFoods.some(item => item.loc === d.id));
     const scheduledTargetDays = scheduleTarget
-        ? getPlannedFoodDays(scheduleTarget.item, scheduleTarget.statusKey)
+        ? getPlannedFoodDays(scheduleTarget.item, scheduleTarget.statusKey, scheduleTarget.legacyStatusKey)
         : [];
 
     return (
-        <section id="food" className="py-4 px-4 md:px-12 max-w-7xl mx-auto">
-            <div className="bg-white dark:bg-slate-800 rounded-[2.5rem] p-5 md:p-8 shadow-2xl border border-gray-100 dark:border-slate-700">
+        <section id="food" className="py-4 md:py-8 max-w-7xl mx-auto">
+            <div className="trip-card bg-white dark:bg-slate-800 rounded-[2.5rem] p-5 md:p-8 shadow-2xl border border-gray-100 dark:border-slate-700">
 
                 {/* ── 標題與地圖切換 ── */}
-                <div className="flex items-center justify-between mb-6">
-                    <h2 className="text-2xl md:text-3xl font-black flex items-center gap-2">
-                        🍽️ 東京美食地圖
+                <div className="flex flex-col min-[430px]:flex-row min-[430px]:items-center justify-between gap-3 mb-6">
+                    <h2 className="text-xl sm:text-2xl md:text-3xl font-black flex items-center gap-2 text-balance">
+                        <Utensils className="h-6 w-6 shrink-0 text-primary" /> 東京美食地圖
                     </h2>
                     <button
                         onClick={() => {
@@ -880,7 +948,7 @@ export function Food() {
                             setShowMap(nextShowMap);
                             if (nextShowMap) setMapStatus("loading");
                         }}
-                        className={`flex min-h-11 items-center gap-2 px-5 py-2.5 rounded-2xl font-black text-sm transition-all active:scale-95 ${showMap
+                        className={`flex w-full min-[430px]:w-auto min-h-11 items-center justify-center gap-2 px-5 py-2.5 rounded-2xl font-black text-sm transition-colors active:scale-95 ${showMap
                             ? "bg-primary text-white shadow-lg shadow-primary/30"
                             : "bg-gray-50 dark:bg-slate-900 text-gray-500 border border-gray-100 dark:border-slate-700 hover:border-primary/30"
                             }`}
@@ -889,6 +957,13 @@ export function Food() {
                         {showMap ? "顯示列表" : "顯示地圖"}
                     </button>
                 </div>
+
+                {!isLoaded && (
+                    <div role="status" className="mb-4 flex items-center gap-2 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-bold text-blue-800 dark:border-blue-800 dark:bg-blue-900/20 dark:text-blue-200">
+                        <Loader2 className="h-4 w-4 motion-safe:animate-spin" />
+                        正在載入同步狀態，收藏、去過與排入行程功能會在完成後開放。
+                    </div>
+                )}
 
                 {focusHint && (
                     <div className="mb-4 flex items-start gap-3 rounded-2xl bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 px-4 py-3">
@@ -909,14 +984,14 @@ export function Food() {
                 )}
 
                 <div className="relative mb-4">
-                    <label htmlFor="food-search" className="sr-only">搜尋目前分類的餐廳</label>
+                    <label htmlFor="food-search" className="sr-only">搜尋所有分類的餐廳</label>
                     <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-500" aria-hidden="true" />
                     <input
                         id="food-search"
                         type="search"
                         value={searchQuery}
                         onChange={(event) => setSearchQuery(event.target.value)}
-                        placeholder={`搜尋${FOOD_CATEGORIES.find((category) => category.id === activeCat)?.label ?? "餐廳"}、區域或特色`}
+                        placeholder="搜尋所有餐廳、區域或特色"
                         className="min-h-12 w-full rounded-2xl border border-gray-200 bg-gray-50 py-3 pl-12 pr-12 text-base font-bold text-gray-900 outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
                     />
                     {searchQuery && (
@@ -1023,19 +1098,35 @@ export function Food() {
                     </div>
                 )}
 
+                <div className="mb-3 flex flex-wrap items-end justify-between gap-2 px-1">
+                    <div>
+                        <p className="text-xs font-black uppercase tracking-[0.16em] text-primary">RESTAURANT LIST</p>
+                        <p className="mt-0.5 text-sm font-bold text-gray-600 dark:text-gray-300">
+                            顯示 <span className="font-metric text-base text-gray-950 dark:text-white">{filteredFoods.length}</span> / {currentFoods.length} 家
+                            {searchQuery.trim() ? " · 跨全部料理搜尋" : ""}
+                        </p>
+                    </div>
+                    {(activeDistrict !== "all" || searchQuery.trim()) && (
+                        <button type="button" onClick={() => { setSearchQuery(""); setActiveDistrict("all"); }} className="inline-flex min-h-11 items-center rounded-xl px-3 text-xs font-black text-primary hover:bg-primary/10">
+                            清除篩選
+                        </button>
+                    )}
+                </div>
+
                 {/* ── 餐廳卡片網格 ── */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-10">
                     {filteredFoods.map((item) => {
                         const dist = haversineDistance(HOTEL_COORDS.lat, HOTEL_COORDS.lng, item.lat, item.lng);
                         const time = estimateTransitTime(dist);
                         const statusKey = foodStatusKey(item);
-                        const status = foodStatuses[statusKey];
-                        const plannedDays = getPlannedFoodDays(item, statusKey);
+                        const legacyStatusKey = legacyRecommendedFoodStatusKey(item);
+                        const status = foodStatuses[statusKey] ?? foodStatuses[legacyStatusKey];
+                        const plannedDays = getPlannedFoodDays(item, statusKey, legacyStatusKey);
                         const plannedDay = plannedDays[0];
                         const plannedDayLabels = plannedDays.map(scheduleDayLabel).join("、");
                         return (
                             <div
-                                key={item.name}
+                                key={statusKey}
                                 className={`bg-gray-50 dark:bg-slate-900 p-4 rounded-2xl border transition-all group relative flex flex-col justify-between ${selectedMarker?.name === item.name
                                     ? "border-primary shadow-lg shadow-primary/10 ring-2 ring-primary/20"
                                     : "border-transparent hover:border-primary/20"
@@ -1057,10 +1148,10 @@ export function Food() {
                                     {/* ── 距離與時間 ── */}
                                     <div className="flex items-center gap-3 mb-2">
                                         <span className="inline-flex items-center gap-1 text-xs font-bold text-gray-600 dark:text-gray-300">
-                                            <Footprints className="w-3 h-3" /> {dist.toFixed(1)}km
+                                            <MapPin className="w-3 h-3" /> 直線 {dist.toFixed(1)}km
                                         </span>
                                         <span className="inline-flex items-center gap-1 text-xs font-bold text-orange-700 dark:text-orange-300">
-                                            <Clock className="w-3 h-3" /> {time}
+                                            <Clock className="w-3 h-3" /> 交通粗估 {time}
                                         </span>
                                     </div>
                                     <p className="text-sm text-gray-600 dark:text-gray-300 leading-tight line-clamp-2 italic mb-3">&ldquo;{item.desc}&rdquo;</p>
@@ -1076,8 +1167,9 @@ export function Food() {
                                             type="button"
                                             aria-pressed={status === "wishlist"}
                                             aria-label={`將「${item.name}」標記為想吃`}
-                                            onClick={() => setFoodStatus(statusKey, "wishlist")}
-                                            className={`inline-flex min-h-11 items-center justify-center gap-1 rounded-xl border px-2 text-xs font-black ${status === "wishlist" ? "border-pink-600 bg-pink-600 text-white" : "border-gray-200 bg-white text-gray-700 dark:border-slate-700 dark:bg-slate-800 dark:text-gray-200"}`}
+                                            disabled={!isLoaded}
+                                            onClick={() => setFoodStatus(statusKey, "wishlist", legacyStatusKey)}
+                                            className={`inline-flex min-h-11 items-center justify-center gap-1 rounded-xl border px-2 text-xs font-black disabled:cursor-wait disabled:opacity-50 ${status === "wishlist" ? "border-pink-600 bg-pink-600 text-white" : "border-gray-200 bg-white text-gray-700 dark:border-slate-700 dark:bg-slate-800 dark:text-gray-200"}`}
                                         >
                                             <Heart className={`w-4 h-4 ${status === "wishlist" ? "fill-current" : ""}`} /> 想吃
                                         </button>
@@ -1085,8 +1177,9 @@ export function Food() {
                                             type="button"
                                             aria-pressed={plannedDays.length > 0}
                                             aria-label={plannedDays.length > 1 ? `「${item.name}」目前重複排在 ${plannedDayLabels}；調整行程` : `將「${item.name}」排入行程`}
-                                            onClick={(event) => openScheduleDialog(item, statusKey, event.currentTarget)}
-                                            className={`inline-flex min-h-11 items-center justify-center gap-1 rounded-xl border px-2 text-xs font-black ${plannedDay ? "border-blue-700 bg-blue-700 text-white" : "border-gray-200 bg-white text-gray-700 dark:border-slate-700 dark:bg-slate-800 dark:text-gray-200"}`}
+                                            disabled={!isLoaded}
+                                            onClick={(event) => openScheduleDialog(item, statusKey, event.currentTarget, legacyStatusKey)}
+                                            className={`inline-flex min-h-11 items-center justify-center gap-1 rounded-xl border px-2 text-xs font-black disabled:cursor-wait disabled:opacity-50 ${plannedDay ? "border-blue-700 bg-blue-700 text-white" : "border-gray-200 bg-white text-gray-700 dark:border-slate-700 dark:bg-slate-800 dark:text-gray-200"}`}
                                         >
                                             <CalendarPlus className="w-4 h-4" /> {plannedDays.length > 1 ? `${plannedDays.length} 日重複` : plannedDay ? scheduleDayLabel(plannedDay) : "排入"}
                                         </button>
@@ -1094,8 +1187,9 @@ export function Food() {
                                             type="button"
                                             aria-pressed={status === "visited"}
                                             aria-label={`將「${item.name}」標記為去過`}
-                                            onClick={() => setFoodStatus(statusKey, "visited")}
-                                            className={`inline-flex min-h-11 items-center justify-center gap-1 rounded-xl border px-2 text-xs font-black ${status === "visited" ? "border-emerald-700 bg-emerald-700 text-white" : "border-gray-200 bg-white text-gray-700 dark:border-slate-700 dark:bg-slate-800 dark:text-gray-200"}`}
+                                            disabled={!isLoaded}
+                                            onClick={() => setFoodStatus(statusKey, "visited", legacyStatusKey)}
+                                            className={`inline-flex min-h-11 items-center justify-center gap-1 rounded-xl border px-2 text-xs font-black disabled:cursor-wait disabled:opacity-50 ${status === "visited" ? "border-emerald-700 bg-emerald-700 text-white" : "border-gray-200 bg-white text-gray-700 dark:border-slate-700 dark:bg-slate-800 dark:text-gray-200"}`}
                                         >
                                             <CheckCircle2 className="w-4 h-4" /> 去過
                                         </button>
@@ -1128,23 +1222,6 @@ export function Food() {
                         </div>
                     )}
                 </div>
-
-                {/* ── 搜尋結果計數 ── */}
-                {(activeDistrict !== "all" || searchQuery.trim()) && (
-                    <div className="text-center mb-6">
-                        <span className="text-sm font-bold text-gray-600 dark:text-gray-300">
-                            顯示 <span className="text-primary">{filteredFoods.length}</span> / {currentFoods.length} 家餐廳
-                            {filteredFoods.length === 0 && (
-                                <button
-                                    onClick={() => setActiveDistrict("all")}
-                                    className="ml-3 inline-flex min-h-11 items-center px-2 text-primary underline underline-offset-2 hover:no-underline"
-                                >
-                                    顯示全部
-                                </button>
-                            )}
-                        </span>
-                    </div>
-                )}
 
                 {/* ── 私藏美食表單 ── */}
                 <div className="border-t border-gray-100 dark:border-slate-700 pt-8 mt-4">
@@ -1324,7 +1401,7 @@ export function Food() {
                                 lat: food.lat ?? HOTEL_COORDS.lat,
                                 lng: food.lng ?? HOTEL_COORDS.lng,
                             };
-                            const plannedDays = getPlannedFoodDays(scheduleItem, statusKey);
+                            const plannedDays = getPlannedFoodDays(scheduleItem, statusKey, legacyStatusKey);
                             const plannedDay = plannedDays[0];
                             const plannedDayLabels = plannedDays.map(scheduleDayLabel).join("、");
                             return (
@@ -1360,10 +1437,10 @@ export function Food() {
                                         {hasCoords && dist != null && (
                                             <div className="flex items-center gap-3 mb-2">
                                                 <span className="inline-flex items-center gap-1 text-xs font-bold text-gray-600 dark:text-gray-300">
-                                                    <Footprints className="w-3 h-3" /> {dist.toFixed(1)}km
+                                                    <MapPin className="w-3 h-3" /> 直線 {dist.toFixed(1)}km
                                                 </span>
                                                 <span className="inline-flex items-center gap-1 text-xs font-bold text-orange-700 dark:text-orange-300">
-                                                    <Clock className="w-3 h-3" /> {time}
+                                                    <Clock className="w-3 h-3" /> 交通粗估 {time}
                                                 </span>
                                             </div>
                                         )}

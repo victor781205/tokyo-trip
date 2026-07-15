@@ -2,7 +2,7 @@
 
 import { MapPin, Train, Globe, CheckCircle2, Plane, Navigation, ExternalLink, Clock3 } from "lucide-react";
 
-const HOTEL_GOOGLE_URL = "https://www.google.com/maps/dir/?api=1&origin=Narita+Airport+NRT&destination=Tobu+Levant+Hotel+Tokyo+Kinshicho";
+const HOTEL_GOOGLE_URL = "https://www.google.com/maps/search/?api=1&query=Tobu+Levant+Hotel+Tokyo+Kinshicho";
 
 const transferMethods = [
   {
@@ -73,17 +73,11 @@ const arrivalSteps = [
 
 export function HotelInfo() {
   return (
-    <section id="hotel" className="py-6 md:py-12 scroll-mt-28">
-      {/* ── 頁面抬頭 ── */}
-      <div className="text-center mb-8">
-        <h2 className="text-3xl md:text-4xl font-black mb-2">🏨 住宿與交通</h2>
-        <p className="text-gray-500 font-bold">Day 1 抵達資訊 · 機場接駁</p>
-      </div>
-
+    <section id="hotel" className="py-4 md:py-8 scroll-mt-28">
       {/* ═══════════════════════════════
           第一區：飯店資訊 + Day 1 時間線
       ═══════════════════════════════ */}
-      <div className="bg-white dark:bg-slate-800 rounded-[2.5rem] shadow-xl overflow-hidden border border-gray-100 dark:border-slate-700 mb-6">
+      <div className="trip-card bg-white dark:bg-slate-800 rounded-[2.5rem] shadow-xl overflow-hidden border border-gray-100 dark:border-slate-700 mb-6">
         <div className="p-6 md:p-8">
           {/* 飯店抬頭 */}
           <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6">
@@ -106,7 +100,7 @@ export function HotelInfo() {
                 rel="noopener noreferrer"
                 className="inline-flex min-h-11 items-center gap-1.5 bg-gray-100 dark:bg-slate-700 hover:bg-gray-200 dark:hover:bg-slate-600 text-gray-700 dark:text-gray-200 px-4 py-2 rounded-xl font-bold transition-all text-sm"
               >
-                <ExternalLink className="w-4 h-4" /> 地圖
+                <ExternalLink className="w-4 h-4" /> 飯店地圖
               </a>
             </div>
           </div>

@@ -9,6 +9,10 @@ import { SectionAnchors } from "@/components/SectionAnchors";
 import { TodayFocus } from "@/components/TodayFocus";
 import { TravelModeDock } from "@/components/TravelModeDock";
 import { useTrip } from "@/context/TripContext";
+import { CategoryMasthead, type CategoryTab } from "@/components/CategoryMasthead";
+import { BellRing } from "lucide-react";
+import { Hero } from "@/components/Hero";
+import { TokyoMark } from "@/components/TokyoBrand";
 
 const VALID_TABS = new Set([
   "hero",
@@ -59,10 +63,7 @@ function lazyNamed<TProps extends object>(
   );
 }
 
-// 各 tab 動態載入，降低首屏 bundle
-const Hero = lazyNamed(() =>
-  import("@/components/Hero").then((m) => m.Hero),
-);
+// 首頁 Hero 保留 SSR 以穩定首屏；其餘大型分類按需載入，降低首屏 bundle。
 const FlightInfo = lazyNamed(() =>
   import("@/components/FlightInfo").then((m) => m.FlightInfo),
 );
@@ -202,7 +203,7 @@ function HomeContent() {
         );
       case "transport":
         return (
-          <div className="space-y-8">
+          <div className="space-y-4 md:space-y-6">
             <SectionAnchors
               items={[
                 { id: "hotel", label: "住宿", emoji: "🏨" },
@@ -217,7 +218,7 @@ function HomeContent() {
         return <Itinerary onNavigate={handleSetActiveTab} />;
       case "tools":
         return (
-          <div className="space-y-8">
+          <div className="space-y-4 md:space-y-6">
             <SectionAnchors
               items={[
                 { id: "budget", label: "預算", emoji: "💰" },
@@ -232,7 +233,7 @@ function HomeContent() {
         return <Food />;
       case "assistant":
         return (
-          <div className="space-y-8">
+          <div className="space-y-4 md:space-y-6">
             <SectionAnchors
               items={[
                 { id: "emergency", label: "緊急", emoji: "🆘" },
@@ -240,6 +241,18 @@ function HomeContent() {
                 { id: "tips", label: "Tips", emoji: "💡" },
               ]}
             />
+            <aside className="assistant-push-panel" aria-label="行程提醒設定">
+              <div className="assistant-push-panel__icon" aria-hidden="true">
+                <BellRing className="h-5 w-5" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-black text-slate-950 dark:text-white">每天早上，把第一站送到手機</p>
+                <p className="mt-0.5 text-xs font-medium text-slate-600 dark:text-slate-300">旅遊助手現在可直接開啟行程提醒，不必再回首頁尋找設定。</p>
+              </div>
+              <div className="shrink-0">
+                <PushSubscriptionPrompt tripId={tripId} tripSecret={tripSecret} />
+              </div>
+            </aside>
             <EmergencyContacts />
             <JapanesePhrases />
             <Tips />
@@ -261,7 +274,10 @@ function HomeContent() {
   };
 
   return (
-    <main className="flex flex-col min-h-dvh pt-[calc(4rem+var(--sat))] pb-[calc(4.25rem+var(--sab))] lg:pb-0 transition-all duration-500">
+    <main
+      data-tab={activeTab}
+      className="trip-shell flex flex-col min-h-dvh pt-[calc(4rem+var(--sat))] pb-[calc(4.25rem+var(--sab))] lg:pb-0 transition-colors duration-500"
+    >
       <Navigation activeTab={activeTab} setActiveTab={handleSetActiveTab} />
       <TravelModeDock onNavigate={handleSetActiveTab} />
 
@@ -281,10 +297,12 @@ function HomeContent() {
           </>
         ) : (
           <>
-            <div className="flex-1 max-w-7xl mx-auto px-4 md:px-6 py-4 sm:py-6 w-full">
+            <div className="trip-page-frame flex-1 max-w-7xl mx-auto py-5 sm:py-8 w-full">
               <div key={activeTab} className="animate-in fade-in slide-in-from-bottom-2 duration-500">
-                <h1 className="sr-only">{TAB_TITLES[activeTab] ?? "東京自由行"}</h1>
-                {renderContent()}
+                <CategoryMasthead tab={activeTab as CategoryTab} />
+                <div className="category-content" aria-label={`${TAB_TITLES[activeTab] ?? "東京自由行"}內容`}>
+                  {renderContent()}
+                </div>
               </div>
             </div>
 
@@ -292,15 +310,17 @@ function HomeContent() {
 
             <footer className="bg-white dark:bg-slate-900 border-t border-gray-100 dark:border-slate-800 pt-8 pb-[calc(2rem+var(--sab))] text-center text-sm transition-colors mt-auto">
               <div className="max-w-4xl mx-auto px-6">
-                <h3 className="text-xl font-bold mb-3 text-primary">🗼 東京自由行行程規劃</h3>
+                <h3 className="mb-3 flex items-center justify-center gap-2 text-xl font-bold text-primary"><TokyoMark className="h-7 w-6" />東京自由行行程規劃</h3>
                 <div className="flex flex-wrap justify-center gap-2 sm:gap-6 mb-4 text-xs text-gray-500 font-bold">
                   <span>2026.09.01 - 09.06</span>
                   <span>•</span>
                   <span>Powered by Victor</span>
                 </div>
-                <div className="mb-4 flex justify-center">
-                  <PushSubscriptionPrompt tripId={tripId} tripSecret={tripSecret} />
-                </div>
+                {activeTab !== "assistant" && (
+                  <div className="mb-4 flex justify-center">
+                    <PushSubscriptionPrompt tripId={tripId} tripSecret={tripSecret} />
+                  </div>
+                )}
                 <p className="text-gray-400 opacity-60 text-xs">© 2026 Tokyo Trip Planner</p>
               </div>
             </footer>

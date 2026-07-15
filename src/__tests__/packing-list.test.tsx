@@ -84,6 +84,47 @@ describe("PackingList empty state", () => {
     expect(screen.queryByRole("button", { name: /建議清單/ })).not.toBeInTheDocument();
   });
 
+  it("keeps reservation state out of packing progress and bulk reset", () => {
+    const packedReservation = {
+      id: "reservation:ghibli",
+      name: "吉卜力門票",
+      packed: true,
+      category: "預約與門票",
+    };
+    const packedLuggage = { id: "passport", name: "護照", packed: true, category: "證件" };
+    const unpackedLuggage = { id: "umbrella", name: "摺疊傘", packed: false, category: "其他" };
+    mocks.packingList = [packedReservation, packedLuggage, unpackedLuggage];
+    render(<PackingList />);
+
+    expect(screen.getByText("已打包 1 / 2 項物品")).toBeInTheDocument();
+    expect(screen.getByText("50%")).toBeInTheDocument();
+    expect(screen.queryByText("吉卜力門票")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "全部消勾" }));
+    const updater = mocks.updatePackingList.mock.calls[0][0] as (items: typeof mocks.packingList) => typeof mocks.packingList;
+    expect(updater(mocks.packingList)).toEqual([
+      packedReservation,
+      { ...packedLuggage, packed: false },
+      unpackedLuggage,
+    ]);
+  });
+
+  it("preserves hidden reservation tasks when editing physical luggage", () => {
+    const reservation = {
+      id: "reservation:teamlab",
+      name: "teamLab 門票",
+      packed: true,
+      category: "預約與門票",
+    };
+    const luggage = { id: "passport", name: "護照", packed: false, category: "證件" };
+    mocks.packingList = [reservation, luggage];
+    render(<PackingList />);
+
+    fireEvent.click(screen.getByRole("button", { name: "標記「護照」為已打包" }));
+    const updater = mocks.updatePackingList.mock.calls[0][0] as (items: typeof mocks.packingList) => typeof mocks.packingList;
+    expect(updater(mocks.packingList)).toEqual([reservation, { ...luggage, packed: true }]);
+  });
+
   it("shows season, plug, and lithium-battery guidance without refilling the list", () => {
     render(<PackingList />);
 

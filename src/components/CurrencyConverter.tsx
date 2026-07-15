@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { RefreshCw, AlertCircle, CheckCircle2 } from "lucide-react";
+import { RefreshCw, AlertCircle, CheckCircle2, CircleDollarSign } from "lucide-react";
 
 type RateData = {
   rate: number;
@@ -120,8 +120,8 @@ export function CurrencyConverter() {
 
   if (loading) {
     return (
-      <section id="currency" className="py-6 md:py-20 px-4 max-w-3xl mx-auto">
-        <div className="bg-gradient-to-br from-blue-600 to-indigo-700 rounded-[3rem] p-8 md:p-12 shadow-2xl text-white animate-pulse">
+      <section id="currency" className="py-4 md:py-8 max-w-4xl mx-auto">
+        <div className="trip-card rounded-[2rem] p-8 md:p-12 animate-pulse">
           <div className="h-10 w-56 bg-white/20 rounded-2xl mb-6" />
           <div className="h-24 w-full bg-white/10 rounded-2xl mb-4" />
           <div className="flex justify-center"><div className="w-10 h-10 bg-white/10 rounded-full" /></div>
@@ -132,14 +132,14 @@ export function CurrencyConverter() {
   }
 
   return (
-    <section id="currency" className="py-6 md:py-20 px-4 max-w-3xl mx-auto scroll-mt-28">
-      <div className="bg-gradient-to-br from-blue-600 to-indigo-700 rounded-[2rem] sm:rounded-[3rem] p-6 sm:p-8 md:p-12 shadow-2xl text-white">
+    <section id="currency" className="py-4 md:py-8 max-w-4xl mx-auto scroll-mt-28">
+      <div className="currency-desk trip-card rounded-[2rem] p-6 sm:p-8 md:p-10 shadow-2xl text-white">
 
         {/* Header */}
         <div className="mb-6 sm:mb-8">
           <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-4">
             <div>
-              <h2 className="text-xl sm:text-2xl md:text-3xl font-black mb-1">💱 匯率轉換</h2>
+              <h2 className="flex items-center gap-2 text-xl sm:text-2xl md:text-3xl font-black mb-1"><CircleDollarSign className="h-6 w-6 text-emerald-600" />匯率轉換</h2>
               <p className="text-blue-200 text-xs sm:text-sm font-bold">新台幣 ↔ 日圓 每日參考匯率</p>
             </div>
             {/* 每日參考匯率大字 */}
@@ -266,10 +266,10 @@ export function CurrencyConverter() {
             <div className="text-[10px] font-black text-blue-200/80 uppercase tracking-widest mb-2 ml-0.5">新台幣 TWD</div>
             <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2 sm:gap-2">
               {[
-                { twd: "1,000", desc: "便利店零食飲料" },
-                { twd: "3,000", desc: "一餐拉麵/定食" },
-                { twd: "5,000", desc: "伴手禮小物" },
-                { twd: "10,000", desc: "單日預算參考" },
+                { twd: "200", desc: "飲料／點心" },
+                { twd: "500", desc: "拉麵／定食" },
+                { twd: "1,000", desc: "晚餐／門票" },
+                { twd: "2,000", desc: "單日現金花費" },
               ].map((item) => (
                 <button
                   key={item.twd}

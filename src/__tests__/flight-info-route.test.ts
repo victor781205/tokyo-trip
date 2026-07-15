@@ -19,6 +19,7 @@ describe("flight info route source-date isolation", () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    vi.restoreAllMocks();
     vi.unstubAllEnvs();
     vi.unstubAllGlobals();
   });
@@ -43,6 +44,7 @@ describe("flight info route source-date isolation", () => {
             FlightNumber: "800",
             FlightDate: "2026-09-01",
             ScheduleDepartureTime: "2026-09-01T08:30:00+08:00",
+            EstimatedDepartureTime: "2026-09-01T08:45:00+08:00",
             Gate: "A8",
             Terminal: "1",
             AcType: "A359",
@@ -66,6 +68,7 @@ describe("flight info route source-date isolation", () => {
       gate: "A8",
       terminal: "1",
       status: "delayed",
+      estimatedTime: "2026-09-01T08:45:00+08:00",
       aircraftIcao: "A35K",
       aircraftModel: "Airbus A350-1000",
       aircraftLive: false,
@@ -73,6 +76,8 @@ describe("flight info route source-date isolation", () => {
       sourceDate: "2026-09-01",
       isLive: true,
     });
+    expect(body.retrievedAt).toBe("2026-09-01T03:00:00.000Z");
+    expect(response.headers.get("Cache-Control")).toBe("no-store, max-age=0");
     expect(body.inbound).toMatchObject({
       depGate: "尚未公佈",
       depTerminal: "2",
@@ -163,6 +168,94 @@ describe("flight info route source-date isolation", () => {
       isLive: true,
     });
     expect(JSON.stringify(body)).not.toContain("STALE-GATE");
+  });
+
+  it("gets one TDX token while AviationStack starts without waiting for it", async () => {
+    vi.setSystemTime(new Date("2026-09-06T03:00:00.000Z"));
+    vi.stubEnv("TDX_CLIENT_ID", "client-id");
+    vi.stubEnv("TDX_CLIENT_SECRET", "client-secret");
+
+    let resolveToken!: (response: Response) => void;
+    const tokenResponse = new Promise<Response>((resolve) => {
+      resolveToken = resolve;
+    });
+    const fetchMock = vi.fn((input: string | URL | Request) => {
+      const url = String(input);
+      if (url.includes("/protocol/openid-connect/token")) return tokenResponse;
+      if (url.includes("api.aviationstack.com")) return Promise.resolve(jsonResponse({ data: [] }));
+      if (url.includes("/Arrival/TPE")) return Promise.resolve(jsonResponse([]));
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { GET } = await import("@/app/api/flight-info/route");
+    const responsePromise = GET(new Request(
+      "http://localhost/api/flight-info?flight=JX800&date=2026-09-01&inboundDate=2026-09-06",
+      { headers: { "x-forwarded-for": "parallel-upstreams" } },
+    ));
+
+    await Promise.resolve();
+    expect(fetchMock.mock.calls.filter(([input]) =>
+      String(input).includes("/protocol/openid-connect/token"),
+    )).toHaveLength(1);
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("api.aviationstack.com"),
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      expect.stringContaining("/Arrival/TPE"),
+      expect.anything(),
+    );
+
+    resolveToken(jsonResponse({ access_token: "shared-token" }));
+    const response = await responsePromise;
+
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("/Arrival/TPE"),
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: "Bearer shared-token" }),
+        signal: expect.any(AbortSignal),
+      }),
+    );
+  });
+
+  it("aborts a hung upstream and returns scheduled fallback before the PWA timeout", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    let requestWasAborted = false;
+    vi.stubGlobal("fetch", vi.fn((input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (!url.includes("/Departure/TPE")) throw new Error(`Unexpected fetch: ${url}`);
+      return new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => {
+          requestWasAborted = true;
+          reject(new DOMException("Aborted", "AbortError"));
+        });
+      });
+    }));
+
+    const { GET } = await import("@/app/api/flight-info/route");
+    const responsePromise = GET(new Request(
+      "http://localhost/api/flight-info?flight=JX800&date=2026-09-01&inboundDate=2026-09-06",
+      { headers: { "x-forwarded-for": "upstream-timeout" } },
+    ));
+    await vi.advanceTimersByTimeAsync(4_200);
+    const response = await responsePromise;
+    const body = await response.json();
+
+    expect(requestWasAborted).toBe(true);
+    expect(response.status).toBe(200);
+    expect(body.outbound).toMatchObject({
+      isLive: false,
+      source: "hardcode-itinerary",
+      aircraftModel: "Airbus A350-1000",
+    });
+    expect(errorSpy).toHaveBeenCalledWith(
+      "TDX Flight API Error:",
+      expect.any(DOMException),
+    );
+    const timeoutError = errorSpy.mock.calls[0]?.[1] as DOMException;
+    expect(["AbortError", "TimeoutError"]).toContain(timeoutError.name);
   });
 
   it("rejects any flight, date, duplicate, or extra query outside this trip", async () => {

@@ -1,6 +1,6 @@
 // @vitest-environment node
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GET } from "@/app/api/weather/route";
 
 const forecastPayload = [
@@ -46,7 +46,13 @@ const forecastPayload = [
   },
 ];
 
+beforeEach(() => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2026-07-14T18:30:00+09:00"));
+});
+
 afterEach(() => {
+  vi.useRealTimers();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
@@ -94,6 +100,118 @@ describe("GET /api/weather", () => {
       tempMin: "25",
       tempMax: "34",
     });
+    expect(body.stale).toBe(false);
+    expect(body.retrievedAt).toBe("2026-07-14T09:30:00.000Z");
+  });
+
+  it("starts at Tokyo's current date after midnight instead of the report date", async () => {
+    vi.setSystemTime(new Date("2026-07-15T00:30:00+09:00"));
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith("forecast/130000.json")) return Response.json(forecastPayload);
+      if (url.endsWith("latest_time.txt")) {
+        return new Response("2026-07-15T00:20:00+09:00");
+      }
+      if (url.endsWith("20260715_00.json")) {
+        return Response.json({
+          "20260715000000": { temp: [25.6, 0] },
+          "20260715002000": { temp: [25.2, 0] },
+        });
+      }
+      return Response.json({});
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await GET();
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.forecast[0]).toMatchObject({
+      date: "7/15",
+      weather: "101",
+      tempMin: "25.2",
+      tempMax: "34",
+      temperatureNote: "今日低溫為截至 00:20 實測值",
+    });
+    expect(body.forecast).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ date: "7/14" }),
+    ]));
+    expect(body.stale).toBe(false);
+  });
+
+  it("fills only a missing first-day field from same-date JMA weekly data", async () => {
+    vi.setSystemTime(new Date("2026-07-15T06:00:00+09:00"));
+    const splitTemperaturePayload = structuredClone(forecastPayload);
+    splitTemperaturePayload[0].timeSeries[2] = {
+      timeDefines: ["2026-07-15T09:00:00+09:00"],
+      areas: [{ temps: ["34"] }],
+    };
+    splitTemperaturePayload[1].timeSeries[1] = {
+      areas: [{ tempsMin: ["24", "23"], tempsMax: ["32", "31"] }],
+    };
+
+    vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith("forecast/130000.json")) return Response.json(splitTemperaturePayload);
+      if (url.endsWith("latest_time.txt")) {
+        return new Response("2026-07-15T05:50:00+09:00");
+      }
+      return Response.json({});
+    }));
+
+    const response = await GET();
+    const body = await response.json();
+
+    expect(body.observationStatus).toBe("unavailable");
+    expect(body.forecast[0]).toMatchObject({
+      date: "7/15",
+      tempMin: "24",
+      tempMax: "34",
+    });
+  });
+
+  it("keeps an unknown temperature empty when no same-date source value exists", async () => {
+    vi.setSystemTime(new Date("2026-07-15T06:00:00+09:00"));
+    const incompletePayload = structuredClone(forecastPayload);
+    incompletePayload[0].timeSeries[2] = {
+      timeDefines: ["2026-07-15T09:00:00+09:00"],
+      areas: [{ temps: ["34"] }],
+    };
+    incompletePayload[1].timeSeries[1] = {
+      areas: [{ tempsMin: ["", "23"], tempsMax: ["32", "31"] }],
+    };
+
+    vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith("forecast/130000.json")) return Response.json(incompletePayload);
+      if (url.endsWith("latest_time.txt")) {
+        return new Response("2026-07-15T05:50:00+09:00");
+      }
+      return Response.json({});
+    }));
+
+    const response = await GET();
+    const body = await response.json();
+
+    expect(body.forecast[0]).toMatchObject({ tempMin: "--", tempMax: "34" });
+  });
+
+  it("marks a JMA report stale after the freshness window", async () => {
+    vi.setSystemTime(new Date("2026-07-15T12:00:00+09:00"));
+    vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith("forecast/130000.json")) return Response.json(forecastPayload);
+      if (url.endsWith("latest_time.txt")) {
+        return new Response("2026-07-15T11:50:00+09:00");
+      }
+      return Response.json({});
+    }));
+
+    const response = await GET();
+    const body = await response.json();
+
+    expect(body.stale).toBe(true);
+    expect(body.updatedAt).toBe("2026-07-14T17:00:00+09:00");
   });
 
   it("returns a retryable gateway error without leaking upstream details", async () => {

@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from "next";
-import { Noto_Sans_TC, Noto_Serif_TC } from "next/font/google";
+import { Noto_Sans_TC, Noto_Serif_TC, Space_Grotesk } from "next/font/google";
 import "./globals.css";
-import { ThemeProvider } from "@/components/ThemeProvider";
+import { ThemeInitScript, ThemeProvider } from "@/components/ThemeProvider";
 import { TripProvider } from "@/context/TripContext";
 import { DialogProvider } from "@/context/DialogContext";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
@@ -17,6 +17,13 @@ const notoSerifTC = Noto_Serif_TC({
   weight: ["700", "900"],
   variable: "--font-noto-serif",
 });
+
+const spaceGrotesk = Space_Grotesk({
+  subsets: ["latin"],
+  variable: "--font-space-grotesk",
+});
+
+const themeInitScript = `(function(){try{var t=localStorage.getItem("theme");if(t!=="light"&&t!=="dark"&&t!=="system")t="system";t=t||"system";var d=t==="dark"||(t==="system"&&window.matchMedia("(prefers-color-scheme: dark)").matches);var r=document.documentElement;r.classList.toggle("dark",d);r.dataset.theme=t;r.style.colorScheme=d?"dark":"light"}catch(e){}})()`;
 
 export const metadata: Metadata = {
   title: "東京自由行 9/1-9/6",
@@ -56,8 +63,8 @@ export const viewport: Viewport = {
   // 系統 status bar / splash 配色依 prefers-color-scheme 切換
   // light = 品牌紅，dark = slate-900（搭配 manifest background_color）
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#e74c3c" },
-    { media: "(prefers-color-scheme: dark)", color: "#0f172a" },
+    { media: "(prefers-color-scheme: light)", color: "#c02f26" },
+    { media: "(prefers-color-scheme: dark)", color: "#07111f" },
   ],
 };
 
@@ -68,8 +75,11 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="zh-TW" suppressHydrationWarning data-scroll-behavior="smooth" className="scroll-smooth">
-      <body className={`${notoSansTC.variable} ${notoSerifTC.variable} font-sans antialiased bg-gray-50 text-gray-900 dark:bg-slate-900 dark:text-gray-100 transition-colors duration-300`}>
-        <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
+      <head>
+        <ThemeInitScript html={themeInitScript} />
+      </head>
+      <body className={`${notoSansTC.variable} ${notoSerifTC.variable} ${spaceGrotesk.variable} font-sans antialiased bg-gray-50 text-gray-900 dark:bg-slate-900 dark:text-gray-100 transition-colors duration-300`}>
+        <ThemeProvider>
           <TripProvider>
             <ErrorBoundary>
               <DialogProvider>

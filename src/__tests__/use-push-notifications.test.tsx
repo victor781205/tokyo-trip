@@ -198,6 +198,47 @@ describe("usePushNotifications native lifecycle", () => {
     expect(result.current.token).toBe("new-token");
   });
 
+  it("reports a delayed native token with the credentials captured when registration started", async () => {
+    const bodies: Array<Record<string, unknown>> = [];
+    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+      bodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+      return new Response(JSON.stringify({ ok: true }), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    pushMocks.register.mockResolvedValue(undefined);
+
+    const { result, rerender } = renderHook(
+      ({ id, secret }) => usePushNotifications(id, secret),
+      { initialProps: { id: "trip-started", secret: "secret-started" } },
+    );
+    await waitFor(() => expect(pushMocks.addListener).toHaveBeenCalledTimes(4));
+
+    let registration!: Promise<Awaited<ReturnType<typeof result.current.register>>>;
+    act(() => {
+      registration = result.current.register();
+    });
+    await waitFor(() => expect(pushMocks.register).toHaveBeenCalledTimes(1));
+
+    rerender({ id: "trip-current", secret: "secret-current" });
+
+    await act(async () => {
+      emit("registration", { value: "delayed-native-token" });
+      await registration;
+    });
+
+    expect(bodies).toEqual([
+      expect.objectContaining({
+        trip_id: "trip-started",
+        trip_secret: "secret-started",
+        token: "delayed-native-token",
+      }),
+    ]);
+    expect(localStorage.getItem("tokyoPushRegistration:trip-started")).toContain("delayed-native-token");
+    expect(localStorage.getItem("tokyoPushRegistration:trip-current")).toBeNull();
+    expect(result.current.registered).toBe(false);
+    expect(result.current.token).toBeNull();
+  });
+
   it("rejects the register promise when the async token report fails", async () => {
     vi.spyOn(console, "warn").mockImplementation(() => undefined);
     vi.stubGlobal("fetch", vi.fn(async () => new Response("database unavailable", { status: 503 })));
@@ -283,6 +324,39 @@ describe("usePushNotifications native lifecycle", () => {
     }));
     expect(result.current.registered).toBe(false);
     expect(result.current.token).toBeNull();
+  });
+
+  it("keeps the token and marker retryable when backend unregistration fails", async () => {
+    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => new Response(
+      init?.method === "DELETE" ? "database unavailable" : JSON.stringify({ ok: true }),
+      { status: init?.method === "DELETE" ? 503 : 200 },
+    ));
+    vi.stubGlobal("fetch", fetchMock);
+    pushMocks.register.mockImplementation(async () => {
+      emit("registration", { value: "native-token-retry" });
+    });
+
+    const { result } = renderHook(() => usePushNotifications("trip-retry", "secret-retry"));
+    await waitFor(() => expect(pushMocks.addListener).toHaveBeenCalledTimes(4));
+    await act(async () => {
+      await result.current.register();
+    });
+    expect(result.current.registered).toBe(true);
+
+    let error: unknown;
+    await act(async () => {
+      try {
+        await result.current.unregister();
+      } catch (caught) {
+        error = caught;
+      }
+    });
+
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toContain("取消推播失敗 (503)");
+    expect(result.current.registered).toBe(true);
+    expect(result.current.token).toBe("native-token-retry");
+    expect(localStorage.getItem("tokyoPushRegistration:trip-retry")).toContain("native-token-retry");
   });
 
   it("still clears the local token when an old credential was revoked by rotation", async () => {

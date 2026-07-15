@@ -23,9 +23,13 @@ import { getTripCountdownParts, getTripTimelineState } from "@/lib/trip-dates";
 import {
   buildGoogleMapsSearchUrl,
   formatCountdownMinutes,
+  getMinutesInTimeZone,
   getTravelModeSnapshot,
   activityProgressKey,
+  parseClockMinutes,
   travelProgressFromActivities,
+  type TimedActivity,
+  type TravelProgress,
   type TravelProgressStatus,
 } from "@/lib/travel-mode";
 import { isNativePlatform } from "@/lib/platform";
@@ -124,6 +128,50 @@ function temperatureSummary(weather: WeatherSnippet) {
 
 function dayKeyForIndex(i: number) {
   return `day${i + 1}` as const;
+}
+
+/**
+ * Today Focus treats the latest processed activity at or before Tokyo's current
+ * time as a forward-only cursor. Older unchecked activities remain available in
+ * the itinerary, but must not reappear as the current stop after the user has
+ * explicitly completed or skipped a later one.
+ */
+export function getTodayFocusTravelModeSnapshot<T extends TimedActivity>(
+  activities: T[],
+  now: Date,
+  progress: TravelProgress = {},
+) {
+  const snapshot = getTravelModeSnapshot(activities, now, progress);
+  if (!snapshot.current) return snapshot;
+
+  const nowMinutes = getMinutesInTimeZone(now);
+  const timelineEntries = activities
+    .map((activity, originalIndex) => {
+      const minuteOfDay = parseClockMinutes(activity.time);
+      if (minuteOfDay === null) return null;
+      return {
+        key: activityProgressKey(activity, originalIndex),
+        minuteOfDay,
+        originalIndex,
+      };
+    })
+    .filter((entry): entry is NonNullable<typeof entry> => entry !== null)
+    .sort((a, b) => a.minuteOfDay - b.minuteOfDay || a.originalIndex - b.originalIndex);
+
+  let processedCursor = -1;
+  timelineEntries.forEach((entry, index) => {
+    if (entry.minuteOfDay <= nowMinutes && progress[entry.key]) {
+      processedCursor = index;
+    }
+  });
+  if (processedCursor < 0) return snapshot;
+
+  const currentPosition = timelineEntries.findIndex(
+    (entry) => entry.key === snapshot.current?.key,
+  );
+  return currentPosition >= 0 && currentPosition <= processedCursor
+    ? { ...snapshot, current: null }
+    : snapshot;
 }
 
 interface TodayFocusProps {
@@ -237,7 +285,7 @@ export function TodayFocus({ onNavigate }: TodayFocusProps) {
     const source = Object.keys(itinerary || {}).length > 0 ? itinerary : DEFAULT_ITINERARY;
     const dayPlan = source[key] ?? DEFAULT_ITINERARY[key];
     const allActivities = dayPlan?.activities ?? [];
-    const travelMode = getTravelModeSnapshot(
+    const travelMode = getTodayFocusTravelModeSnapshot(
       allActivities,
       now,
       travelProgressFromActivities(allActivities),
@@ -247,8 +295,9 @@ export function TodayFocus({ onNavigate }: TodayFocusProps) {
 
     const spent = (budgetItems || []).reduce((s, i) => s + (i.amount || 0), 0);
     const remaining = Math.max((budgetLimit || 0) - spent, 0);
-    const packed = (packingList || []).filter((i) => i.packed).length;
-    const packTotal = packingList?.length || 0;
+    const luggageItems = (packingList || []).filter((item) => !item.id.startsWith("reservation:"));
+    const packed = luggageItems.filter((item) => item.packed).length;
+    const packTotal = luggageItems.length;
     const packPct = packTotal > 0 ? Math.round((packed / packTotal) * 100) : 0;
 
     return {
@@ -292,6 +341,7 @@ export function TodayFocus({ onNavigate }: TodayFocusProps) {
 
   return (
     <section
+      id="today-focus"
       aria-label="今日焦點"
       className="w-full max-w-2xl mx-auto mt-5 sm:mt-6 animate-in fade-in slide-in-from-bottom-3 duration-700"
     >

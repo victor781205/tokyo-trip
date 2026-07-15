@@ -1,4 +1,7 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" fill="#e74c3c" rx="100"/>
-  <text x="256" y="320" font-size="280" text-anchor="middle" fill="white">🗼</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <rect width="512" height="512" rx="108" fill="#07111F"/>
+  <circle cx="354" cy="144" r="94" fill="#C02F26"/>
+  <path d="M256 65 132 438M256 65l124 373M170 322h172M199 228h114M228 138h56" stroke="#F8F3EB" stroke-width="28" stroke-linecap="round"/>
+  <path d="M98 438h316M176 438l80-92 80 92" stroke="#F8F3EB" stroke-width="28" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="256" cy="65" r="23" fill="#F8F3EB"/>
 </svg>

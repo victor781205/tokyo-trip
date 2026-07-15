@@ -215,11 +215,12 @@ describe("Itinerary accessibility and state safety", () => {
     expect(screen.getByRole("button", { name: "後一天" })).toBeDisabled();
   });
 
-  it("uses a non-shrinking responsive action grid and reveals desktop actions on keyboard focus", () => {
+  it("uses non-shrinking, always-visible actions on mobile and desktop", () => {
     render(<Itinerary />);
     const editButtons = screen.getAllByRole("button", { name: "編輯「原始活動」" });
-    expect(editButtons[0].parentElement).toHaveClass("grid", "grid-cols-2", "min-[390px]:grid-cols-4");
-    expect(editButtons[1].parentElement).toHaveClass("md:group-focus-within:opacity-100");
+    expect(editButtons[0].parentElement).toHaveClass("grid", "grid-cols-3");
+    expect(editButtons[1].parentElement).toHaveClass("flex", "flex-wrap");
+    expect(editButtons[1].parentElement?.className).not.toContain("opacity-0");
     expect(editButtons[1]).toHaveClass("shrink-0", "focus-visible:ring-2");
   });
 
@@ -240,20 +241,27 @@ describe("Itinerary accessibility and state safety", () => {
   it("uses a positive suggested budget and rejects zero-yen expenses", () => {
     render(<Itinerary />);
 
-    fireEvent.click(screen.getAllByRole("button", { name: "將「原始活動」加入預算" })[0]);
+    fireEvent.click(screen.getAllByRole("button", { name: "記錄「原始活動」支出" })[0]);
     const amount = screen.getByLabelText(/金額（日圓 ¥，最低 ¥1）/);
     expect(amount).toHaveValue(1000);
     expect(amount).toHaveAttribute("min", "1");
+    expect(screen.getByText(/預設由 Victor 付款、Victor 與 毓寧共同分攤/)).toBeInTheDocument();
 
     fireEvent.change(amount, { target: { value: "0" } });
-    fireEvent.click(screen.getByRole("button", { name: "確認加入" }));
+    fireEvent.click(screen.getByRole("button", { name: "確認記錄" }));
     expect(screen.getByRole("alert")).toHaveTextContent("0 元不會列入支出");
     expect(amount).toHaveAttribute("aria-invalid", "true");
     expect(mocks.updateBudgetItems).not.toHaveBeenCalled();
 
     fireEvent.change(amount, { target: { value: "1200" } });
-    fireEvent.click(screen.getByRole("button", { name: "確認加入" }));
+    fireEvent.click(screen.getByRole("button", { name: "確認記錄" }));
     const updater = mocks.updateBudgetItems.mock.calls[0][0] as (items: unknown[]) => Array<Record<string, unknown>>;
-    expect(updater([])[0]).toEqual(expect.objectContaining({ amount: 1200, name: "原始活動" }));
+    expect(updater([])[0]).toEqual(expect.objectContaining({
+      amount: 1200,
+      name: "原始活動",
+      date: "2026-09-01",
+      payer: "Victor",
+      participants: ["Victor", "毓寧"],
+    }));
   });
 });

@@ -23,17 +23,77 @@ const TDX_CLIENT_ID = process.env.TDX_CLIENT_ID?.trim() ?? "";
 const TDX_CLIENT_SECRET = process.env.TDX_CLIENT_SECRET?.trim() ?? "";
 const TRIP_OUTBOUND_FLIGHT = "JX800";
 const TRIP_INBOUND_FLIGHT = "JX805";
+const TOKEN_TIMEOUT_MS = 1_200;
+const UPSTREAM_TIMEOUT_MS = 4_200;
+
+type NextFetchInit = RequestInit & {
+  next?: { revalidate?: number };
+};
+
+type TdxArrivalData = {
+  sourceDate: string;
+  gate: string;
+  terminal: string;
+  scheduled: string;
+  estimated: string;
+  actual: string;
+  status: string;
+  aircraftIcao: string;
+  aircraftModel: string;
+  aircraftTags: string[];
+  aircraftLive: boolean;
+};
+
+type AviationStackDepartureData = {
+  sourceDate: string;
+  gate: string;
+  terminal: string;
+  scheduled: string;
+  estimated: string;
+  actual: string;
+  delay: string;
+  status: string;
+};
+
+/**
+ * Abort the network request and reject independently of fetch's abort handling.
+ * The combined token + TDX path stays comfortably below the PWA's 8s timeout.
+ */
+async function fetchWithTimeout(
+  input: string | URL,
+  init: NextFetchInit = {},
+  timeoutMs = UPSTREAM_TIMEOUT_MS,
+): Promise<Response> {
+  const controller = new AbortController();
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => {
+      controller.abort();
+      reject(new DOMException("Upstream request timed out", "TimeoutError"));
+    }, timeoutMs);
+  });
+
+  try {
+    return await Promise.race([
+      fetch(input, { ...init, signal: controller.signal }),
+      timeout,
+    ]);
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+}
 
 async function getTdxToken(): Promise<string | null> {
   if (!TDX_CLIENT_ID || !TDX_CLIENT_SECRET) return null;
   try {
-    const res = await fetch(
+    const res = await fetchWithTimeout(
       "https://tdx.transportdata.tw/auth/realms/TDXConnect/protocol/openid-connect/token",
       {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: `grant_type=client_credentials&client_id=${TDX_CLIENT_ID}&client_secret=${TDX_CLIENT_SECRET}`,
-      }
+      },
+      TOKEN_TIMEOUT_MS,
     );
     if (!res.ok) return null;
     const data = await res.json();
@@ -103,50 +163,65 @@ export async function GET(request: Request) {
   const requestedIcao = "JX";
   const inboundFlight = TRIP_INBOUND_FLIGHT;
 
-  // ── 去程 JX800（TPE 出發）— 使用 TDX 機場 FIDS ──
-  let outbound: Record<string, unknown> | null = null;
-  if (outboundLiveWindow) try {
-    const tdxToken = await getTdxToken();
-    const headers: Record<string, string> = {
-      "User-Agent": "Mozilla/5.0",
-      Accept: "application/json",
-    };
-    if (tdxToken) {
-      headers["Authorization"] = `Bearer ${tdxToken}`;
-    }
+  // ── 回程 JX805（NRT 出發 → TPE 抵達）— 並行查詢兩端即時資料 + 合成 ──
+  // 來源 A：TDX FIDS Arrival/TPE → 提供 TPE 抵達端航廈/登機門/時間，
+  // AcType 僅在與旅客已確認的訂位機型一致時標記為 LIVE。
+  // 來源 B：AviationStack NRT Departure → 提供 NRT 出發端航廈/登機門/時間/狀態
+  // fallback：getStationInfo hardcode 補 NRT/TPE 預設航廈（如 NRT 第 2 航廈）
+  // 機型以本次訂位資料為準，TDX 只驗證是否一致。
+  const inboundNumber = inboundFlight.replace(/^[A-Za-z]+/, "");
+  const inboundIcao =
+    inboundFlight.match(/^[A-Za-z]+/)?.[0]?.toUpperCase() ?? "JX";
+  const nrtStation = getStationInfo(inboundIcao, "NRT");
+  const tpeStation = getStationInfo(inboundIcao, "TPE");
+  const needsTdx = outboundLiveWindow || inboundLiveWindow;
+  // Both TDX requests share this one token request. AviationStack starts immediately
+  // and does not wait for TDX authentication.
+  const tdxTokenPromise = needsTdx ? getTdxToken() : Promise.resolve(null);
 
-    const res = await fetch(
-      "https://tdx.transportdata.tw/api/basic/v2/Air/FIDS/Airport/Departure/TPE?%24format=JSON",
-      { headers, next: { revalidate: 300 } }
-    );
+  const outboundPromise: Promise<Record<string, unknown> | null> = outboundLiveWindow
+    ? tdxTokenPromise.then(async (tdxToken) => {
+      try {
+        const headers: Record<string, string> = {
+          "User-Agent": "Mozilla/5.0",
+          Accept: "application/json",
+        };
+        if (tdxToken) headers.Authorization = `Bearer ${tdxToken}`;
 
-    if (res.ok) {
-      const data = await res.json();
-      const flight = findTdxFlightForDate(
-        data,
-        ["SJX", requestedIcao],
-        requestedNumber,
-        requestedDate,
-      );
+        const res = await fetchWithTimeout(
+          "https://tdx.transportdata.tw/api/basic/v2/Air/FIDS/Airport/Departure/TPE?%24format=JSON",
+          { headers, next: { revalidate: 300 } },
+        );
+        if (!res.ok) return null;
 
-      if (flight) {
+        const flight = findTdxFlightForDate(
+          await res.json(),
+          ["SJX", requestedIcao],
+          requestedNumber,
+          requestedDate,
+        );
+        if (!flight) return null;
+
         const sourceDate = getTdxDepartureSourceDate(flight);
         if (!sourceDate) throw new Error("TDX departure source date was not validated");
         const aircraft = resolveAircraft(
           String(flight.AcType || flight.AircraftType || ""),
-          requestedFlight
+          requestedFlight,
         );
-        outbound = {
+        return {
           gate: String(flight.Gate || "尚未公佈").trim(),
           status: normalizeFlightStatus(
-            flight.DepartureRemark || flight.DepartureRemarkEn
+            flight.DepartureRemark || flight.DepartureRemarkEn,
           ),
           terminal: String(flight.Terminal || "1"),
           time: String(
-            flight.ScheduleDepartureTime || flight.ScheduleArrivalTime || ""
+            flight.ScheduleDepartureTime || flight.ScheduleArrivalTime || "",
+          ),
+          estimatedTime: String(
+            flight.EstimatedDepartureTime || flight.EstimatedArrivalTime || "",
           ),
           actualTime: String(
-            flight.ActualDepartureTime || flight.ActualArrivalTime || ""
+            flight.ActualDepartureTime || flight.ActualArrivalTime || "",
           ),
           aircraftIcao: aircraft?.icao ?? "",
           aircraftModel: aircraft?.modelZh ?? "",
@@ -156,140 +231,106 @@ export async function GET(request: Request) {
           source: "TDX-Departure",
           sourceDate,
         };
+      } catch (error) {
+        console.error("TDX Flight API Error:", error);
+        return null;
       }
-    }
-  } catch (error) {
-    console.error("TDX Flight API Error:", error);
-  }
+    })
+    : Promise.resolve(null);
 
-  // ── 回程 JX805（NRT 出發 → TPE 抵達）— 並行查詢兩端即時資料 + 合成 ──
-  // 來源 A：TDX FIDS Arrival/TPE → 提供 TPE 抵達端航廈/登機門/時間，
-  // AcType 僅在與旅客已確認的訂位機型一致時標記為 LIVE。
-  // 來源 B：AviationStack NRT Departure → 提供 NRT 出發端航廈/登機門/時間/狀態
-  // fallback：getStationInfo hardcode 補 NRT/TPE 預設航廈（如 NRT 第 2 航廈）
-  // 機型以本次訂位資料為準，TDX 只驗證是否一致。
-  let inbound: Record<string, unknown> | null = null;
-  const inboundNumber = inboundFlight.replace(/^[A-Za-z]+/, "");
-  const inboundIcao =
-    inboundFlight.match(/^[A-Za-z]+/)?.[0]?.toUpperCase() ?? "JX";
-  const nrtStation = getStationInfo(inboundIcao, "NRT");
-  const tpeStation = getStationInfo(inboundIcao, "TPE");
+  // 來源 A：TDX FIDS Arrival/TPE（TPE 抵達端 + 機型）
+  const tdxArrivalPromise: Promise<TdxArrivalData | null> = inboundLiveWindow
+    ? tdxTokenPromise.then(async (tdxToken) => {
+      try {
+        const headers: Record<string, string> = {
+          "User-Agent": "Mozilla/5.0",
+          Accept: "application/json",
+        };
+        if (tdxToken) headers.Authorization = `Bearer ${tdxToken}`;
 
-  // 暫存 TPE 抵達資料（TDX Arrival）
-  let tdxArr: {
-    sourceDate: string;
-    gate: string;
-    terminal: string;
-    scheduled: string;
-    estimated: string;
-    actual: string;
-    status: string;
-    aircraftIcao: string;
-    aircraftModel: string;
-    aircraftTags: string[];
-    aircraftLive: boolean;
-  } | null = null;
+        const res = await fetchWithTimeout(
+          "https://tdx.transportdata.tw/api/basic/v2/Air/FIDS/Airport/Arrival/TPE?%24format=JSON",
+          { headers, next: { revalidate: 300 } },
+        );
+        if (!res.ok) return null;
 
-  // 暫存 NRT 出發資料（AviationStack）
-  let avstDep: {
-    sourceDate: string;
-    gate: string;
-    terminal: string;
-    scheduled: string;
-    estimated: string;
-    actual: string;
-    delay: string;
-    status: string;
-  } | null = null;
+        const flight = findTdxFlightForDate(
+          await res.json(),
+          ["SJX", inboundIcao],
+          inboundNumber,
+          requestedInboundDate,
+        );
+        if (!flight) return null;
 
-  // ── 來源 A：TDX FIDS Arrival/TPE（TPE 抵達端 + 機型）──
-  if (inboundLiveWindow) try {
-    const tdxToken = await getTdxToken();
-    const arrHeaders: Record<string, string> = {
-      "User-Agent": "Mozilla/5.0",
-      Accept: "application/json",
-    };
-    if (tdxToken) {
-      arrHeaders["Authorization"] = `Bearer ${tdxToken}`;
-    }
-
-    const arrRes = await fetch(
-      "https://tdx.transportdata.tw/api/basic/v2/Air/FIDS/Airport/Arrival/TPE?%24format=JSON",
-      { headers: arrHeaders, next: { revalidate: 300 } }
-    );
-
-    if (arrRes.ok) {
-      const arrData = await arrRes.json();
-      const flight = findTdxFlightForDate(
-        arrData,
-        ["SJX", inboundIcao],
-        inboundNumber,
-        requestedInboundDate,
-      );
-
-      if (flight) {
         const sourceDate = getTdxArrivalSourceDate(flight);
         if (!sourceDate) throw new Error("TDX arrival source date was not validated");
         const aircraft = resolveAircraft(
           String(flight.AcType || flight.AircraftType || ""),
-          inboundFlight
+          inboundFlight,
         );
-        tdxArr = {
+        return {
           sourceDate,
           gate: String(flight.Gate || "").trim() || "尚未公佈",
-          terminal: String(flight.Terminal || "").trim() || tpeStation?.defaultTerminal || "1",
+          terminal:
+            String(flight.Terminal || "").trim() ||
+            tpeStation?.defaultTerminal ||
+            "1",
           scheduled: String(
-            flight.ScheduleArrivalTime || flight.ScheduleDepartureTime || ""
+            flight.ScheduleArrivalTime || flight.ScheduleDepartureTime || "",
           ),
           estimated: String(
-            flight.EstimatedArrivalTime || flight.EstimatedDepartureTime || ""
+            flight.EstimatedArrivalTime || flight.EstimatedDepartureTime || "",
           ),
           actual: String(
-            flight.ActualArrivalTime || flight.ActualDepartureTime || ""
+            flight.ActualArrivalTime || flight.ActualDepartureTime || "",
           ),
           status: normalizeFlightStatus(
-            flight.ArrivalRemark || flight.ArrivalRemarkEn
+            flight.ArrivalRemark || flight.ArrivalRemarkEn,
           ),
           aircraftIcao: aircraft?.icao ?? "",
           aircraftModel: aircraft?.modelZh ?? "",
           aircraftTags: aircraft?.tags ?? [],
           aircraftLive: Boolean(aircraft?.live),
         };
+      } catch (error) {
+        console.error("TDX Arrival API Error:", error);
+        return null;
       }
-    }
-  } catch (error) {
-    console.error("TDX Arrival API Error:", error);
-  }
+    })
+    : Promise.resolve(null);
 
-  // ── 來源 B：AviationStack NRT Departure（NRT 出發端）──
-  if (inboundLiveWindow && AVIATION_STACK_KEY) {
-    try {
-      const params = new URLSearchParams({
-        access_key: AVIATION_STACK_KEY,
-        dep_iata: "NRT",
-        flight_number: inboundNumber,
-        flight_date: requestedInboundDate,
-      });
-      const res = await fetch(
-        `https://api.aviationstack.com/v1/flights?${params.toString()}`,
-        { next: { revalidate: 300 } },
-      );
+  // 來源 B：AviationStack NRT Departure（NRT 出發端）
+  const aviationStackPromise: Promise<AviationStackDepartureData | null> =
+    inboundLiveWindow && AVIATION_STACK_KEY
+      ? (async () => {
+        try {
+          const params = new URLSearchParams({
+            access_key: AVIATION_STACK_KEY,
+            dep_iata: "NRT",
+            flight_number: inboundNumber,
+            flight_date: requestedInboundDate,
+          });
+          const res = await fetchWithTimeout(
+            `https://api.aviationstack.com/v1/flights?${params.toString()}`,
+            { next: { revalidate: 300 } },
+          );
+          if (!res.ok) return null;
 
-      if (res.ok) {
-        const json = await res.json();
-        const flights: ExternalFlight[] = Array.isArray(json?.data) ? json.data : [];
-        const flight = flights.find((candidate) =>
-          matchesAviationStackFlight(
-            candidate,
-            inboundFlight,
-            requestedInboundDate,
-          ),
-        );
-        if (flight) {
+          const json = await res.json();
+          const flights: ExternalFlight[] = Array.isArray(json?.data) ? json.data : [];
+          const flight = flights.find((candidate) =>
+            matchesAviationStackFlight(
+              candidate,
+              inboundFlight,
+              requestedInboundDate,
+            ),
+          );
+          if (!flight) return null;
+
           const sourceDate = getAviationStackDepartureSourceDate(flight);
           if (!sourceDate) throw new Error("AviationStack source date was not validated");
           const departure = flight.departure as ExternalFlight;
-          avstDep = {
+          return {
             sourceDate,
             gate: String(departure.gate || "").trim() || "尚未公佈",
             terminal:
@@ -302,12 +343,20 @@ export async function GET(request: Request) {
             delay: String(departure.delay ?? ""),
             status: normalizeFlightStatus(flight.flight_status),
           };
+        } catch (error) {
+          console.error("AviationStack API Error:", error);
+          return null;
         }
-      }
-    } catch (error) {
-      console.error("AviationStack API Error:", error);
-    }
-  }
+      })()
+      : Promise.resolve(null);
+
+  const [outboundResult, tdxArr, avstDep] = await Promise.all([
+    outboundPromise,
+    tdxArrivalPromise,
+    aviationStackPromise,
+  ]);
+  let outbound = outboundResult;
+  let inbound: Record<string, unknown> | null = null;
 
   // ── 合成 inbound 物件（雙端資料）──
   // 機型內容固定使用本次訂位資料；TDX 一致時僅升級 LIVE 標示。
@@ -374,6 +423,7 @@ export async function GET(request: Request) {
       status: "預定",
       terminal: "1",
       time: "",
+      estimatedTime: "",
       actualTime: "",
       aircraftIcao: a?.icao ?? "",
       aircraftModel: a?.modelZh ?? "",
@@ -397,9 +447,15 @@ export async function GET(request: Request) {
         outbound: outboundLiveWindow,
         inbound: inboundLiveWindow,
       },
+      retrievedAt: new Date().toISOString(),
       outbound,
       inbound,
     },
-    { headers: { "X-RateLimit-Remaining": String(remaining) } }
+    {
+      headers: {
+        "Cache-Control": "no-store, max-age=0",
+        "X-RateLimit-Remaining": String(remaining),
+      },
+    },
   );
 }

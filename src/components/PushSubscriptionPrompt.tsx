@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { Bell, BellOff, CheckCircle2, Loader2, Send } from "lucide-react";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { getPushCapabilitySnapshot, isIOSBrowser, isStandaloneWebApp } from "@/lib/platform";
@@ -12,6 +12,7 @@ interface Props {
 
 const REGISTER_TIMEOUT_MS = 30000;
 const PUSH_UI_VERSION = "push-ui-20260706-8";
+const subscribeToHydration = () => () => undefined;
 
 /**
  * 推播訂閱按鈕元件
@@ -23,8 +24,10 @@ const PUSH_UI_VERSION = "push-ui-20260706-8";
  */
 export function PushSubscriptionPrompt({ tripId, tripSecret }: Props) {
   const push = usePushNotifications(tripId, tripSecret);
+  const hydrated = useSyncExternalStore(subscribeToHydration, () => true, () => false);
   const [loading, setLoading] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [confirmingTest, setConfirmingTest] = useState(false);
   const [unregistering, setUnregistering] = useState(false);
   const [hint, setHint] = useState<string | null>(null);
 
@@ -64,6 +67,7 @@ export function PushSubscriptionPrompt({ tripId, tripSecret }: Props) {
       return;
     }
 
+    setConfirmingTest(false);
     setTesting(true);
     setHint(null);
     try {
@@ -78,9 +82,22 @@ export function PushSubscriptionPrompt({ tripId, tripSecret }: Props) {
           data: { type: "test-reminder", url: "/?tab=itinerary" },
         }),
       });
-      const json = await res.json().catch(() => ({})) as { sent?: number; error?: string };
+      const json = await res.json().catch(() => ({})) as {
+        sent?: number;
+        failed?: number;
+        partial?: boolean;
+        error?: string;
+      };
       if (!res.ok) throw new Error(json.error ?? "測試推播失敗");
-      setHint(json.sent && json.sent > 0 ? "測試推播已送出。" : "測試完成，但目前沒有可發送的訂閱。");
+      const sent = json.sent ?? 0;
+      const failed = json.failed ?? 0;
+      if (sent === 0 && failed === 0) {
+        setHint("測試完成，但這趟旅程目前沒有可發送的訂閱裝置。");
+      } else if (failed > 0) {
+        setHint(`測試推播已送達 ${sent} 個訂閱裝置，另有 ${failed} 個裝置發送失敗。`);
+      } else {
+        setHint(`測試推播已送達這趟旅程的 ${sent} 個訂閱裝置。`);
+      }
     } catch (error) {
       setHint(error instanceof Error ? error.message : "測試推播失敗。");
     } finally {
@@ -100,6 +117,15 @@ export function PushSubscriptionPrompt({ tripId, tripSecret }: Props) {
       setUnregistering(false);
     }
   };
+
+  if (!hydrated) {
+    return (
+      <div role="status" className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+        <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
+        <span>正在確認推播支援…</span>
+      </div>
+    );
+  }
 
   if (push.current === "unsupported") {
     return (
@@ -137,13 +163,42 @@ export function PushSubscriptionPrompt({ tripId, tripSecret }: Props) {
         </div>
         <button
           type="button"
-          onClick={handleTest}
+          onClick={() => {
+            setConfirmingTest(true);
+            setHint(null);
+          }}
           disabled={testing || unregistering}
           className="inline-flex min-h-11 items-center gap-2 text-xs font-medium px-4 py-2 rounded-full bg-green-50 text-green-700 hover:bg-green-100 disabled:opacity-60 transition-colors dark:bg-green-500/10 dark:text-green-300 dark:hover:bg-green-500/20"
         >
           {testing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-          {testing ? "測試中…" : "發送測試推播"}
+          {testing ? "測試中…" : "測試全部訂閱裝置"}
         </button>
+        {confirmingTest && !testing && (
+          <div
+            role="alert"
+            className="max-w-sm rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-left dark:border-amber-800 dark:bg-amber-950/30"
+          >
+            <p className="text-xs leading-relaxed text-amber-900 dark:text-amber-100">
+              這會發送給此行程的全部已訂閱裝置，不只目前這台。確定要繼續嗎？
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={handleTest}
+                className="inline-flex min-h-11 items-center rounded-full bg-amber-700 px-4 py-2 text-xs font-bold text-white transition-colors hover:bg-amber-800"
+              >
+                確認發送到全部裝置
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfirmingTest(false)}
+                className="inline-flex min-h-11 items-center rounded-full border border-amber-300 px-4 py-2 text-xs font-bold text-amber-900 transition-colors hover:bg-amber-100 dark:border-amber-700 dark:text-amber-100 dark:hover:bg-amber-900/40"
+              >
+                取消
+              </button>
+            </div>
+          </div>
+        )}
         <button
           type="button"
           onClick={handleUnregister}

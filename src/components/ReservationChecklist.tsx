@@ -78,6 +78,10 @@ export const RESERVATION_TASKS: ReservationTask[] = [
   },
 ];
 
+export const RESERVATION_TASKS_BY_DEADLINE = [...RESERVATION_TASKS].sort(
+  (left, right) => new Date(left.deadlineAt).getTime() - new Date(right.deadlineAt).getTime(),
+);
+
 function toPackingItem(task: ReservationTask, packed = false): PackingItem {
   return { id: task.id, name: task.title, packed, category: "預約與門票" };
 }
@@ -130,6 +134,8 @@ export function ReservationChecklist() {
     [packingList],
   );
   const completed = RESERVATION_TASKS.filter((task) => taskState.get(task.id)).length;
+  const missingTaskCount = RESERVATION_TASKS.filter((task) => !taskState.has(task.id)).length;
+  const allTasksAdded = missingTaskCount === 0;
 
   const toggleTask = (task: ReservationTask) => {
     updatePackingList((prev) => {
@@ -142,7 +148,10 @@ export function ReservationChecklist() {
   const addAllTasks = () => {
     updatePackingList((prev) => {
       const existingIds = new Set(prev.map((item) => item.id));
-      return [...prev, ...RESERVATION_TASKS.filter((task) => !existingIds.has(task.id)).map((task) => toPackingItem(task))];
+      const missing = RESERVATION_TASKS_BY_DEADLINE
+        .filter((task) => !existingIds.has(task.id))
+        .map((task) => toPackingItem(task));
+      return missing.length > 0 ? [...prev, ...missing] : prev;
     });
   };
 
@@ -165,8 +174,18 @@ export function ReservationChecklist() {
             <h2 className="mt-3 text-2xl font-black md:text-3xl">🎫 預約與門票待辦</h2>
             <p className="mt-1 text-sm font-bold text-gray-600 dark:text-gray-300">已完成 {completed} / {RESERVATION_TASKS.length}；勾選狀態會與同行裝置同步。</p>
           </div>
-          <button type="button" onClick={addAllTasks} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-4 text-sm font-black text-violet-800 dark:border-violet-800 dark:bg-violet-900/20 dark:text-violet-200">
-            <Plus className="w-4 h-4" /> 加入行前清單
+          <button
+            type="button"
+            onClick={addAllTasks}
+            disabled={allTasksAdded}
+            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-4 text-sm font-black text-violet-800 disabled:cursor-default disabled:border-emerald-200 disabled:bg-emerald-50 disabled:text-emerald-800 dark:border-violet-800 dark:bg-violet-900/20 dark:text-violet-200 dark:disabled:border-emerald-800 dark:disabled:bg-emerald-900/20 dark:disabled:text-emerald-200"
+          >
+            {allTasksAdded ? <Check className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+            {allTasksAdded
+              ? "已加入行前清單"
+              : missingTaskCount === RESERVATION_TASKS.length
+                ? "加入行前清單"
+                : `加入剩餘 ${missingTaskCount} 項`}
           </button>
         </div>
 
@@ -175,7 +194,7 @@ export function ReservationChecklist() {
         </div>
 
         <div className="mt-6 grid grid-cols-1 gap-3 lg:grid-cols-2">
-          {RESERVATION_TASKS.map((task) => {
+          {RESERVATION_TASKS_BY_DEADLINE.map((task) => {
             const done = Boolean(taskState.get(task.id));
             const overdue = !done && now > new Date(task.deadlineAt).getTime();
             return (

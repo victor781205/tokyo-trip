@@ -27,7 +27,8 @@ type NotificationClickEventLike = {
 
 type WindowClientLike = {
   url: string;
-  focus?: () => Promise<unknown>;
+  focus: () => Promise<unknown>;
+  navigate: (url: string) => Promise<WindowClientLike | null>;
 };
 
 type WorkerNotificationOptions = NotificationOptions & {
@@ -89,13 +90,30 @@ sw.addEventListener("notificationclick", (event) => {
   const targetUrl = normalizeNotificationUrl(event.notification?.data?.url);
 
   event.waitUntil(
-    sw.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clientList) => {
-      for (const client of clientList) {
-        const clientUrl = new URL(client.url);
-        if (`${clientUrl.pathname}${clientUrl.search}${clientUrl.hash}` === targetUrl && client.focus) {
-          return client.focus();
+    sw.clients.matchAll({ type: "window", includeUncontrolled: true }).then(async (clientList) => {
+      const sameOriginClients = clientList.filter((client) => {
+        try {
+          return new URL(client.url).origin === sw.location.origin;
+        } catch {
+          return false;
         }
+      });
+      const exactClient = sameOriginClients.find((client) => {
+        const clientUrl = new URL(client.url);
+        return `${clientUrl.pathname}${clientUrl.search}${clientUrl.hash}` === targetUrl;
+      });
+
+      if (exactClient) return exactClient.focus();
+
+      const reusableClient = sameOriginClients[0];
+      if (reusableClient) {
+        // Reuse the already-open PWA/tab even when it is showing another
+        // category. WindowClient.navigate keeps notification clicks inside
+        // the existing app instead of spawning a duplicate window.
+        const navigatedClient = await reusableClient.navigate(targetUrl);
+        return (navigatedClient ?? reusableClient).focus();
       }
+
       return sw.clients.openWindow(targetUrl);
     }),
   );
@@ -125,3 +143,5 @@ function normalizeNotificationUrl(value: unknown): string {
     return "/";
   }
 }
+
+export {};

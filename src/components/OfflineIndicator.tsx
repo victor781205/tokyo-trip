@@ -9,9 +9,9 @@ import { useTrip } from "@/context/TripContext";
  * 導致手機永遠看不到離線提示 — 這裡改為 web/mobile 皆顯示。
  */
 export function OfflineIndicator() {
-  const { syncStatus, saveStatus, syncError, pendingSliceCount, retrySync } = useTrip();
+  const { syncStatus, saveStatus, syncError, pendingSliceCount, retrySync, storageError } = useTrip();
 
-  if (syncStatus === "online" && saveStatus === "synced") return null;
+  if (!storageError && syncStatus === "online" && saveStatus === "synced") return null;
 
   const config = {
     connecting: {
@@ -49,9 +49,16 @@ export function OfflineIndicator() {
       textColor: "text-blue-700 dark:text-blue-300",
       iconClass: "animate-spin",
     },
+    storage: {
+      icon: CloudOff,
+      text: storageError || "本機儲存失敗 · 請釋放空間後重試",
+      bg: "bg-red-50/95 dark:bg-red-900/40 border-red-200 dark:border-red-800",
+      textColor: "text-red-700 dark:text-red-300",
+      iconClass: "",
+    },
   } as const;
 
-  const key = syncStatus === "online" ? saveStatus : syncStatus;
+  const key = storageError ? "storage" : syncStatus === "online" ? saveStatus : syncStatus;
   const { icon: Icon, text, bg, textColor, iconClass } = config[key === "synced" ? "connecting" : key];
 
   return (
@@ -63,7 +70,7 @@ export function OfflineIndicator() {
     >
       <Icon className={`w-4 h-4 sm:w-5 sm:h-5 shrink-0 ${textColor} ${iconClass}`} />
       <span title={text} className={`line-clamp-2 text-xs sm:text-sm font-bold ${textColor}`}>{text}</span>
-      {(syncStatus === "error" || saveStatus === "error") && (
+      {(storageError || syncStatus === "error" || saveStatus === "error") && (
         <button
           type="button"
           onClick={() => void retrySync()}

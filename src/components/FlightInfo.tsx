@@ -13,6 +13,7 @@ type FlightData = {
   status: string;
   terminal: string;
   time?: string;
+  estimatedTime?: string;
   actualTime?: string;
   scheduled?: string;
   estimated?: string;
@@ -51,9 +52,36 @@ type FlightData = {
 type FlightResponse = {
   outbound: FlightData;
   inbound: FlightData;
+  retrievedAt?: string;
   requestedDates?: { outbound: string; inbound: string };
   liveWindow?: { outbound: boolean; inbound: boolean };
 };
+
+const FLIGHT_DATA_STALE_AFTER_MS = 15 * 60 * 1_000;
+const FLIGHT_REFRESH_INTERVAL_MS = 5 * 60 * 1_000;
+const CLIENT_FETCH_TIMEOUT_MS = 10_000;
+const MAX_FUTURE_CLOCK_SKEW_MS = 5 * 60 * 1_000;
+
+function getFlightDataAgeMs(
+  retrievedAt: string | undefined,
+  nowMs: number,
+): number | null {
+  const retrievedAtMs = retrievedAt ? Date.parse(retrievedAt) : Number.NaN;
+  if (Number.isNaN(retrievedAtMs)) return null;
+  const ageMs = nowMs - retrievedAtMs;
+  if (ageMs < -MAX_FUTURE_CLOCK_SKEW_MS) return null;
+  return Math.max(0, ageMs);
+}
+
+function formatFlightDataAge(ageMs: number | null): string {
+  if (ageMs === null) return "更新時間不明";
+  if (ageMs < 60_000) return "剛剛更新";
+  const minutes = Math.floor(ageMs / 60_000);
+  if (minutes < 60) return `${minutes} 分鐘前更新`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} 小時前更新`;
+  return `${Math.floor(hours / 24)} 天前更新`;
+}
 
 /** 將上游正規化狀態翻譯為中文；未知值一律採中性色，避免取消班機顯示綠色。 */
 function translateStatus(status: string): { text: string; color: string } {
@@ -98,48 +126,103 @@ export function FlightInfo() {
   const [flightData, setFlightData] = useState<FlightResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
+  const [nowMs, setNowMs] = useState(() => Date.now());
 
   useEffect(() => {
+    let disposed = false;
+    let activeController: AbortController | null = null;
+
     async function fetchFlight() {
+      activeController?.abort();
+      const controller = new AbortController();
+      activeController = controller;
+      const timeoutId = window.setTimeout(
+        () => controller.abort(),
+        CLIENT_FETCH_TIMEOUT_MS,
+      );
       try {
         const params = new URLSearchParams({
           flight: "JX800",
           date: TRIP_OUTBOUND_DATE,
           inboundDate: TRIP_INBOUND_DATE,
         });
-        const res = await fetch(`/api/flight-info?${params.toString()}`);
+        const res = await fetch(`/api/flight-info?${params.toString()}`, {
+          cache: "no-store",
+          signal: controller.signal,
+        });
         if (!res.ok) throw new Error("HTTP " + res.status);
         const data: FlightResponse = await res.json();
+        if (disposed) return;
         setFlightData(data);
         setFetchError(null);
+        setNowMs(Date.now());
       } catch (e) {
+        if (disposed || (e instanceof Error && e.name === "AbortError")) return;
         console.error("Failed to load live flight data", e);
         setFetchError("無法載入航班資料，請稍後再試。");
       } finally {
-        setLoading(false);
+        window.clearTimeout(timeoutId);
+        if (activeController === controller) activeController = null;
+        if (!disposed) setLoading(false);
       }
     }
-    fetchFlight();
+
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") void fetchFlight();
+    };
+
+    void fetchFlight();
+    const refreshIntervalId = window.setInterval(
+      () => void fetchFlight(),
+      FLIGHT_REFRESH_INTERVAL_MS,
+    );
+    const ageIntervalId = window.setInterval(
+      () => setNowMs(Date.now()),
+      60_000,
+    );
+    window.addEventListener("focus", refreshWhenVisible);
+    window.addEventListener("online", refreshWhenVisible);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+
+    return () => {
+      disposed = true;
+      activeController?.abort();
+      window.clearInterval(refreshIntervalId);
+      window.clearInterval(ageIntervalId);
+      window.removeEventListener("focus", refreshWhenVisible);
+      window.removeEventListener("online", refreshWhenVisible);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
   }, []);
 
   const outbound = flightData?.outbound;
   const inbound = flightData?.inbound;
+  const flightDataAgeMs = getFlightDataAgeMs(flightData?.retrievedAt, nowMs);
+  const flightDataIsFresh = Boolean(
+    flightData &&
+    flightDataAgeMs !== null &&
+    flightDataAgeMs <= FLIGHT_DATA_STALE_AFTER_MS,
+  );
+  const flightDataAgeLabel = formatFlightDataAge(flightDataAgeMs);
   const outboundResponseMatches =
     flightData?.requestedDates?.outbound === TRIP_OUTBOUND_DATE;
   const inboundResponseMatches =
     flightData?.requestedDates?.inbound === TRIP_INBOUND_DATE;
   const outboundLive = Boolean(
+    flightDataIsFresh &&
     outboundResponseMatches &&
     outbound?.isLive &&
     isFlightSourceForDate(outbound.sourceDate, TRIP_OUTBOUND_DATE),
   );
   const inboundDepLive = Boolean(
+    flightDataIsFresh &&
     inboundResponseMatches &&
     inbound?.isLive &&
     inbound.depSource === "AviationStack" &&
     isFlightSourceForDate(inbound.depSourceDate, TRIP_INBOUND_DATE),
   );
   const inboundArrLive = Boolean(
+    flightDataIsFresh &&
     inboundResponseMatches &&
     inbound?.isLive &&
     inbound.arrSource === "TDX-Arrival" &&
@@ -167,7 +250,10 @@ export function FlightInfo() {
     inboundDepLive ? "AviationStack (NRT)" : null,
   ].filter(Boolean).join(" · ");
   const outboundTimeUpdate = outboundLive
-    ? getLiveTimeUpdate(outbound?.actualTime ?? outbound?.actual, outbound?.estimated)
+    ? getLiveTimeUpdate(
+      outbound?.actualTime ?? outbound?.actual,
+      outbound?.estimatedTime ?? outbound?.estimated,
+    )
     : null;
   const inboundDepartureTimeUpdate = inboundDepLive
     ? getLiveTimeUpdate(inbound?.depActual, inbound?.depEstimated)
@@ -177,25 +263,24 @@ export function FlightInfo() {
     : null;
 
   return (
-    <section id="flights" className="py-8 px-4 md:px-12 max-w-6xl mx-auto animate-in fade-in duration-700">
+    <section id="flights" className="py-4 md:py-8 max-w-6xl mx-auto animate-in fade-in duration-700">
       {fetchError && (
         <div role="alert" className="mb-6 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-2xl p-4 text-red-700 dark:text-red-400 font-bold text-center">
           ⚠️ {fetchError}
         </div>
       )}
-      <div className="text-center mb-10">
-        <div className="inline-block bg-primary/10 text-primary px-4 py-1 rounded-full text-sm font-black uppercase tracking-widest mb-4">
+      <div className="mb-6 flex flex-wrap items-center justify-center gap-2" aria-label="航班資料摘要">
+        <div className="inline-flex min-h-9 items-center rounded-full bg-primary/10 px-3.5 py-1 text-xs font-black uppercase tracking-widest text-primary">
           {outboundLive || inboundLive ? "Live Flight Status" : "Scheduled Flight Plan"}
         </div>
-        <h2 className="text-3xl md:text-5xl font-black mb-4">✈️ 航班資訊</h2>
-        <p className="text-gray-500 font-bold flex items-center justify-center gap-2">
+        <p className="inline-flex min-h-9 items-center gap-2 rounded-full border border-gray-200 bg-white/70 px-3.5 py-1 text-xs font-bold text-gray-500 dark:border-slate-700 dark:bg-slate-800/70">
           <Star className="w-4 h-4 fill-primary text-primary" /> 星宇航空 STARLUX Airlines
         </p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 lg:gap-10">
         {/* ── 去程 JX 800 ── */}
-        <div className="bg-white dark:bg-slate-800 rounded-[2.5rem] p-6 md:p-10 shadow-2xl border border-gray-100 dark:border-slate-700 relative overflow-hidden group">
+        <div className="trip-card boarding-pass bg-white dark:bg-slate-800 rounded-[2.5rem] p-6 md:p-10 shadow-2xl border border-gray-100 dark:border-slate-700 relative overflow-hidden group">
           <div className="absolute top-0 left-0 w-full h-1.5 bg-primary"></div>
 
           <div className="flex justify-between items-start mb-8">
@@ -225,7 +310,7 @@ export function FlightInfo() {
             </div>
           </div>
 
-          <div className="flex items-center justify-between mb-10 relative">
+          <div className="font-metric flex items-center justify-between mb-10 relative">
             <div className="text-center z-10">
               <div className="text-4xl font-black mb-1 tracking-tighter">TPE</div>
               <div className="text-sm font-bold text-gray-400 uppercase">Taipei</div>
@@ -301,7 +386,7 @@ export function FlightInfo() {
         </div>
 
         {/* ── 回程 JX 805 ── */}
-        <div className="bg-white dark:bg-slate-800 rounded-[2.5rem] p-6 md:p-10 shadow-2xl border border-gray-100 dark:border-slate-700 relative overflow-hidden group">
+        <div className="trip-card boarding-pass bg-white dark:bg-slate-800 rounded-[2.5rem] p-6 md:p-10 shadow-2xl border border-gray-100 dark:border-slate-700 relative overflow-hidden group">
           <div className="absolute top-0 left-0 w-full h-1.5 bg-accent"></div>
 
           <div className="flex justify-between items-start mb-8">
@@ -335,7 +420,7 @@ export function FlightInfo() {
             </div>
           </div>
 
-          <div className="flex items-center justify-between mb-10 relative">
+          <div className="font-metric flex items-center justify-between mb-10 relative">
             <div className="text-center z-10">
               <div className="text-4xl font-black mb-1 tracking-tighter">NRT</div>
               <div className="text-sm font-bold text-gray-400 uppercase">Tokyo</div>
@@ -482,12 +567,27 @@ export function FlightInfo() {
         機型標示：非 LIVE 時為訂位資料的預定機型；實際執飛航機仍可能因航空公司營運調度變更，請以出發當日資訊為準。
       </div>
 
-      <div className="mt-8 flex items-center justify-center gap-2 text-sm text-gray-400 font-bold uppercase tracking-tighter">
-        <Info className="w-3 h-3" />
-        {outboundLive || inboundLive
-          ? liveSourceLabel
-          : "目前顯示預定資訊 · 出發當日才啟用即時狀態"}
-      </div>
+      {!loading && flightData && (
+        <div
+          role="status"
+          aria-live="polite"
+          className={`mt-8 flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-center text-sm font-bold ${
+            flightDataIsFresh
+              ? "text-gray-500 dark:text-gray-400"
+              : "border border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-300"
+          }`}
+        >
+          <Info className="w-3.5 h-3.5 shrink-0" />
+          <span>
+            {outboundLive || inboundLive
+              ? liveSourceLabel
+              : flightDataIsFresh
+                ? "目前顯示預定資訊 · 出發當日才啟用即時狀態"
+                : "資料已過期，不作 LIVE 判定"}
+            {` · ${flightDataAgeLabel}`}
+          </span>
+        </div>
+      )}
 
       {/* ── 去程建議出發時間計算器 ── */}
       <div className="mt-8 bg-gradient-to-r from-primary/5 to-blue-50 dark:from-primary/10 dark:to-slate-800 rounded-[2rem] p-6 md:p-8 border border-primary/10 dark:border-slate-700">

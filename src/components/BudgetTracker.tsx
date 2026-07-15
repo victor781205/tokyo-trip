@@ -11,6 +11,18 @@ import {
   TRIP_OUTBOUND_DATE,
   TRIP_TOTAL_DAYS,
 } from "@/lib/trip-dates";
+import {
+  createBudgetItem,
+  getBudgetDateForTripDay,
+  getBudgetTripDayLabel,
+  getTokyoBudgetDate,
+  MAX_YEN_AMOUNT,
+  normalizeBudgetCategory,
+  normalizeBudgetDate,
+  normalizeYenAmount,
+  TRIP_TRAVELERS,
+  type BudgetCategoryKey,
+} from "@/lib/budget";
 
 /** 依「現在」計算行程進度相關數值 */
 function getTripProgress(now = Date.now()) {
@@ -49,55 +61,12 @@ const CATEGORIES = {
   other: { icon: "💡", label: "其他", color: "#6b7280" },
 } as const;
 
-const MAX_YEN_AMOUNT = 999_999_999;
 const FALLBACK_JPY_PER_TWD = 4.65;
-const TRAVELERS = ["Victor", "毓寧"] as const;
-type CategoryKey = keyof typeof CATEGORIES;
+type CategoryKey = BudgetCategoryKey;
 const DAILY_PACE_CATEGORIES = new Set<CategoryKey>(["food", "transport", "shopping", "other"]);
-
-function normalizeYenAmount(value: unknown): number | null {
-  const numeric = typeof value === "number" ? value : Number(value);
-  if (!Number.isFinite(numeric) || numeric < 1 || numeric > MAX_YEN_AMOUNT) return null;
-  const rounded = Math.round(numeric);
-  return Number.isSafeInteger(rounded) && rounded >= 1 ? rounded : null;
-}
-
-function normalizeCategory(value: string): CategoryKey {
-  return Object.hasOwn(CATEGORIES, value) ? value as CategoryKey : "other";
-}
-
-function parseLocalDate(value: string): string | null {
-  const match = value.trim().match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/);
-  if (!match) return null;
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  const day = Number(match[3]);
-  const candidate = new Date(Date.UTC(year, month - 1, day));
-  if (
-    candidate.getUTCFullYear() !== year ||
-    candidate.getUTCMonth() !== month - 1 ||
-    candidate.getUTCDate() !== day
-  ) return null;
-  return `${year.toString().padStart(4, "0")}-${month.toString().padStart(2, "0")}-${day.toString().padStart(2, "0")}`;
-}
 
 function addYenSafely(total: number, amount: number): number {
   return Math.min(Number.MAX_SAFE_INTEGER, total + amount);
-}
-
-function getTripDayLabel(date: string): string | null {
-  const normalized = parseLocalDate(date);
-  if (!normalized || normalized < TRIP_OUTBOUND_DATE) return null;
-  const first = Date.parse(`${TRIP_OUTBOUND_DATE}T12:00:00Z`);
-  const current = Date.parse(`${normalized}T12:00:00Z`);
-  const day = Math.floor((current - first) / 86_400_000) + 1;
-  return day >= 1 && day <= TRIP_TOTAL_DAYS ? `Day ${day}` : null;
-}
-
-function tripDateForDay(day: number): string {
-  const date = new Date(`${TRIP_OUTBOUND_DATE}T12:00:00Z`);
-  date.setUTCDate(date.getUTCDate() + day - 1);
-  return date.toISOString().slice(0, 10);
 }
 
 export function BudgetTracker() {
@@ -107,9 +76,9 @@ export function BudgetTracker() {
   const [name, setName] = useState("");
   const [amount, setAmount] = useState("");
   const [category, setCategory] = useState("food");
-  const [expenseDate, setExpenseDate] = useState(() => getDateInTimeZone(new Date(), "Asia/Tokyo"));
-  const [payer, setPayer] = useState<string>(TRAVELERS[0]);
-  const [participants, setParticipants] = useState<string[]>([...TRAVELERS]);
+  const [expenseDate, setExpenseDate] = useState(() => getTokyoBudgetDate());
+  const [payer, setPayer] = useState<string>(TRIP_TRAVELERS[0]);
+  const [participants, setParticipants] = useState<string[]>([...TRIP_TRAVELERS]);
   const [editingId, setEditingId] = useState<BudgetItem["id"] | null>(null);
   const [deletedItem, setDeletedItem] = useState<{ item: BudgetItem; index: number } | null>(null);
   const [jpyPerTwd, setJpyPerTwd] = useState(FALLBACK_JPY_PER_TWD);
@@ -146,18 +115,17 @@ export function BudgetTracker() {
   }, []);
 
   const handleScanComplete = useCallback((scannedItems: ReceiptItem[]) => {
+    const scannedAt = new Date();
+    const expenseDate = getTokyoBudgetDate(scannedAt);
     const newItems = scannedItems
-      .map((item) => ({ item, amount: normalizeYenAmount(item.amount) }))
-      .filter((entry): entry is { item: ReceiptItem; amount: number } => (
-        Boolean(entry.item.name.trim()) && entry.amount !== null
-      ))
-      .map(({ item, amount }, index) => ({
-      id: Date.now() + index,
-      name: item.name.trim(),
-      amount,
-      category: normalizeCategory(item.category),
-      date: new Date().toLocaleDateString("zh-TW"),
-    }));
+      .map((item, index) => createBudgetItem({
+        id: scannedAt.getTime() + index,
+        name: item.name,
+        amount: item.amount,
+        category: item.category,
+        date: expenseDate,
+      }))
+      .filter((item): item is BudgetItem => item !== null);
     if (newItems.length > 0) updateBudgetItems((prev) => [...newItems, ...prev]);
   }, [updateBudgetItems]);
 
@@ -190,8 +158,8 @@ export function BudgetTracker() {
     // 已包含在 spent，但不可再乘上六天，否則會嚴重高估。
     const tripSpendToDate = budgetItems.reduce((sum, item) => {
       const amount = normalizeYenAmount(item.amount);
-      const date = parseLocalDate(item.date);
-      const itemCategory = normalizeCategory(item.category);
+      const date = normalizeBudgetDate(item.date);
+      const itemCategory = normalizeBudgetCategory(item.category);
       if (
         amount === null ||
         date === null ||
@@ -223,7 +191,7 @@ export function BudgetTracker() {
   const { categoryData, grandTotal } = useMemo(() => {
     const data = Object.entries(CATEGORIES).map(([key, cat]) => {
       const total = budgetItems
-        .filter(item => normalizeCategory(item.category) === key)
+        .filter(item => normalizeBudgetCategory(item.category) === key)
         .reduce(
           (sum, item) => {
             const amount = normalizeYenAmount(item.amount);
@@ -237,12 +205,12 @@ export function BudgetTracker() {
   }, [budgetItems]);
 
   const splitSummary = useMemo(() => {
-    const balances = Object.fromEntries(TRAVELERS.map((person) => [person, 0])) as Record<string, number>;
+    const balances = Object.fromEntries(TRIP_TRAVELERS.map((person) => [person, 0])) as Record<string, number>;
     let trackedItems = 0;
     for (const item of budgetItems) {
       const validAmount = normalizeYenAmount(item.amount);
-      const itemParticipants = item.participants?.filter((person) => TRAVELERS.includes(person as (typeof TRAVELERS)[number]));
-      if (validAmount === null || !item.payer || !TRAVELERS.includes(item.payer as (typeof TRAVELERS)[number]) || !itemParticipants?.length) continue;
+      const itemParticipants = item.participants?.filter((person) => TRIP_TRAVELERS.includes(person as (typeof TRIP_TRAVELERS)[number]));
+      if (validAmount === null || !item.payer || !TRIP_TRAVELERS.includes(item.payer as (typeof TRIP_TRAVELERS)[number]) || !itemParticipants?.length) continue;
       trackedItems += 1;
       balances[item.payer] += validAmount;
       const share = validAmount / itemParticipants.length;
@@ -271,9 +239,9 @@ export function BudgetTracker() {
     setName("");
     setAmount("");
     setCategory("food");
-    setExpenseDate(getDateInTimeZone(new Date(), "Asia/Tokyo"));
-    setPayer(TRAVELERS[0]);
-    setParticipants([...TRAVELERS]);
+    setExpenseDate(getTokyoBudgetDate());
+    setPayer(TRIP_TRAVELERS[0]);
+    setParticipants([...TRIP_TRAVELERS]);
     setEditingId(null);
     setAmountError("");
   };
@@ -286,7 +254,7 @@ export function BudgetTracker() {
       return;
     }
 
-    const normalizedDate = parseLocalDate(expenseDate);
+    const normalizedDate = normalizeBudgetDate(expenseDate);
     if (!normalizedDate) {
       setAmountError("請選擇有效的支出日期");
       return;
@@ -296,15 +264,19 @@ export function BudgetTracker() {
       return;
     }
 
-    const newItem: BudgetItem = {
+    const newItem = createBudgetItem({
       id: editingId ?? Date.now(),
-      name: name.trim(),
+      name,
       amount: parsedAmount,
-      category: normalizeCategory(category),
+      category,
       date: normalizedDate,
       payer,
       participants,
-    };
+    });
+    if (!newItem) {
+      setAmountError("支出資料無法建立，請重新確認日期、金額與分攤對象");
+      return;
+    }
 
     updateBudgetItems((prev) => editingId === null
       ? [newItem, ...prev]
@@ -316,12 +288,12 @@ export function BudgetTracker() {
     setEditingId(item.id);
     setName(item.name);
     setAmount(String(item.amount));
-    setCategory(normalizeCategory(item.category));
-    setExpenseDate(parseLocalDate(item.date) ?? getDateInTimeZone(new Date(), "Asia/Tokyo"));
-    setPayer(item.payer && TRAVELERS.includes(item.payer as (typeof TRAVELERS)[number]) ? item.payer : TRAVELERS[0]);
-    setParticipants(item.participants?.filter((person) => TRAVELERS.includes(person as (typeof TRAVELERS)[number])).length
-      ? item.participants!.filter((person) => TRAVELERS.includes(person as (typeof TRAVELERS)[number]))
-      : [...TRAVELERS]);
+    setCategory(normalizeBudgetCategory(item.category));
+    setExpenseDate(normalizeBudgetDate(item.date) ?? getTokyoBudgetDate());
+    setPayer(item.payer && TRIP_TRAVELERS.includes(item.payer as (typeof TRIP_TRAVELERS)[number]) ? item.payer : TRIP_TRAVELERS[0]);
+    setParticipants(item.participants?.filter((person) => TRIP_TRAVELERS.includes(person as (typeof TRIP_TRAVELERS)[number])).length
+      ? item.participants!.filter((person) => TRIP_TRAVELERS.includes(person as (typeof TRIP_TRAVELERS)[number]))
+      : [...TRIP_TRAVELERS]);
     setAmountError("");
     document.getElementById("budget-add-form")?.scrollIntoView?.({ behavior: "smooth", block: "center" });
   };
@@ -368,8 +340,8 @@ export function BudgetTracker() {
   };
 
   return (
-    <section id="budget" className="py-4 px-4 md:px-12 max-w-5xl mx-auto scroll-mt-28">
-      <div className="bg-white dark:bg-slate-800 rounded-[2.5rem] p-5 md:p-8 shadow-2xl border border-gray-100 dark:border-slate-700">
+    <section id="budget" className="py-4 md:py-8 max-w-5xl mx-auto scroll-mt-28">
+      <div className="trip-card bg-white dark:bg-slate-800 rounded-[2.5rem] p-5 md:p-8 shadow-2xl border border-gray-100 dark:border-slate-700">
 
         {/* Stats Row - Legible & Compact */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
@@ -574,7 +546,7 @@ export function BudgetTracker() {
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3 mb-4">
-              {TRAVELERS.map((person) => {
+              {TRIP_TRAVELERS.map((person) => {
                 const balance = splitSummary.balances[person] ?? 0;
                 return (
                   <div key={person} className="rounded-2xl bg-white p-3 dark:bg-slate-800">
@@ -703,7 +675,7 @@ export function BudgetTracker() {
               <div className="flex gap-1 overflow-x-auto scrollbar-hide snap-x" aria-label="快速選擇 Day 1 至 Day 6">
                 {Array.from({ length: TRIP_TOTAL_DAYS }, (_, index) => {
                   const day = index + 1;
-                  const date = tripDateForDay(day);
+                  const date = getBudgetDateForTripDay(day)!;
                   return (
                     <button
                       key={date}
@@ -725,13 +697,13 @@ export function BudgetTracker() {
             <div>
               <label htmlFor="budget-payer" className="text-xs font-black text-blue-900 dark:text-blue-200 block mb-1">付款人</label>
               <select id="budget-payer" value={payer} onChange={(event) => setPayer(event.target.value)} className="min-h-11 w-full rounded-xl border border-blue-200 bg-white px-3 font-bold text-gray-900 dark:border-blue-900 dark:bg-slate-800 dark:text-white">
-                {TRAVELERS.map((person) => <option key={person} value={person}>{person}</option>)}
+                {TRIP_TRAVELERS.map((person) => <option key={person} value={person}>{person}</option>)}
               </select>
             </div>
             <fieldset>
               <legend className="text-xs font-black text-blue-900 dark:text-blue-200 mb-1">分攤對象</legend>
               <div className="grid grid-cols-2 gap-2">
-                {TRAVELERS.map((person) => {
+                {TRIP_TRAVELERS.map((person) => {
                   const selected = participants.includes(person);
                   return (
                     <button
@@ -756,7 +728,7 @@ export function BudgetTracker() {
         </form>
 
         {/* List - Readable text */}
-        <div className="space-y-3 max-h-[350px] md:max-h-[500px] overflow-y-auto pr-1 custom-scrollbar">
+        <div className="space-y-3 md:max-h-[500px] md:overflow-y-auto md:pr-1 custom-scrollbar">
           {budgetItems.length === 0 ? (
             <div className="text-center text-gray-600 dark:text-slate-300 py-12 text-base border-2 border-dashed border-gray-200 dark:border-slate-700 rounded-[2.5rem] font-bold">
               目前尚無任何記帳紀錄
@@ -770,9 +742,9 @@ export function BudgetTracker() {
                 <div className="flex-1 min-w-0">
                   <div className="font-black text-sm sm:text-base text-gray-900 dark:text-white leading-tight truncate">{item.name}</div>
                   <div className="flex flex-wrap items-center gap-1.5 mt-1">
-                    <span className="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wide">{item.date}</span>
-                    {getTripDayLabel(item.date) && (
-                      <span className="rounded-full bg-blue-100 dark:bg-blue-900/30 px-2 py-0.5 text-[11px] font-black text-blue-700 dark:text-blue-300">{getTripDayLabel(item.date)}</span>
+                    <span className="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wide">{normalizeBudgetDate(item.date) ?? item.date}</span>
+                    {getBudgetTripDayLabel(item.date) && (
+                      <span className="rounded-full bg-blue-100 dark:bg-blue-900/30 px-2 py-0.5 text-[11px] font-black text-blue-700 dark:text-blue-300">{getBudgetTripDayLabel(item.date)}</span>
                     )}
                     {item.payer && item.participants?.length ? (
                       <span className="rounded-full bg-violet-100 dark:bg-violet-900/30 px-2 py-0.5 text-[11px] font-black text-violet-800 dark:text-violet-200">{item.payer} 付款 · {item.participants.length} 人分</span>
@@ -812,7 +784,7 @@ export function BudgetTracker() {
       )}
 
       {deletedItem && (
-        <div role="status" aria-live="polite" className="fixed bottom-[calc(1rem+env(safe-area-inset-bottom))] left-1/2 z-[90] flex w-[calc(100%-2rem)] max-w-md -translate-x-1/2 items-center gap-3 rounded-2xl bg-slate-950 px-4 py-3 text-white shadow-2xl">
+        <div role="status" aria-live="polite" className="fixed bottom-[calc(5.5rem+var(--sab))] lg:bottom-[calc(1rem+var(--sab))] left-1/2 z-[90] flex w-[calc(100%-2rem)] max-w-md -translate-x-1/2 items-center gap-3 rounded-2xl bg-slate-950 px-4 py-3 text-white shadow-2xl">
           <span className="min-w-0 flex-1 truncate text-sm font-bold">已刪除「{deletedItem.item.name}」</span>
           <button type="button" onClick={undoDelete} className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-xl bg-white/10 px-3 text-sm font-black hover:bg-white/20">
             <RotateCcw className="w-4 h-4" /> 復原

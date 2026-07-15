@@ -191,8 +191,8 @@ function DialogView({
           style={{
             background:
               accent === "danger"
-                ? "linear-gradient(135deg,#e74c3c,#c0392b)"
-                : "linear-gradient(135deg,#e74c3c,#e67e22)",
+                ? "linear-gradient(135deg,#c02f26,#8f211b)"
+                : "linear-gradient(135deg,#c02f26,#b85c00)",
           }}
         >
           <h3 id={titleId} className="text-2xl font-black">
@@ -226,7 +226,7 @@ function DialogView({
               className="flex-1 py-3.5 rounded-2xl font-black text-white shadow-lg transition-all active:scale-95"
               style={{
                 background:
-                  accent === "danger" ? "var(--color-primary-dark, #c0392b)" : "var(--color-primary, #e74c3c)",
+                  accent === "danger" ? "var(--color-primary-dark, #8f211b)" : "var(--color-primary, #c02f26)",
                 boxShadow:
                   accent === "danger"
                     ? "0 10px 25px -5px rgba(192,57,43,0.4)"

@@ -144,18 +144,21 @@ export function usePushNotifications(tripId?: string, tripSecret?: string): UseP
     }
     if (current !== "web" || typeof Notification === "undefined") return;
 
+    // Reset the previous trip immediately. The async subscription discovery
+    // must not later overwrite a successful marker revalidation by setting
+    // registered=false after the backend ACK has already arrived.
+    queueMicrotask(() => {
+      if (cancelled) return;
+      setRegistered(false);
+      setToken(null);
+    });
     void getActiveServiceWorker()
       .then((reg) => reg?.pushManager.getSubscription())
       .then((sub) => {
         if (cancelled) return;
         setToken(sub?.endpoint ?? null);
-        // A browser permission or subscription alone is not enough: only a
-        // successful subscribe API response writes this trip-scoped marker.
-        setRegistered(false);
       })
-      .catch(() => {
-        if (!cancelled) setRegistered(false);
-      });
+      .catch(() => undefined);
 
     return () => {
       cancelled = true;
@@ -184,8 +187,12 @@ export function usePushNotifications(tripId?: string, tripSecret?: string): UseP
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          trip_id: tripIdRef.current,
-          trip_secret: tripSecretRef.current,
+          // Registration can finish after the user has switched trips. Use
+          // the credentials captured when this attempt started so a delayed
+          // token can never be attached to whichever trip happens to be
+          // active when the provider callback arrives.
+          trip_id: credentials.tripId,
+          trip_secret: credentials.tripSecret,
           token: result.token,
           platform: result.platform,
           keys: keys ?? undefined,
@@ -302,7 +309,6 @@ export function usePushNotifications(tripId?: string, tripSecret?: string): UseP
       tripSecret: tripSecret ?? "",
       generation: credentialsGenerationRef.current,
     };
-    let backendError: PushRegistrationError | null = null;
     if (token) {
       if (!credentials.tripId || !credentials.tripSecret) {
         throw new PushRegistrationError("missing-trip-credentials", "缺少行程代號或密碼，無法取消推播。");
@@ -321,10 +327,15 @@ export function usePushNotifications(tripId?: string, tripSecret?: string): UseP
         // 403 commonly means the trip secret was rotated. Rotation already
         // revoked every remote token, so the device must still be allowed to
         // remove its browser subscription and stale local marker.
-        if (response.status !== 403) backendError = new PushRegistrationError(
-          "unsubscribe-api",
-          "取消推播失敗 (" + response.status + ")" + (detail ? "：" + detail.slice(0, 120) : ""),
-        );
+        if (response.status !== 403) {
+          // The backend may still own this token. Keep the browser/native
+          // subscription, local marker and React state intact so the user can
+          // retry and so the UI does not falsely claim notifications are off.
+          throw new PushRegistrationError(
+            "unsubscribe-api",
+            "取消推播失敗 (" + response.status + ")" + (detail ? "：" + detail.slice(0, 120) : ""),
+          );
+        }
       }
     }
 
@@ -352,7 +363,6 @@ export function usePushNotifications(tripId?: string, tripSecret?: string): UseP
       setRegistered(false);
       setToken(null);
     }
-    if (backendError) throw backendError;
   }, [current, token, tripId, tripSecret]);
 
   const onNotification = useCallback((cb: (p: PushNotificationPayload) => void) => {

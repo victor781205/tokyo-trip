@@ -9,7 +9,7 @@ const CONTACTS = [
   { icon: Building2, label: "駐日代表處", number: "03-3280-7811", sub: "辦公時間緊急救助請按分機 4", color: "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400" },
   { icon: Globe, label: "JNTO 旅遊熱線", number: "050-3816-2787", sub: "24小時多語言觀光諮詢", color: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" },
   { icon: Heart, label: "駐日代表處緊急手機", number: "080-1009-7179", sub: "生命安全緊急；備援 080-1009-7436", color: "bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-400" },
-  { icon: MapPin, label: "桃園機場航班語音查詢", number: "+886-3-398-3728", sub: "航班資訊語音專線（非緊急／一般客服）", color: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400" },
+  { icon: Shield, label: "駐日代表處夜間警衛", number: "03-3280-7917", sub: "辦公時間外的緊急救助聯絡", color: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400" },
 ];
 
 const HOSPITALS = [
@@ -133,11 +133,11 @@ export function EmergencyContacts() {
   }, [showJapaneseCard]);
 
   return (
-    <section id="emergency" className="py-4 md:py-12 transition-colors duration-300 scroll-mt-28">
+    <section id="emergency" className="py-4 md:py-9 transition-colors duration-300 scroll-mt-28">
       {/* Header */}
-      <div className="text-center mb-7 md:mb-10">
+      <div className="text-center mb-6 md:mb-8">
         <div className="inline-block bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 px-4 py-1 rounded-full text-xs font-black uppercase tracking-widest mb-4">Emergency Info</div>
-        <h2 className="text-3xl md:text-5xl font-black mb-4">🚨 緊急聯絡資訊</h2>
+        <h2 className="flex items-center justify-center gap-2 text-2xl md:text-3xl font-black mb-3"><AlertTriangle className="h-7 w-7 text-red-600" />緊急聯絡資訊</h2>
         <p className="text-gray-600 dark:text-gray-300">日本旅遊必備的緊急電話與求助管道</p>
       </div>
 
@@ -204,7 +204,7 @@ export function EmergencyContacts() {
               key={contact.number}
               onClick={() => handleCall(contact.number)}
               aria-label={`撥打 ${contact.label}：${contact.number}`}
-              className="bg-white dark:bg-slate-800 rounded-3xl p-6 shadow-lg border border-gray-100 dark:border-slate-700 hover:shadow-xl hover:scale-[1.02] transition-all active:scale-[0.98] text-left group"
+              className="trip-card bg-white dark:bg-slate-800 rounded-3xl p-6 shadow-lg border border-gray-100 dark:border-slate-700 hover:scale-[1.01] transition-transform active:scale-[0.98] text-left group"
             >
               <div className="flex items-start gap-4 mb-4">
                 <div className={`p-3 rounded-2xl ${contact.color} group-hover:scale-110 transition-transform`}>
@@ -225,14 +225,15 @@ export function EmergencyContacts() {
       </div>
 
       {/* Hospital Section */}
-      <div className="bg-white dark:bg-slate-800 rounded-3xl p-8 shadow-xl border border-gray-100 dark:border-slate-700">
+      <div className="space-y-6">
+        <div className="trip-card bg-white dark:bg-slate-800 rounded-3xl p-5 md:p-8 shadow-xl border border-gray-100 dark:border-slate-700">
         <div className="flex items-center gap-3 mb-6">
           <div className="bg-red-100 dark:bg-red-900/30 p-3 rounded-2xl">
             <Stethoscope className="w-6 h-6 text-red-500" />
           </div>
           <div>
-            <h3 className="text-xl font-black text-gray-900 dark:text-white">推薦醫院</h3>
-            <p className="text-sm text-gray-600 dark:text-gray-300">可接受外國遊客的醫療機構</p>
+            <h3 className="text-xl font-black text-gray-900 dark:text-white">可聯絡的醫療機構</h3>
+            <p className="text-sm text-gray-600 dark:text-gray-300">到院前先電話確認接診與語言支援</p>
           </div>
         </div>
         <div className="space-y-4">
@@ -276,10 +277,11 @@ export function EmergencyContacts() {
           ))}
         </div>
 
-        <p className="mt-5 text-xs text-gray-600 dark:text-gray-300 text-right">聯絡資料最後核對：2026-07-14</p>
+          <p className="mt-5 text-xs text-gray-600 dark:text-gray-300 text-right">聯絡資料最後核對：2026-07-15</p>
+        </div>
 
         {/* ── Emergency Japanese Phrases ── */}
-        <div className="bg-white dark:bg-slate-800 rounded-3xl p-8 shadow-xl border border-gray-100 dark:border-slate-700 mt-8">
+        <div className="trip-card bg-white dark:bg-slate-800 rounded-3xl p-5 md:p-8 shadow-xl border border-gray-100 dark:border-slate-700">
           <div className="flex items-center gap-3 mb-6">
             <div className="bg-red-100 dark:bg-red-900/30 p-3 rounded-2xl">
               <Languages className="w-6 h-6 text-red-500" />
@@ -318,7 +320,7 @@ export function EmergencyContacts() {
           </div>
         </div>
 
-        <div className="mt-8 rounded-3xl border border-blue-200 dark:border-blue-900 bg-blue-50 dark:bg-blue-950/30 p-5 md:p-7">
+        <div className="rounded-3xl border border-blue-200 dark:border-blue-900 bg-blue-50 dark:bg-blue-950/30 p-5 md:p-7">
           <div className="flex items-start gap-3 mb-4">
             <Building2 className="w-6 h-6 text-blue-700 dark:text-blue-300 shrink-0" />
             <div>

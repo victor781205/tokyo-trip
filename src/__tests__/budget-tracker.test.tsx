@@ -7,6 +7,22 @@ vi.mock("@/hooks/useTripState", () => ({ useTripState: vi.fn() }));
 vi.mock("@/context/DialogContext", () => ({
   useDialog: () => ({ confirm: vi.fn().mockResolvedValue(true) }),
 }));
+vi.mock("next/dynamic", () => ({
+  default: () => function MockReceiptScanner({
+    onScanComplete,
+  }: {
+    onScanComplete: (items: Array<{ name: string; amount: number; category: string }>) => void;
+  }) {
+    return (
+      <button
+        type="button"
+        onClick={() => onScanComplete([{ name: "OCR 晚餐", amount: 2400, category: "food" }])}
+      >
+        模擬 OCR 完成
+      </button>
+    );
+  },
+}));
 
 const mockedUseTripState = vi.mocked(useTripState);
 
@@ -36,6 +52,26 @@ describe("BudgetTracker", () => {
 
     expect(screen.getByText("超支")).toBeInTheDocument();
     expect(screen.getByRole("alert")).toHaveTextContent("已超支 ¥200");
+    expect(screen.getByText("2026-07-10")).toBeInTheDocument();
+  });
+
+  it("stores OCR expenses with the Tokyo calendar date and canonical split metadata", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-31T16:30:00.000Z"));
+    const updateBudgetItems = vi.fn();
+    setTripState({ updateBudgetItems });
+    render(<BudgetTracker />);
+
+    fireEvent.click(screen.getByRole("button", { name: "掃描發票自動記帳" }));
+    fireEvent.click(screen.getByRole("button", { name: "模擬 OCR 完成" }));
+
+    const updater = updateBudgetItems.mock.calls[0][0] as (items: unknown[]) => Array<Record<string, unknown>>;
+    expect(updater([])[0]).toEqual(expect.objectContaining({
+      name: "OCR 晚餐",
+      date: "2026-09-01",
+      payer: "Victor",
+      participants: ["Victor", "毓寧"],
+    }));
   });
 
   it("rejects negative expenses instead of reducing the spent total", () => {

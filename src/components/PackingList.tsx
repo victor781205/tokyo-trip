@@ -18,6 +18,10 @@ export interface PackingItem {
 
 export const DEFAULT_CATEGORIES = DEFAULT_PACKING_CATEGORIES;
 
+function isReservationItem(item: PackingItem) {
+  return item.id.startsWith("reservation:");
+}
+
 export function createDefaultPackingItems(): PackingItem[] {
   return Object.entries(DEFAULT_CATEGORIES).flatMap(([category, data]) =>
     data.items.map((name) => ({
@@ -35,7 +39,10 @@ export function PackingList() {
   const [newItemCategory, setNewItemCategory] = useState("其他");
   const [showAdd, setShowAdd] = useState(false);
   const [expandedCats, setExpandedCats] = useState<Set<string>>(new Set(Object.keys(DEFAULT_CATEGORIES)));
-  const currentList: PackingItem[] = isLoaded ? packingList : [];
+  const syncedList: PackingItem[] = isLoaded ? packingList : [];
+  // Reservation tasks share the synchronized storage slice, but they are not
+  // physical luggage and must never affect this checklist's progress or actions.
+  const currentList = syncedList.filter((item) => !isReservationItem(item));
 
   const categories = Array.from(new Set(currentList.map(i => i.category)));
   const missingDefaultItems = Object.entries(DEFAULT_CATEGORIES).flatMap(([category, data]) =>
@@ -46,26 +53,23 @@ export function PackingList() {
   const progress = totalItems > 0 ? Math.round((packedItems / totalItems) * 100) : 0;
 
   const togglePacked = (id: string) => {
-    const updated = currentList.map(item =>
-      item.id === id ? { ...item, packed: !item.packed } : item
-    );
-    updatePackingList(updated);
+    updatePackingList((prev) => prev.map((item) =>
+      item.id === id && !isReservationItem(item)
+        ? { ...item, packed: !item.packed }
+        : item,
+    ));
   };
 
   const addItem = () => {
     if (!newItemName.trim()) return;
-    const updated = [
-      ...currentList,
-      { id: generateShortId(), name: newItemName.trim(), packed: false, category: newItemCategory },
-    ];
-    updatePackingList(updated);
+    const item = { id: generateShortId(), name: newItemName.trim(), packed: false, category: newItemCategory };
+    updatePackingList((prev) => [...prev, item]);
     setNewItemName("");
     setShowAdd(false);
   };
 
   const removeItem = (id: string) => {
-    const updated = currentList.filter(item => item.id !== id);
-    updatePackingList(updated);
+    updatePackingList((prev) => prev.filter((item) => item.id !== id || isReservationItem(item)));
   };
 
   const restoreDefaults = () => {
@@ -81,7 +85,9 @@ export function PackingList() {
   /** 一鍵取消全部勾選（重打包） */
   const uncheckAll = () => {
     if (packedItems === 0) return;
-    updatePackingList(currentList.map((item) => ({ ...item, packed: false })));
+    updatePackingList((prev) => prev.map((item) =>
+      isReservationItem(item) ? item : { ...item, packed: false },
+    ));
   };
 
   /** 匯出成純文字（方便貼到 LINE / 備忘錄） */

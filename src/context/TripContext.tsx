@@ -19,6 +19,13 @@ import {
   writeTripCache,
 } from "@/lib/trip-cache";
 import { generateTripId, generateTripSecret } from "@/lib/secure-id";
+import {
+  clearPendingShareCredential,
+  readPendingShareCredential,
+  rememberPendingShareCredential,
+  tripCredentialsAreSupported,
+  type TripCredentials,
+} from "@/lib/trip-credentials";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() ?? "";
 const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim() ?? "";
@@ -154,12 +161,6 @@ function createTripClient(tripId: string, secret: string): SupabaseClient {
   });
 }
 
-function credentialsAreSupported(tripId: string, secret: string) {
-  if (!tripId || !secret || /[\u0000-\u001f\u007f]/.test(tripId + secret)) return false;
-  const encoder = new TextEncoder();
-  return encoder.encode(tripId).byteLength <= 64 && encoder.encode(secret).byteLength <= 128;
-}
-
 type PendingRotation = {
   tripId: string;
   oldSecret: string;
@@ -177,8 +178,8 @@ function readPendingRotation(storage: Storage): PendingRotation | null {
       || typeof value.oldSecret !== "string"
       || typeof value.newSecret !== "string"
       || typeof value.createdAt !== "number"
-      || !credentialsAreSupported(value.tripId, value.oldSecret)
-      || !credentialsAreSupported(value.tripId, value.newSecret)
+      || !tripCredentialsAreSupported(value.tripId, value.oldSecret)
+      || !tripCredentialsAreSupported(value.tripId, value.newSecret)
     ) return null;
     return value as PendingRotation;
   } catch {
@@ -212,7 +213,7 @@ function parseCredentialsFromLocation(): { tripId: string; secret: string } | nu
   if (hashTrip && hashSecret) {
     const tripId = hashTrip.trim();
     const secret = hashSecret.trim();
-    if (credentialsAreSupported(tripId, secret)) return { tripId, secret };
+    if (tripCredentialsAreSupported(tripId, secret)) return { tripId, secret };
   }
   return null;
 }
@@ -284,7 +285,12 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
   const [pendingSliceCount, setPendingSliceCount] = useState(0);
   const [lastSyncedAt, setLastSyncedAt] = useState<number | null>(null);
   const [storageError, setStorageError] = useState<string | null>(null);
-  const [isShareReady, setIsShareReady] = useState(false);
+  const [isShareReady, setIsShareReadyState] = useState(false);
+  const isShareReadyRef = useRef(false);
+  const setIsShareReady = (ready: boolean) => {
+    isShareReadyRef.current = ready;
+    setIsShareReadyState(ready);
+  };
   const [itinerary, _setItinerary] = useState<Itinerary>({});
   const [budgetItems, _setBudgetItems] = useState<BudgetItem[]>([]);
   const [budgetLimit, _setBudgetLimit] = useState(100000);
@@ -321,6 +327,10 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
   const connectionGenerationRef = useRef(0);
   const loginAttemptRef = useRef(0);
   const initialUrlCredentialsRef = useRef<ReturnType<typeof parseCredentialsFromLocation> | undefined>(undefined);
+  /** Share-hash credentials stay untrusted until a credential-bound read succeeds. */
+  const unverifiedCredentialRef = useRef<TripCredentials | null>(null);
+  /** Fail closed only when a scrubbed share credential has no recovery handle or was rejected. */
+  const mutationBlockedRef = useRef(false);
   const isOnlineRef = useRef(true);
   /** 有尚未成功上送的本機變更 */
   const pendingPushRef = useRef(false);
@@ -446,6 +456,42 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
     });
   }, [persistCurrentCache]);
 
+  const promoteVerifiedPendingCredential = useCallback((id: string, secret: string) => {
+    const pending = unverifiedCredentialRef.current;
+    if (!pending || pending.tripId !== id || pending.tripSecret !== secret) return true;
+    const idPersisted = writeStorageVerified(STORAGE_KEYS.tripId, id);
+    const secretPersisted = writeStorageVerified(STORAGE_KEYS.tripSecret, secret);
+    mutationBlockedRef.current = false;
+    if (!idPersisted || !secretPersisted) {
+      setStorageError("行程已驗證，但瀏覽器無法持久保存正式憑證；安全復原點會保留。");
+      return false;
+    }
+    unverifiedCredentialRef.current = null;
+    clearPendingShareCredential(localStorage, { tripId: id, tripSecret: secret });
+    try {
+      upsertTripProfile(localStorage, {
+        tripId: id,
+        tripSecret: secret,
+        label: `東京行程 ${id.slice(-6)}`,
+        lastUsedAt: wallClockNow(),
+      });
+      setRecentTrips(readTripProfiles(localStorage));
+    } catch (err) {
+      setStorageError("行程已驗證，但無法加入最近行程清單。");
+      console.warn("[Sync] verified profile write failed:", err);
+    }
+    return true;
+  }, []);
+
+  const rejectPendingCredential = useCallback((id: string, secret: string) => {
+    const pending = unverifiedCredentialRef.current;
+    if (!pending || pending.tripId !== id || pending.tripSecret !== secret) return;
+    clearPendingShareCredential(localStorage, { tripId: id, tripSecret: secret });
+    unverifiedCredentialRef.current = null;
+    mutationBlockedRef.current = true;
+    setIsShareReady(false);
+  }, []);
+
   const connectToTrip = useCallback(
     async (
       id: string,
@@ -456,7 +502,7 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
     ): Promise<boolean> => {
       const trimmedId = id.trim();
       const trimmedSecret = secret.trim();
-      if (!credentialsAreSupported(trimmedId, trimmedSecret)) return false;
+      if (!tripCredentialsAreSupported(trimmedId, trimmedSecret)) return false;
       const connectionGeneration = ++connectionGenerationRef.current;
 
       try {
@@ -527,7 +573,16 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
           }
         } else {
           setIsShareReady(false);
-          if (expectExisting || remoteRevisionRef.current > 0) {
+          const pending = unverifiedCredentialRef.current;
+          const isPendingShareCredential = Boolean(
+            pending
+            && pending.tripId === trimmedId
+            && pending.tripSecret === trimmedSecret,
+          );
+          if (expectExisting || isPendingShareCredential || remoteRevisionRef.current > 0) {
+            if (isPendingShareCredential) {
+              rejectPendingCredential(trimmedId, trimmedSecret);
+            }
             setSyncStatus("error");
             setSyncError("找不到此行程，或同步密碼不正確。");
             pushReady.current = true;
@@ -544,6 +599,7 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
         if (pendingPushRef.current) {
           setPushTick((t) => t + 1);
         }
+        promoteVerifiedPendingCredential(trimmedId, trimmedSecret);
         return true;
       } catch (err) {
         if (
@@ -563,7 +619,7 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
         }
       }
     },
-    [applyRemoteSnapshot],
+    [applyRemoteSnapshot, promoteVerifiedPendingCredential, rejectPendingCredential],
   );
 
   // ── 初始載入 ──
@@ -579,17 +635,37 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
     // 第二次仍須沿用同一組分享憑證，不能退回舊行程。
     if (initialUrlCredentialsRef.current === undefined) {
       initialUrlCredentialsRef.current = parseCredentialsFromLocation();
+      const parsedShareCredential = initialUrlCredentialsRef.current;
+      if (parsedShareCredential) {
+        const recoverable = rememberPendingShareCredential(localStorage, {
+          tripId: parsedShareCredential.tripId,
+          tripSecret: parsedShareCredential.secret,
+        });
+        mutationBlockedRef.current = !recoverable;
+        if (!recoverable) {
+          setStorageError("分享連結尚未驗證，且瀏覽器無法保存安全復原點；驗證完成前已停止編輯。");
+        }
+      }
       if (locationContainsCredentialKeys()) {
         scrubCredentialsFromUrl();
       }
     }
     const fromUrl = initialUrlCredentialsRef.current;
-    const hasUrlCredentials = Boolean(fromUrl);
+    const pendingShareCredential = fromUrl
+      ? {
+          tripId: fromUrl.tripId.trim(),
+          tripSecret: fromUrl.secret.trim(),
+        }
+      : readPendingShareCredential(localStorage);
+    const requiresCredentialVerification = Boolean(pendingShareCredential);
 
-    if (fromUrl) {
-      initId = fromUrl.tripId.trim();
-      initSecret = fromUrl.secret.trim();
-    } else if (!initId || !initSecret || !credentialsAreSupported(initId, initSecret)) {
+    // A pending share takes precedence over the trusted current trip only
+    // until its credential-bound read succeeds or is explicitly rejected.
+    // This is the recovery path after the original hash has been scrubbed.
+    if (pendingShareCredential) {
+      initId = pendingShareCredential.tripId;
+      initSecret = pendingShareCredential.tripSecret;
+    } else if (!initId || !initSecret || !tripCredentialsAreSupported(initId, initSecret)) {
       initId = generateTripId();
       initSecret = generateTripSecret();
     }
@@ -597,11 +673,15 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
     const activeTripId = (initId ?? generateTripId()).trim();
     const activeTripSecret = (initSecret ?? generateTripSecret()).trim();
 
-    // 分享連結必須先經遠端驗證；不可在驗證前覆寫原本 A 行程的持久憑證。
-    if (!hasUrlCredentials) {
+    // 分享憑證必須先經遠端驗證；不可在驗證前覆寫原本 A 行程的持久憑證。
+    if (!requiresCredentialVerification) {
       writeStorage(STORAGE_KEYS.tripId, activeTripId);
       writeStorage(STORAGE_KEYS.tripSecret, activeTripSecret);
     }
+    unverifiedCredentialRef.current = requiresCredentialVerification
+      ? { tripId: activeTripId, tripSecret: activeTripSecret }
+      : null;
+    if (!requiresCredentialVerification) mutationBlockedRef.current = false;
     activeTripIdRef.current = activeTripId;
     setTripId(activeTripId);
     setTripSecret(activeTripSecret);
@@ -636,7 +716,7 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
     // A share link must never cause the previous trip's global legacy cache to
     // be imported into the shared trip on the next reload. Attribute it to the
     // previously stored trip first, then clear globals only after that write.
-    if (hasUrlCredentials && previousStoredId) {
+    if (requiresCredentialVerification && previousStoredId) {
       try {
         migrateLegacyTripCache(localStorage, previousStoredId);
       } catch (err) {
@@ -645,12 +725,12 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
     }
 
     // 每個 trip 使用獨立 cache；分享連結絕不讀取另一趟行程的舊版全域資料。
-    hydrateCache(activeTripId, !hasUrlCredentials);
+    hydrateCache(activeTripId, !requiresCredentialVerification);
     // Local-first hydration: the UI is usable immediately while the remote
     // verification continues in the background.
     setIsLoaded(true);
     try {
-      if (!hasUrlCredentials) {
+      if (!requiresCredentialVerification) {
         upsertTripProfile(localStorage, {
           tripId: activeTripId,
           tripSecret: activeTripSecret,
@@ -665,116 +745,186 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
     }
     if (!SUPABASE_URL || !SUPABASE_KEY) {
       console.warn("[Sync] Supabase credentials not configured. Running in offline mode.");
-      if (hasUrlCredentials && previousStoredId && previousStoredSecret) {
-        activeTripIdRef.current = previousStoredId;
-        tripSecretRef.current = previousStoredSecret;
-        setTripId(previousStoredId);
-        setTripSecret(previousStoredSecret);
-        hydrateCache(previousStoredId, true);
-      }
       setSyncStatus("offline");
+      if (requiresCredentialVerification) {
+        setSyncError(
+          mutationBlockedRef.current
+            ? "分享連結尚未驗證，且安全復原點無法保存；目前已停止編輯。"
+            : "分享連結尚未驗證；已保存安全復原點，連線恢復後會繼續驗證。",
+        );
+      }
       pushReady.current = true;
       setIsLoaded(true);
       return;
     }
 
     let cancelled = false;
-    const initialConnect = (async () => {
-      let resolvedSecret = activeTripSecret;
-      let client = createTripClient(activeTripId, resolvedSecret);
-      let preloadedData: SyncRecord | undefined;
-      const pendingRotation = !hasUrlCredentials ? readPendingRotation(localStorage) : null;
-      if (pendingRotation?.tripId === activeTripId) {
-        // The RPC may have committed even if its HTTP response was lost. Probe
-        // the new credential first, then the old one; never guess and lock the
-        // user out of both credentials.
-        const newClient = createTripClient(activeTripId, pendingRotation.newSecret);
-        const withNew = await fetchSyncRecord(newClient, activeTripId);
-        if (!withNew.error && withNew.data) {
-          resolvedSecret = pendingRotation.newSecret;
-          client = newClient;
-          preloadedData = withNew.data;
-          if (writeStorageVerified(STORAGE_KEYS.tripSecret, resolvedSecret)) {
-            localStorage.removeItem(ROTATION_PENDING_KEY);
-          } else {
-            setStorageError("已找回新的同步密碼，但瀏覽器無法持久保存；復原點會保留，請先匯出備份並釋放空間。");
-          }
-        } else {
-          const oldClient = createTripClient(activeTripId, pendingRotation.oldSecret);
-          const withOld = await fetchSyncRecord(oldClient, activeTripId);
-          if (!withOld.error && withOld.data) {
-            resolvedSecret = pendingRotation.oldSecret;
-            client = oldClient;
-            preloadedData = withOld.data;
+    type InitialVerification = "not-required" | "verified" | "rejected" | "unavailable" | "unsafe";
+    type InitialConnectResult = { connected: boolean; verification: InitialVerification };
+    const initialConnect = (async (): Promise<InitialConnectResult> => {
+      try {
+        let resolvedSecret = activeTripSecret;
+        let client = createTripClient(activeTripId, resolvedSecret);
+        let preloadedData: SyncRecord | undefined;
+        const pendingRotation = !requiresCredentialVerification
+          ? readPendingRotation(localStorage)
+          : null;
+        if (pendingRotation?.tripId === activeTripId) {
+          // The RPC may have committed even if its HTTP response was lost. Probe
+          // the new credential first, then the old one; never guess and lock the
+          // user out of both credentials.
+          const newClient = createTripClient(activeTripId, pendingRotation.newSecret);
+          const withNew = await fetchSyncRecord(newClient, activeTripId);
+          if (!withNew.error && withNew.data) {
+            resolvedSecret = pendingRotation.newSecret;
+            client = newClient;
+            preloadedData = withNew.data;
             if (writeStorageVerified(STORAGE_KEYS.tripSecret, resolvedSecret)) {
               localStorage.removeItem(ROTATION_PENDING_KEY);
             } else {
-              setStorageError("已確認舊同步密碼仍有效，但瀏覽器無法持久保存；安全復原點會繼續保留。");
+              setStorageError("已找回新的同步密碼，但瀏覽器無法持久保存；復原點會保留，請先匯出備份並釋放空間。");
+            }
+          } else {
+            const oldClient = createTripClient(activeTripId, pendingRotation.oldSecret);
+            const withOld = await fetchSyncRecord(oldClient, activeTripId);
+            if (!withOld.error && withOld.data) {
+              resolvedSecret = pendingRotation.oldSecret;
+              client = oldClient;
+              preloadedData = withOld.data;
+              if (writeStorageVerified(STORAGE_KEYS.tripSecret, resolvedSecret)) {
+                localStorage.removeItem(ROTATION_PENDING_KEY);
+              } else {
+                setStorageError("已確認舊同步密碼仍有效，但瀏覽器無法持久保存；安全復原點會繼續保留。");
+              }
             }
           }
         }
-      }
-      if (cancelled) return false;
-      supabase.current = client;
-      if (resolvedSecret !== tripSecretRef.current) {
-        tripSecretRef.current = resolvedSecret;
-        setTripSecret(resolvedSecret);
-        try {
-          upsertTripProfile(localStorage, {
-            tripId: activeTripId,
-            tripSecret: resolvedSecret,
-            label: `東京行程 ${activeTripId.slice(-6)}`,
-            lastUsedAt: Date.now(),
-          });
-          setRecentTrips(readTripProfiles(localStorage));
-        } catch {
-          setStorageError("已恢復同步密碼，但無法更新最近行程清單。");
+        if (cancelled) return { connected: false, verification: "unavailable" };
+        supabase.current = client;
+        if (resolvedSecret !== tripSecretRef.current) {
+          tripSecretRef.current = resolvedSecret;
+          setTripSecret(resolvedSecret);
+          try {
+            upsertTripProfile(localStorage, {
+              tripId: activeTripId,
+              tripSecret: resolvedSecret,
+              label: `東京行程 ${activeTripId.slice(-6)}`,
+              lastUsedAt: Date.now(),
+            });
+            setRecentTrips(readTripProfiles(localStorage));
+          } catch {
+            setStorageError("已恢復同步密碼，但無法更新最近行程清單。");
+          }
         }
+
+        if (requiresCredentialVerification && !preloadedData) {
+          const verificationGeneration = connectionGenerationRef.current;
+          const probe = await fetchSyncRecord(client, activeTripId);
+          if (
+            cancelled
+            || activeTripIdRef.current !== activeTripId
+            || connectionGenerationRef.current !== verificationGeneration
+          ) {
+            return { connected: false, verification: "unavailable" };
+          }
+          if (probe.error) {
+            console.warn("[Sync] share credential verification unavailable:", probe.error.message);
+            setIsShareReady(false);
+            setSyncStatus("offline");
+            setSyncError(
+              "分享連結暫時無法驗證；安全復原點已保留，連線恢復後會自動重試。",
+            );
+            pushReady.current = true;
+            return { connected: false, verification: "unavailable" };
+          }
+          if (!probe.data) {
+            setIsShareReady(false);
+            setSyncStatus("error");
+            setSyncError("找不到此行程，或同步密碼不正確。");
+            pushReady.current = true;
+            return { connected: false, verification: "rejected" };
+          }
+          preloadedData = probe.data;
+        }
+
+        const connected = await connectToTrip(
+          activeTripId,
+          resolvedSecret,
+          client,
+          requiresCredentialVerification,
+          preloadedData,
+        );
+        return {
+          connected,
+          verification: requiresCredentialVerification
+            ? connected ? "verified" : "unsafe"
+            : "not-required",
+        };
+      } catch (err) {
+        if (!cancelled && activeTripIdRef.current === activeTripId) {
+          console.warn("[Sync] initial credential verification unavailable:", err);
+          setIsShareReady(false);
+          setSyncStatus("offline");
+          setSyncError(
+            requiresCredentialVerification
+              ? "分享連結暫時無法驗證；安全復原點已保留，連線恢復後會自動重試。"
+              : err instanceof Error ? "連線出錯: " + err.message : "連線發生未知錯誤",
+          );
+          pushReady.current = true;
+        }
+        return { connected: false, verification: "unavailable" };
       }
-      return connectToTrip(
-        activeTripId,
-        resolvedSecret,
-        client,
-        hasUrlCredentials,
-        preloadedData,
-      );
     })();
     const timeoutId = window.setTimeout(() => {
       if (cancelled || activeTripIdRef.current !== activeTripId) return;
+      const pending = unverifiedCredentialRef.current;
+      if (
+        requiresCredentialVerification
+        && (!pending || pending.tripId !== activeTripId || pending.tripSecret !== activeTripSecret)
+      ) return;
       setSyncStatus("offline");
       setSyncError("雲端連線逾時；已先載入本機資料，恢復連線後會自動重試。");
     }, INITIAL_REMOTE_TIMEOUT_MS);
-    initialConnect.then(async (connected) => {
+    initialConnect.then(async ({ connected, verification }) => {
       window.clearTimeout(timeoutId);
       if (cancelled) return;
-      if (connected && hasUrlCredentials) {
-        writeStorage(STORAGE_KEYS.tripId, activeTripId);
-        writeStorage(STORAGE_KEYS.tripSecret, activeTripSecret);
-        try {
-          upsertTripProfile(localStorage, {
-            tripId: activeTripId,
-            tripSecret: activeTripSecret,
-            label: `東京行程 ${activeTripId.slice(-6)}`,
-            lastUsedAt: Date.now(),
-          });
-          setRecentTrips(readTripProfiles(localStorage));
-        } catch {
-          setStorageError("行程已驗證，但無法加入最近行程清單。");
+      if (connected && verification === "verified") {
+        promoteVerifiedPendingCredential(activeTripId, activeTripSecret);
+      } else if (verification === "rejected") {
+        clearPendingShareCredential(localStorage, {
+          tripId: activeTripId,
+          tripSecret: activeTripSecret,
+        });
+        unverifiedCredentialRef.current = null;
+        mutationBlockedRef.current = true;
+        const canRestorePrevious = Boolean(
+          previousStoredId
+          && previousStoredSecret
+          && tripCredentialsAreSupported(previousStoredId, previousStoredSecret)
+          && (previousStoredId !== activeTripId || previousStoredSecret !== activeTripSecret),
+        );
+        if (canRestorePrevious && previousStoredId && previousStoredSecret) {
+          // Only a definitive credential rejection restores A. A transport or
+          // server outage keeps B plus its unverified recovery record intact.
+          rollbackCandidateRef.current = null;
+          setHasRevisionRollback(false);
+          activeTripIdRef.current = previousStoredId;
+          tripSecretRef.current = previousStoredSecret;
+          setTripId(previousStoredId);
+          setTripSecret(previousStoredSecret);
+          hydrateCache(previousStoredId, true);
+          const previousClient = createTripClient(previousStoredId, previousStoredSecret);
+          supabase.current = previousClient;
+          mutationBlockedRef.current = false;
+          setSyncStatus("connecting");
+          await connectToTrip(previousStoredId, previousStoredSecret, previousClient);
+          if (cancelled) return;
         }
-      } else if (!connected && hasUrlCredentials && previousStoredId && previousStoredSecret) {
-        // 分享連結無效／無權限：回復原行程，不讓錯誤 B 憑證取代 A。
-        rollbackCandidateRef.current = null;
-        setHasRevisionRollback(false);
-        activeTripIdRef.current = previousStoredId;
-        tripSecretRef.current = previousStoredSecret;
-        setTripId(previousStoredId);
-        setTripSecret(previousStoredSecret);
-        hydrateCache(previousStoredId, true);
-        const previousClient = createTripClient(previousStoredId, previousStoredSecret);
-        supabase.current = previousClient;
-        setSyncStatus("connecting");
-        await connectToTrip(previousStoredId, previousStoredSecret, previousClient);
-        if (cancelled) return;
+      } else if (verification === "unsafe") {
+        // The credential resolved to a row, but its snapshot could not be
+        // safely applied (for example malformed data or a revision rollback).
+        mutationBlockedRef.current = true;
+        setIsShareReady(false);
       }
       setIsLoaded(true);
     });
@@ -1108,7 +1258,7 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
 
     const trimmedId = id.trim();
     const trimmedSecret = secret.trim();
-    if (!credentialsAreSupported(trimmedId, trimmedSecret)) return false;
+    if (!tripCredentialsAreSupported(trimmedId, trimmedSecret)) return false;
     if (
       activeTripIdRef.current
       && activeTripIdRef.current !== trimmedId
@@ -1150,6 +1300,9 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
       setHasRevisionRollback(false);
       supabase.current = client;
       tripSecretRef.current = trimmedSecret;
+      clearPendingShareCredential(localStorage);
+      unverifiedCredentialRef.current = null;
+      mutationBlockedRef.current = false;
 
       writeStorage(STORAGE_KEYS.tripId, trimmedId);
       writeStorage(STORAGE_KEYS.tripSecret, trimmedSecret);
@@ -1216,7 +1369,20 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
   const resolveNext = <T,>(arg: SetStateArg<T>, prev: T): T =>
     typeof arg === "function" ? (arg as (p: T) => T)(prev) : arg;
 
+  const localMutationIsAllowed = () => {
+    if (!mutationBlockedRef.current) return true;
+    setSyncStatus("error");
+    setSaveStatus("error");
+    setSyncError(
+      unverifiedCredentialRef.current
+        ? "分享連結尚未驗證，且無法保存安全復原點；驗證完成前不能編輯。"
+        : "分享連結憑證已被拒絕；請取得最新分享連結後再編輯。",
+    );
+    return false;
+  };
+
   const setItinerary = (val: SetStateArg<Itinerary>) => {
+    if (!localMutationIsAllowed()) return;
     const next = resolveNext(val, stateRef.current.itinerary);
     const normalized = ensureStableEntityIds({ ...stateRef.current, itinerary: next });
     stateRef.current = normalized;
@@ -1224,6 +1390,7 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
     markLocalMutation("itinerary");
   };
   const setBudgetItems = (val: SetStateArg<BudgetItem[]>) => {
+    if (!localMutationIsAllowed()) return;
     const next = resolveNext(val, stateRef.current.budgetItems);
     const normalized = ensureStableEntityIds({ ...stateRef.current, budgetItems: next });
     stateRef.current = normalized;
@@ -1231,12 +1398,14 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
     markLocalMutation("budgetItems");
   };
   const setBudgetLimit = (val: SetStateArg<number>) => {
+    if (!localMutationIsAllowed()) return;
     const next = resolveNext(val, stateRef.current.budgetLimit);
     stateRef.current = { ...stateRef.current, budgetLimit: next };
     _setBudgetLimit(next);
     markLocalMutation("budgetLimit");
   };
   const setCustomFoods = (val: SetStateArg<CustomFood[]>) => {
+    if (!localMutationIsAllowed()) return;
     const next = resolveNext(val, stateRef.current.customFoods);
     const normalized = ensureStableEntityIds({ ...stateRef.current, customFoods: next });
     stateRef.current = normalized;
@@ -1244,12 +1413,14 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
     markLocalMutation("customFoods");
   };
   const setPackingList = (val: SetStateArg<PackingItem[]>) => {
+    if (!localMutationIsAllowed()) return;
     const next = resolveNext(val, stateRef.current.packingList);
     stateRef.current = { ...stateRef.current, packingList: next };
     _setPackingList(next);
     markLocalMutation("packingList");
   };
   const setFoodStatuses = (val: SetStateArg<Record<string, FoodStatus>>) => {
+    if (!localMutationIsAllowed()) return;
     const next = resolveNext(val, stateRef.current.foodStatuses);
     stateRef.current = { ...stateRef.current, foodStatuses: next };
     _setFoodStatuses(next);
@@ -1320,6 +1491,7 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
   };
 
   const restoreRevision = (revision: number) => {
+    if (!localMutationIsAllowed()) return false;
     const entry = historyRef.current.find((item) => item.revision === revision);
     if (!entry) return false;
     const snapshot = ensureStableEntityIds(structuredClone(entry.snapshot));
@@ -1366,8 +1538,13 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
     if (!applied) return false;
     rollbackCandidateRef.current = null;
     setHasRevisionRollback(false);
+    setIsShareReady(true);
     setSyncStatus("online");
     setSyncError(null);
+    promoteVerifiedPendingCredential(
+      activeTripIdRef.current,
+      tripSecretRef.current,
+    );
     return true;
   };
 
@@ -1378,7 +1555,12 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
    * 開啟後會被 scrubCredentialsFromUrl 清掉。
    */
   const getShareLink = () => {
-    if (typeof window === "undefined") return "";
+    if (
+      typeof window === "undefined"
+      || !isShareReadyRef.current
+      || mutationBlockedRef.current
+      || unverifiedCredentialRef.current
+    ) return "";
     const url = new URL(window.location.origin + window.location.pathname);
     url.hash = new URLSearchParams({
       trip: tripId,

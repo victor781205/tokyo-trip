@@ -22,13 +22,14 @@ describe("EmergencyContacts", () => {
     expect(screen.getByText(/急診 24h；到院前先電話/)).toBeInTheDocument();
   });
 
-  it("qualifies 119 interpretation availability and labels the airport number accurately", () => {
+  it("qualifies 119 interpretation availability and shows the official night contact", () => {
     render(<EmergencyContacts />);
 
     expect(screen.getByText(/部分地區 119 已導入多語三方口譯.*依所在地與當下服務為準/)).toBeInTheDocument();
-    expect(screen.getByText("桃園機場航班語音查詢")).toBeInTheDocument();
-    expect(screen.getByText("航班資訊語音專線（非緊急／一般客服）")).toBeInTheDocument();
-    expect(screen.queryByText("出發地機場聯繫")).not.toBeInTheDocument();
+    expect(screen.getByText("駐日代表處夜間警衛")).toBeInTheDocument();
+    expect(screen.getByText("03-3280-7917")).toBeInTheDocument();
+    expect(screen.getByText("辦公時間外的緊急救助聯絡")).toBeInTheDocument();
+    expect(screen.queryByText("桃園機場航班語音查詢")).not.toBeInTheDocument();
   });
 
   it("puts 110 and 119 in the first-screen quick actions", () => {

@@ -10,8 +10,9 @@ import { DEFAULT_ITINERARY } from "@/lib/default-itinerary";
 const RouteMapView = dynamic(() => import("./RouteMapView").then(m => m.RouteMapView), {
     ssr: false,
     loading: () => (
-        <div className="w-full h-full flex items-center justify-center bg-gray-100" style={{ minHeight: "450px" }}>
-            <div className="text-gray-400 font-bold text-sm" role="status">載入地圖中...</div>
+        <div className="flex h-full min-h-[360px] w-full flex-col items-center justify-center gap-3 bg-gray-100 px-6 text-center dark:bg-slate-900 md:min-h-[450px]">
+            <span className="h-7 w-7 animate-spin rounded-full border-2 border-primary/25 border-t-primary" aria-hidden="true" />
+            <div className="text-sm font-bold text-gray-500 dark:text-gray-300" role="status">載入地圖元件中...</div>
         </div>
     ),
 });
@@ -273,7 +274,7 @@ export function RouteMap() {
                                 <button onClick={() => setSubmittedRoute(null)} aria-label="關閉路線結果" className="w-11 h-11 inline-flex items-center justify-center hover:bg-gray-200 dark:hover:bg-slate-700 rounded-full shrink-0 ml-2"><X className="w-4 h-4" /></button>
                             </div>
 
-                            <div className="relative bg-slate-100 w-full" style={{ height: "450px" }}>
+                            <div className="relative h-[min(68vh,450px)] min-h-[360px] w-full bg-slate-100 dark:bg-slate-900 md:h-[450px]">
                                 <RouteMapView originName={submittedRoute.origin} destName={submittedRoute.destination} />
                             </div>
 

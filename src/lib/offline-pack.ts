@@ -8,6 +8,7 @@ export const OFFLINE_PACK_VERSION = 1;
 export const OFFLINE_PACK_CACHE_NAME = "tokyo-trip-offline-pack-v1";
 export const OFFLINE_NAVIGATION_CACHE_NAME = "tokyo-navigation-pages";
 export const OFFLINE_APP_SHELL_URL = "/";
+export const OFFLINE_PACK_MAX_IMPORT_BYTES = 2 * 1024 * 1024;
 
 export const HOTEL_OFFLINE_INFO = {
   name: "東京東武黎凡特飯店 / Tobu Levant Hotel Tokyo",
@@ -65,6 +66,26 @@ export type OfflineTripPack = {
   phrases: readonly OfflinePhrase[];
 };
 
+export type OfflinePackImportErrorCode =
+  | "empty"
+  | "too_large"
+  | "invalid_json"
+  | "unsupported_version"
+  | "invalid_schema"
+  | "trip_mismatch";
+
+export type OfflinePackImportValidation =
+  | {
+    ok: true;
+    pack: OfflineTripPack;
+    byteLength: number;
+  }
+  | {
+    ok: false;
+    code: OfflinePackImportErrorCode;
+    message: string;
+  };
+
 type FetchLike = (
   input: RequestInfo | URL,
   init?: RequestInit,
@@ -74,103 +95,150 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
-function isOptionalString(value: unknown) {
-  return value === undefined || typeof value === "string";
+function hasOnlyKeys(value: Record<string, unknown>, allowed: readonly string[]) {
+  const allowedKeys = new Set(allowed);
+  return Object.keys(value).every((key) => allowedKeys.has(key));
+}
+
+function isBoundedString(value: unknown, maxLength: number, allowEmpty = true): value is string {
+  return typeof value === "string"
+    && value.length <= maxLength
+    && (allowEmpty || value.length > 0);
+}
+
+function isOptionalBoundedString(value: unknown, maxLength: number) {
+  return value === undefined || isBoundedString(value, maxLength, false);
 }
 
 function isActivity(value: unknown) {
   return isRecord(value)
-    && isOptionalString(value.syncId)
-    && isOptionalString(value.sourceId)
+    && hasOnlyKeys(value, ["syncId", "sourceId", "status", "time", "name", "desc", "tag"])
+    && isOptionalBoundedString(value.syncId, 160)
+    && isOptionalBoundedString(value.sourceId, 512)
     && (value.status === undefined || value.status === "done" || value.status === "skipped")
-    && typeof value.time === "string"
-    && typeof value.name === "string"
-    && typeof value.desc === "string"
-    && typeof value.tag === "string";
+    && isBoundedString(value.time, 32)
+    && isBoundedString(value.name, 300)
+    && isBoundedString(value.desc, 2_000)
+    && isBoundedString(value.tag, 80);
 }
 
 function isItinerary(value: unknown) {
-  return isRecord(value) && Object.values(value).every((day) => (
-    isRecord(day)
-    && typeof day.title === "string"
-    && typeof day.date === "string"
+  if (!isRecord(value)) return false;
+  const days = Object.entries(value);
+  return days.length <= 31 && days.every(([dayKey, day]) => (
+    /^day(?:[1-9]|[12]\d|3[01])$/.test(dayKey)
+    && isRecord(day)
+    && hasOnlyKeys(day, ["title", "date", "activities"])
+    && isBoundedString(day.title, 300)
+    && isBoundedString(day.date, 80)
     && Array.isArray(day.activities)
+    && day.activities.length <= 200
     && day.activities.every(isActivity)
   ));
 }
 
 function isBudgetItem(value: unknown) {
   return isRecord(value)
+    && hasOnlyKeys(value, ["id", "syncId", "name", "amount", "category", "date", "payer", "participants"])
     && typeof value.id === "number"
-    && Number.isFinite(value.id)
-    && isOptionalString(value.syncId)
-    && typeof value.name === "string"
+    && Number.isSafeInteger(value.id)
+    && isOptionalBoundedString(value.syncId, 160)
+    && isBoundedString(value.name, 300)
     && typeof value.amount === "number"
     && Number.isFinite(value.amount)
-    && typeof value.category === "string"
-    && typeof value.date === "string"
-    && isOptionalString(value.payer)
+    && Math.abs(value.amount) <= 999_999_999
+    && isBoundedString(value.category, 80)
+    && isBoundedString(value.date, 80)
+    && (value.payer === undefined || isBoundedString(value.payer, 120, false))
     && (
       value.participants === undefined
-      || (Array.isArray(value.participants) && value.participants.every((item) => typeof item === "string"))
+      || (
+        Array.isArray(value.participants)
+        && value.participants.length <= 32
+        && value.participants.every((item) => isBoundedString(item, 120, false))
+      )
     );
 }
 
 function isPackingItem(value: unknown) {
   return isRecord(value)
-    && typeof value.id === "string"
-    && typeof value.name === "string"
+    && hasOnlyKeys(value, ["id", "name", "packed", "category"])
+    && isBoundedString(value.id, 200, false)
+    && isBoundedString(value.name, 300)
     && typeof value.packed === "boolean"
-    && typeof value.category === "string";
+    && isBoundedString(value.category, 100);
 }
 
 function isHotelInfo(value: unknown) {
   return isRecord(value)
-    && typeof value.name === "string"
-    && typeof value.addressZh === "string"
-    && typeof value.addressJa === "string"
-    && typeof value.nearestStation === "string"
-    && typeof value.mapUrl === "string";
+    && hasOnlyKeys(value, ["name", "addressZh", "addressJa", "nearestStation", "mapUrl"])
+    && isBoundedString(value.name, 300, false)
+    && isBoundedString(value.addressZh, 500, false)
+    && isBoundedString(value.addressJa, 500, false)
+    && isBoundedString(value.nearestStation, 500, false)
+    && isBoundedString(value.mapUrl, 2_048, false)
+    && value.mapUrl.startsWith("https://");
 }
 
 function isEmergencyInfo(value: unknown) {
   return isRecord(value)
-    && typeof value.label === "string"
-    && typeof value.number === "string"
-    && typeof value.japanese === "string";
+    && hasOnlyKeys(value, ["label", "number", "japanese"])
+    && isBoundedString(value.label, 100, false)
+    && isBoundedString(value.number, 40, false)
+    && isBoundedString(value.japanese, 500, false);
 }
 
 function isPhrase(value: unknown) {
   return isRecord(value)
-    && typeof value.zh === "string"
-    && typeof value.ja === "string";
+    && hasOnlyKeys(value, ["zh", "ja"])
+    && isBoundedString(value.zh, 500, false)
+    && isBoundedString(value.ja, 500, false);
 }
 
 /**
- * Cache Storage is durable but not trusted input. Validate the minimum shape
- * before presenting a cached snapshot so a stale/corrupt response cannot crash
- * the offline viewer.
+ * Cache Storage is durable but not trusted input. Validate the complete v1
+ * shape and bounded field sizes before presenting a cached snapshot so a
+ * stale/corrupt response cannot crash the offline viewer.
  */
 export function isOfflineTripPack(value: unknown): value is OfflineTripPack {
   if (!isRecord(value)) return false;
   if (
-    value.version !== OFFLINE_PACK_VERSION
-    || typeof value.savedAt !== "string"
+    !hasOnlyKeys(value, [
+      "version",
+      "savedAt",
+      "tripId",
+      "itinerary",
+      "budget",
+      "packingList",
+      "hotel",
+      "emergency",
+      "phrases",
+    ])
+    || value.version !== OFFLINE_PACK_VERSION
+    || !isBoundedString(value.savedAt, 64, false)
     || Number.isNaN(Date.parse(value.savedAt))
-    || typeof value.tripId !== "string"
+    || new Date(value.savedAt).toISOString() !== value.savedAt
+    || !isBoundedString(value.tripId, 200)
     || !isItinerary(value.itinerary)
     || !isRecord(value.budget)
+    || !hasOnlyKeys(value.budget, ["limit", "items"])
     || !Array.isArray(value.packingList)
+    || value.packingList.length > 2_000
     || !value.packingList.every(isPackingItem)
     || !isHotelInfo(value.hotel)
     || !Array.isArray(value.emergency)
+    || value.emergency.length > 20
     || !Array.isArray(value.phrases)
+    || value.phrases.length > 100
   ) return false;
 
   return (
     typeof value.budget.limit === "number"
     && Number.isFinite(value.budget.limit)
+    && value.budget.limit >= 0
+    && value.budget.limit <= 999_999_999
     && Array.isArray(value.budget.items)
+    && value.budget.items.length <= 5_000
     && value.budget.items.every(isBudgetItem)
     && value.emergency.length > 0
     && value.emergency.every(isEmergencyInfo)
@@ -179,6 +247,58 @@ export function isOfflineTripPack(value: unknown): value is OfflineTripPack {
     && value.phrases.length > 0
     && value.phrases.every(isPhrase)
   );
+}
+
+/**
+ * Parse an exported offline backup without touching Cache Storage or TripState.
+ * The caller can safely show a preview and ask for confirmation first.
+ */
+export function validateOfflineTripPackImport(
+  rawText: string,
+  expectedTripId: string,
+): OfflinePackImportValidation {
+  const byteLength = new TextEncoder().encode(rawText).byteLength;
+  if (byteLength === 0 || rawText.trim().length === 0) {
+    return { ok: false, code: "empty", message: "備份檔是空的，請重新選擇 JSON 檔。" };
+  }
+  if (byteLength > OFFLINE_PACK_MAX_IMPORT_BYTES) {
+    return {
+      ok: false,
+      code: "too_large",
+      message: `備份檔超過 ${(OFFLINE_PACK_MAX_IMPORT_BYTES / 1024 / 1024).toFixed(0)} MB 上限，未讀取內容。`,
+    };
+  }
+
+  let parsed: unknown;
+  try {
+    const normalizedText = rawText.charCodeAt(0) === 0xfeff ? rawText.slice(1) : rawText;
+    parsed = JSON.parse(normalizedText) as unknown;
+  } catch {
+    return { ok: false, code: "invalid_json", message: "無法解析這個檔案；請選擇由本網站匯出的 JSON 備份。" };
+  }
+
+  if (!isRecord(parsed)) {
+    return { ok: false, code: "invalid_schema", message: "備份格式不完整，未匯入任何資料。" };
+  }
+  if (parsed.version !== OFFLINE_PACK_VERSION) {
+    return {
+      ok: false,
+      code: "unsupported_version",
+      message: `不支援此備份版本（${String(parsed.version ?? "未標示")}）；目前僅支援版本 ${OFFLINE_PACK_VERSION}。`,
+    };
+  }
+  if (!isOfflineTripPack(parsed)) {
+    return { ok: false, code: "invalid_schema", message: "備份內容未通過完整性驗證，未匯入任何資料。" };
+  }
+  if (parsed.tripId !== expectedTripId) {
+    return {
+      ok: false,
+      code: "trip_mismatch",
+      message: "這份備份屬於另一趟行程；為避免混入錯誤資料，已停止匯入。",
+    };
+  }
+
+  return { ok: true, pack: parsed, byteLength };
 }
 
 export function offlinePackCacheUrl(tripId: string) {
@@ -198,6 +318,43 @@ export async function readOfflineTripPack(
   } catch {
     return null;
   }
+}
+
+/**
+ * Commit a previously validated import to the offline snapshot cache. This is
+ * intentionally separate from TripState: an offline pack is a partial export
+ * and must never masquerade as a complete synchronized-trip restore.
+ */
+export async function persistImportedOfflineTripPack({
+  cacheStorage,
+  pack,
+  expectedTripId,
+}: {
+  cacheStorage: CacheStorage;
+  pack: OfflineTripPack;
+  expectedTripId: string;
+}): Promise<OfflineTripPack> {
+  if (!isOfflineTripPack(pack) || pack.tripId !== expectedTripId) {
+    throw new Error("offline import validation failed");
+  }
+
+  const cache = await cacheStorage.open(OFFLINE_PACK_CACHE_NAME);
+  const cacheUrl = offlinePackCacheUrl(expectedTripId);
+  const previous = await cache.match(cacheUrl);
+  await cache.put(
+    cacheUrl,
+    new Response(JSON.stringify(pack), {
+      status: 200,
+      headers: { "Content-Type": "application/json; charset=utf-8" },
+    }),
+  );
+
+  const verifiedPack = await readOfflineTripPack(cacheStorage, expectedTripId);
+  if (verifiedPack && JSON.stringify(verifiedPack) === JSON.stringify(pack)) return verifiedPack;
+
+  if (previous) await cache.put(cacheUrl, previous);
+  else await cache.delete(cacheUrl);
+  throw new Error("offline import verification failed");
 }
 
 /**

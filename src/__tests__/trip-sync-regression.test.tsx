@@ -2,7 +2,8 @@ import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from "vite
 import React, { useEffect, useRef } from "react";
 import { act, render, waitFor, screen } from "@testing-library/react";
 import type { useTrip as useTripType } from "@/context/TripContext";
-import { EMPTY_TRIP_SNAPSHOT, writeTripCache } from "@/lib/trip-cache";
+import { EMPTY_TRIP_SNAPSHOT, readTripProfiles, writeTripCache } from "@/lib/trip-cache";
+import { PENDING_SHARE_CREDENTIAL_KEY } from "@/lib/trip-credentials";
 
 let TripProvider: React.ComponentType<{ children: React.ReactNode }>;
 let useTrip: typeof useTripType;
@@ -652,6 +653,165 @@ describe("TripContext Sync Regression Tests", () => {
     expect(window.location.hash).toBe("#view=budget");
   });
 
+  it("recovers a clean-browser share after an outage without trusting it before verification", async () => {
+    window.history.replaceState({}, "", "/#trip=trip-b&secret=secret-b");
+    mockMaybeSingle.mockResolvedValue({
+      data: null,
+      error: { message: "temporary transport failure" },
+    });
+
+    let firstContext: ReturnType<typeof useTrip> | undefined;
+    const firstMount = render(
+      <TripProvider>
+        <TestConsumer onLoad={(ctx) => (firstContext = ctx)} />
+      </TripProvider>,
+    );
+
+    await waitFor(() => {
+      expect(firstContext?.tripId).toBe("trip-b");
+      expect(firstContext?.syncStatus).toBe("offline");
+    });
+    expect(window.location.hash).toBe("");
+    expect(localStorage.getItem("tokyoTripId")).toBeNull();
+    expect(localStorage.getItem("tokyoTripSecret")).toBeNull();
+    expect(readTripProfiles(localStorage)).toEqual([]);
+    expect(firstContext?.isShareReady).toBe(false);
+    expect(firstContext?.getShareLink()).toBe("");
+    expect(JSON.parse(localStorage.getItem(PENDING_SHARE_CREDENTIAL_KEY) || "{}")).toMatchObject({
+      status: "unverified",
+      source: "share-hash",
+      tripId: "trip-b",
+      tripSecret: "secret-b",
+    });
+
+    act(() => {
+      firstContext?.setCustomFoods([{
+        id: 44,
+        emoji: "🍙",
+        name: "B 的離線飯糰",
+        location: "東京站",
+        hours: "",
+        desc: "",
+        mapLink: "",
+        image: "",
+      }]);
+    });
+    await waitFor(() => {
+      const cached = JSON.parse(localStorage.getItem("tokyoTripCache:trip-b") || "{}");
+      expect(cached.snapshot.customFoods[0].name).toBe("B 的離線飯糰");
+      expect(cached.dirtySlices).toContain("customFoods");
+    });
+    firstMount.unmount();
+
+    mockMaybeSingle.mockResolvedValue({
+      data: {
+        revision: 3,
+        updated_at: "2026-07-14T00:00:00.000Z",
+        itinerary: {},
+        budget_limit: 100000,
+        budget_items: [],
+        custom_foods: [],
+        packing_list: [],
+        food_statuses: {},
+      },
+      error: null,
+    });
+    mockRpc.mockResolvedValue({
+      data: { ok: true, revision: 4, updated_at: "2026-07-14T00:00:01.000Z" },
+      error: null,
+    });
+
+    let recoveredContext: ReturnType<typeof useTrip> | undefined;
+    render(
+      <TripProvider>
+        <TestConsumer onLoad={(ctx) => (recoveredContext = ctx)} />
+      </TripProvider>,
+    );
+
+    await waitFor(() => {
+      expect(recoveredContext?.tripId).toBe("trip-b");
+      expect(recoveredContext?.syncStatus).toBe("online");
+      expect(recoveredContext?.customFoods[0]?.name).toBe("B 的離線飯糰");
+      expect(localStorage.getItem("tokyoTripId")).toBe("trip-b");
+      expect(localStorage.getItem("tokyoTripSecret")).toBe("secret-b");
+    });
+    expect(localStorage.getItem(PENDING_SHARE_CREDENTIAL_KEY)).toBeNull();
+    expect(readTripProfiles(localStorage)).toContainEqual(expect.objectContaining({
+      tripId: "trip-b",
+      tripSecret: "secret-b",
+    }));
+  });
+
+  it("rejects a wrong clean-browser share secret without persisting it as trusted", async () => {
+    window.history.replaceState({}, "", "/#trip=trip-b&secret=wrong-secret");
+    mockMaybeSingle.mockResolvedValue({ data: null, error: null });
+
+    let contextRef: ReturnType<typeof useTrip> | undefined;
+    render(
+      <TripProvider>
+        <TestConsumer onLoad={(ctx) => (contextRef = ctx)} />
+      </TripProvider>,
+    );
+
+    await waitFor(() => {
+      expect(contextRef?.tripId).toBe("trip-b");
+      expect(contextRef?.syncStatus).toBe("error");
+      expect(contextRef?.syncError).toMatch(/找不到此行程|密碼不正確/);
+    });
+    expect(localStorage.getItem("tokyoTripId")).toBeNull();
+    expect(localStorage.getItem("tokyoTripSecret")).toBeNull();
+    expect(localStorage.getItem(PENDING_SHARE_CREDENTIAL_KEY)).toBeNull();
+    expect(readTripProfiles(localStorage)).toEqual([]);
+    expect(contextRef?.isShareReady).toBe(false);
+    expect(contextRef?.getShareLink()).toBe("");
+
+    act(() => {
+      contextRef?.setCustomFoods([{
+        id: 45,
+        emoji: "🍜",
+        name: "不應寫入錯誤行程",
+        location: "東京",
+        hours: "",
+        desc: "",
+        mapLink: "",
+        image: "",
+      }]);
+    });
+    const rejectedCache = JSON.parse(localStorage.getItem("tokyoTripCache:trip-b") || "{}");
+    expect(rejectedCache.snapshot.customFoods).toEqual([]);
+  });
+
+  it("does not create a new trip when an unavailable pending share is later rejected", async () => {
+    window.history.replaceState({}, "", "/#trip=trip-b&secret=wrong-secret");
+    mockMaybeSingle.mockResolvedValue({
+      data: null,
+      error: { message: "temporary transport failure" },
+    });
+
+    let contextRef: ReturnType<typeof useTrip> | undefined;
+    render(
+      <TripProvider>
+        <TestConsumer onLoad={(ctx) => (contextRef = ctx)} />
+      </TripProvider>,
+    );
+    await waitFor(() => expect(contextRef?.syncStatus).toBe("offline"));
+    expect(localStorage.getItem(PENDING_SHARE_CREDENTIAL_KEY)).not.toBeNull();
+
+    mockMaybeSingle.mockResolvedValue({ data: null, error: null });
+    act(() => window.dispatchEvent(new Event("online")));
+
+    await waitFor(() => {
+      expect(contextRef?.syncStatus).toBe("error");
+      expect(contextRef?.syncError).toMatch(/找不到此行程|密碼不正確/);
+    });
+    expect(mockRpc).not.toHaveBeenCalled();
+    expect(localStorage.getItem(PENDING_SHARE_CREDENTIAL_KEY)).toBeNull();
+    expect(localStorage.getItem("tokyoTripId")).toBeNull();
+    expect(localStorage.getItem("tokyoTripSecret")).toBeNull();
+    expect(readTripProfiles(localStorage)).toEqual([]);
+    expect(contextRef?.getShareLink()).toBe("");
+  });
+
   it("merges two devices that race on one revision even when timestamps move backwards", async () => {
     localStorage.setItem("tokyoTripId", "legacy-short-id");
     localStorage.setItem("tokyoTripSecret", "0505");
@@ -964,7 +1124,11 @@ describe("TripContext Sync Regression Tests", () => {
 
     await waitFor(() => expect(contextRef?.isLoaded).toBe(true));
     expect(contextRef?.isShareReady).toBe(false);
+    const getShareLinkFromFirstRender = contextRef?.getShareLink;
     await waitFor(() => expect(contextRef?.isShareReady).toBe(true), { timeout: 4000 });
+    expect(getShareLinkFromFirstRender?.()).toContain(
+      "#trip=trip_ABCDEFGHIJKLMNOPQRSTUV&secret=sec_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef",
+    );
     expect(mockRpc).toHaveBeenCalledWith(
       "sync_trip_slices_v2",
       expect.objectContaining({

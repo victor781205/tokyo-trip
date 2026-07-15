@@ -1,14 +1,18 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import {
+  AlertTriangle,
   BookOpen,
+  CheckCircle2,
   CloudRain,
   Download,
   ExternalLink,
+  FileJson,
   RefreshCw,
   ShieldCheck,
   TrainFront,
+  Upload,
   WifiOff,
   X,
 } from "lucide-react";
@@ -17,9 +21,12 @@ import { parseTokyoForecastResponse } from "@/lib/jma-forecast";
 import {
   createOfflineTripPack,
   getRainFallbacks,
+  OFFLINE_PACK_MAX_IMPORT_BYTES,
+  persistImportedOfflineTripPack,
   persistOfflineTripPack,
   readOfflineTripPack,
   shouldShowRainPlan,
+  validateOfflineTripPackImport,
   type OfflineTripPack,
 } from "@/lib/offline-pack";
 import { DEFAULT_ITINERARY } from "@/lib/default-itinerary";
@@ -45,6 +52,14 @@ const TRANSIT_LINKS = [
   },
 ] as const;
 
+type ImportPreview = {
+  pack: OfflineTripPack;
+  fileName: string;
+  byteLength: number;
+};
+
+type ImportStatus = "idle" | "reading" | "saving" | "imported" | "error";
+
 export function TravelToolkit() {
   const {
     tripId,
@@ -57,7 +72,13 @@ export function TravelToolkit() {
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [openedPack, setOpenedPack] = useState<OfflineTripPack | null>(null);
   const [openStatus, setOpenStatus] = useState<"idle" | "loading" | "error">("idle");
+  const [importPreview, setImportPreview] = useState<ImportPreview | null>(null);
+  const [importStatus, setImportStatus] = useState<ImportStatus>("idle");
+  const [importError, setImportError] = useState<string | null>(null);
   const [weatherPop, setWeatherPop] = useState<string | null>(null);
+  const importRequestRef = useRef(0);
+  const latestTripIdRef = useRef(tripId);
+  const previousTripIdRef = useRef(tripId);
   const timeline = useMemo(() => getTripTimelineState(new Date()), []);
 
   const buildPack = () => createOfflineTripPack({
@@ -69,9 +90,18 @@ export function TravelToolkit() {
   });
 
   useEffect(() => {
+    const tripChanged = previousTripIdRef.current !== tripId;
+    previousTripIdRef.current = tripId;
+    latestTripIdRef.current = tripId;
+    if (tripChanged) importRequestRef.current += 1;
     const timer = window.setTimeout(() => {
       setOpenedPack(null);
       setOpenStatus("idle");
+      if (tripChanged) {
+        setImportPreview(null);
+        setImportStatus("idle");
+        setImportError(null);
+      }
       if (!("caches" in window)) {
         setSavedAt(null);
         return;
@@ -160,16 +190,92 @@ export function TravelToolkit() {
     URL.revokeObjectURL(url);
   };
 
+  const selectBackupFile = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.currentTarget.files?.[0];
+    event.currentTarget.value = "";
+    if (!file) return;
+
+    const selectedTripId = tripId;
+    const requestId = ++importRequestRef.current;
+    setImportPreview(null);
+    setImportError(null);
+    setImportStatus("reading");
+
+    if (file.size > OFFLINE_PACK_MAX_IMPORT_BYTES) {
+      setImportError(`備份檔超過 ${OFFLINE_PACK_MAX_IMPORT_BYTES / 1024 / 1024} MB 上限，未讀取內容。`);
+      setImportStatus("error");
+      return;
+    }
+
+    try {
+      const rawText = await file.text();
+      if (requestId !== importRequestRef.current || selectedTripId !== latestTripIdRef.current) return;
+      const result = validateOfflineTripPackImport(rawText, selectedTripId);
+      if (!result.ok) {
+        setImportError(result.message);
+        setImportStatus("error");
+        return;
+      }
+      setOpenedPack(null);
+      setImportPreview({
+        pack: result.pack,
+        fileName: file.name,
+        byteLength: result.byteLength,
+      });
+      setImportStatus("idle");
+    } catch {
+      if (requestId !== importRequestRef.current) return;
+      setImportError("無法讀取這個檔案；請確認檔案仍可用後再試一次。");
+      setImportStatus("error");
+    }
+  };
+
+  const confirmImport = async () => {
+    if (!importPreview) return;
+    if (importPreview.pack.tripId !== tripId) {
+      setImportPreview(null);
+      setImportError("目前行程已切換，請為這趟行程重新選擇備份檔。");
+      setImportStatus("error");
+      return;
+    }
+    if (!("caches" in window)) {
+      setImportError("此瀏覽器不支援離線快照儲存，未匯入任何資料。");
+      setImportStatus("error");
+      return;
+    }
+
+    const selectedTripId = tripId;
+    const requestId = ++importRequestRef.current;
+    setImportError(null);
+    setImportStatus("saving");
+    try {
+      const verifiedPack = await persistImportedOfflineTripPack({
+        cacheStorage: window.caches,
+        pack: importPreview.pack,
+        expectedTripId: selectedTripId,
+      });
+      if (requestId !== importRequestRef.current || selectedTripId !== latestTripIdRef.current) return;
+      setSavedAt(verifiedPack.savedAt);
+      setOpenedPack(verifiedPack);
+      setImportPreview(null);
+      setImportStatus("imported");
+    } catch {
+      if (requestId !== importRequestRef.current) return;
+      setImportError("離線快照寫入後未通過驗證，未標記為成功；請保留備份檔並稍後再試。");
+      setImportStatus("error");
+    }
+  };
+
   const rainPlanVisible = shouldShowRainPlan(weatherPop);
 
   return (
-    <section id="travel-kit" className="py-6 md:py-10 max-w-6xl mx-auto scroll-mt-28" aria-labelledby="travel-kit-title">
-      <div className="text-center mb-7">
+    <section id="travel-kit" className="py-4 md:py-8 max-w-6xl mx-auto scroll-mt-28" aria-labelledby="travel-kit-title">
+      <div className="text-left mb-5">
         <div className="inline-flex items-center gap-2 rounded-full bg-indigo-100 px-4 py-1 text-sm font-black text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-200">
           <ShieldCheck className="h-4 w-4" aria-hidden="true" />
           Travel Ready
         </div>
-        <h2 id="travel-kit-title" className="mt-3 text-3xl md:text-4xl font-black text-slate-900 dark:text-white">
+        <h2 id="travel-kit-title" className="mt-3 text-2xl md:text-3xl font-black text-slate-900 dark:text-white">
           離線旅行包與即時備案
         </h2>
         <p className="mt-2 text-sm font-medium text-slate-600 dark:text-slate-300">
@@ -178,7 +284,7 @@ export function TravelToolkit() {
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
-        <article className="rounded-3xl border border-slate-200 bg-white p-5 shadow-lg dark:border-slate-700 dark:bg-slate-800">
+        <article className="trip-card rounded-3xl border border-slate-200 bg-white p-5 shadow-lg dark:border-slate-700 dark:bg-slate-800">
           <div className="flex items-start gap-3">
             <div className="rounded-2xl bg-indigo-100 p-3 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-200">
               <WifiOff className="h-5 w-5" aria-hidden="true" />
@@ -192,7 +298,7 @@ export function TravelToolkit() {
               </p>
             </div>
           </div>
-          <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
+          <div className="mt-4 grid grid-cols-2 gap-2">
             <button
               type="button"
               onClick={() => void saveOfflinePack()}
@@ -221,13 +327,39 @@ export function TravelToolkit() {
               <Download className="h-4 w-4" aria-hidden="true" />
               匯出備份
             </button>
+            <label
+              htmlFor="offline-backup-import"
+              aria-disabled={importStatus === "reading" || importStatus === "saving"}
+              className="min-h-11 inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-xl border border-slate-200 px-3 text-center text-xs font-black text-slate-700 hover:bg-slate-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 dark:border-slate-600 dark:text-slate-100 dark:hover:bg-slate-700"
+            >
+              <Upload className="h-4 w-4" aria-hidden="true" />
+              {importStatus === "reading" ? "驗證中" : "匯入備份"}
+            </label>
+            <input
+              id="offline-backup-import"
+              type="file"
+              accept="application/json,.json"
+              disabled={importStatus === "reading" || importStatus === "saving"}
+              aria-describedby="offline-backup-import-help"
+              onChange={(event) => void selectBackupFile(event)}
+              className="sr-only"
+            />
           </div>
+          <p id="offline-backup-import-help" className="mt-3 text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
+            匯入前會先驗證並顯示摘要；只有確認後才保存為離線快照。
+          </p>
           {saveStatus === "saved" && <p role="status" className="mt-3 text-xs font-bold text-emerald-700 dark:text-emerald-300">已驗證 App 外殼與旅行資料，可離線開啟。</p>}
           {saveStatus === "error" && <p role="alert" className="mt-3 text-xs font-bold text-red-700 dark:text-red-300">離線資料未完整驗證，未標記為完成；請確認網路與 PWA 權限，或先匯出備份。</p>}
           {openStatus === "error" && <p role="alert" className="mt-3 text-xs font-bold text-red-700 dark:text-red-300">找不到可讀的離線包，請重新更新後再試。</p>}
+          {importStatus === "imported" && (
+            <p role="status" className="mt-3 text-xs font-bold text-emerald-700 dark:text-emerald-300">
+              已匯入離線快照；同步行程未變更。
+            </p>
+          )}
+          {importError && <p role="alert" className="mt-3 text-xs font-bold text-red-700 dark:text-red-300">{importError}</p>}
         </article>
 
-        <article className="rounded-3xl border border-sky-200 bg-sky-50 p-5 shadow-lg dark:border-sky-800 dark:bg-sky-950/30">
+        <article className="rounded-3xl border border-sky-200 bg-sky-50 p-5 shadow-sm dark:border-sky-800 dark:bg-sky-950/30">
           <div className="flex items-center gap-2">
             <CloudRain className="h-5 w-5 text-sky-700 dark:text-sky-300" aria-hidden="true" />
             <h3 className="font-black text-sky-950 dark:text-sky-100">雨天備案</h3>
@@ -249,7 +381,7 @@ export function TravelToolkit() {
           )}
         </article>
 
-        <article className="rounded-3xl border border-amber-200 bg-amber-50 p-5 shadow-lg dark:border-amber-800 dark:bg-amber-950/30">
+        <article className="rounded-3xl border border-amber-200 bg-amber-50 p-5 shadow-sm dark:border-amber-800 dark:bg-amber-950/30">
           <div className="flex items-center gap-2">
             <TrainFront className="h-5 w-5 text-amber-800 dark:text-amber-300" aria-hidden="true" />
             <h3 className="font-black text-amber-950 dark:text-amber-100">官方交通狀態</h3>
@@ -273,6 +405,97 @@ export function TravelToolkit() {
           </div>
         </article>
       </div>
+
+      {importPreview && (
+        <article
+          aria-labelledby="offline-import-preview-title"
+          aria-live="polite"
+          className="mt-5 rounded-[2rem] border border-amber-300 bg-white p-5 shadow-xl dark:border-amber-700 dark:bg-slate-800 md:p-7"
+        >
+          <div className="flex items-start gap-3">
+            <div className="rounded-2xl bg-amber-100 p-3 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200">
+              <FileJson className="h-5 w-5" aria-hidden="true" />
+            </div>
+            <div className="min-w-0">
+              <div className="text-xs font-black uppercase tracking-widest text-amber-700 dark:text-amber-300">Import preview</div>
+              <h3 id="offline-import-preview-title" className="mt-1 text-xl font-black text-slate-950 dark:text-white md:text-2xl">
+                確認離線備份內容
+              </h3>
+              <p className="mt-1 break-words text-xs font-bold text-slate-600 dark:text-slate-300">
+                {importPreview.fileName} · {Math.max(1, Math.ceil(importPreview.byteLength / 1024)).toLocaleString()} KB
+              </p>
+            </div>
+          </div>
+
+          <dl className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-5">
+            <div className="rounded-2xl bg-slate-50 p-3 dark:bg-slate-900">
+              <dt className="text-xs font-black text-slate-500 dark:text-slate-400">備份時間</dt>
+              <dd className="mt-1 text-sm font-black text-slate-950 dark:text-white">
+                {new Date(importPreview.pack.savedAt).toLocaleString("zh-TW")}
+              </dd>
+            </div>
+            <div className="rounded-2xl bg-slate-50 p-3 dark:bg-slate-900">
+              <dt className="text-xs font-black text-slate-500 dark:text-slate-400">行程</dt>
+              <dd className="mt-1 text-lg font-black text-slate-950 dark:text-white">
+                {Object.keys(importPreview.pack.itinerary).length} 天 · {Object.values(importPreview.pack.itinerary).reduce((total, day) => total + day.activities.length, 0)} 項
+              </dd>
+            </div>
+            <div className="rounded-2xl bg-slate-50 p-3 dark:bg-slate-900">
+              <dt className="text-xs font-black text-slate-500 dark:text-slate-400">預算上限</dt>
+              <dd className="mt-1 text-lg font-black text-slate-950 dark:text-white">¥{importPreview.pack.budget.limit.toLocaleString()}</dd>
+            </div>
+            <div className="rounded-2xl bg-slate-50 p-3 dark:bg-slate-900">
+              <dt className="text-xs font-black text-slate-500 dark:text-slate-400">支出紀錄</dt>
+              <dd className="mt-1 text-lg font-black text-slate-950 dark:text-white">{importPreview.pack.budget.items.length} 筆</dd>
+            </div>
+            <div className="rounded-2xl bg-slate-50 p-3 dark:bg-slate-900">
+              <dt className="text-xs font-black text-slate-500 dark:text-slate-400">行李進度</dt>
+              <dd className="mt-1 text-lg font-black text-slate-950 dark:text-white">
+                {importPreview.pack.packingList.filter((item) => item.packed).length}/{importPreview.pack.packingList.length}
+              </dd>
+            </div>
+          </dl>
+
+          <div role="note" className="mt-4 flex items-start gap-3 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-amber-950 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-100">
+            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
+            <div>
+              <p className="text-sm font-black">這不是完整的同步行程還原</p>
+              <p className="mt-1 text-xs font-bold leading-relaxed">
+                確認後只會保存成這趟行程的離線閱讀快照，不會覆蓋或上傳目前的同步行程。自訂美食等未包含在此檔案的資料也不會被改動。
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <button
+              type="button"
+              onClick={() => {
+                importRequestRef.current += 1;
+                setImportPreview(null);
+                setImportError(null);
+                setImportStatus("idle");
+              }}
+              disabled={importStatus === "saving"}
+              className="min-h-11 rounded-xl border border-slate-300 px-5 text-sm font-black text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:text-slate-100 dark:hover:bg-slate-700"
+            >
+              取消
+            </button>
+            <button
+              type="button"
+              onClick={() => void confirmImport()}
+              disabled={importStatus === "saving"}
+              className="min-h-11 inline-flex items-center justify-center gap-2 rounded-xl bg-amber-600 px-5 text-sm font-black text-white hover:bg-amber-700 disabled:opacity-60"
+            >
+              {importStatus === "saving" ? (
+                <RefreshCw className="h-4 w-4 animate-spin" aria-hidden="true" />
+              ) : (
+                <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
+              )}
+              {importStatus === "saving" ? "寫入驗證中" : "確認匯入為離線快照"}
+            </button>
+          </div>
+        </article>
+      )}
 
       {openedPack && (
         <article

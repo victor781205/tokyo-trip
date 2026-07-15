@@ -89,18 +89,39 @@ describe("Food error and status states", () => {
     }));
   });
 
-  it("searches the active category and exposes pressed state for district filters", () => {
+  it("searches every category and exposes pressed state for district filters", () => {
     render(<Food />);
 
-    fireEvent.change(screen.getByRole("searchbox", { name: "搜尋目前分類的餐廳" }), {
-      target: { value: "AFURI" },
+    fireEvent.change(screen.getByRole("searchbox", { name: "搜尋所有分類的餐廳" }), {
+      target: { value: "寿司大" },
     });
-    expect(screen.getByText("AFURI 原宿")).toBeInTheDocument();
+    expect(screen.getByText("寿司大")).toBeInTheDocument();
     expect(screen.queryByText("一蘭 渋谷店")).not.toBeInTheDocument();
 
-    const harajuku = screen.getByRole("button", { name: "原宿" });
-    fireEvent.click(harajuku);
-    expect(harajuku).toHaveAttribute("aria-pressed", "true");
+    const toyosu = screen.getByRole("button", { name: "豐洲" });
+    fireEvent.click(toyosu);
+    expect(toyosu).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByText(/跨全部料理搜尋/)).toBeInTheDocument();
+  });
+
+  it("preserves an existing scheduled meal time when reopening its dialog", () => {
+    mocks.itinerary = {
+      day2: {
+        title: "Day 2",
+        date: "9/2",
+        activities: [{
+          time: "18:45",
+          name: "用餐：一蘭 渋谷店",
+          desc: "澀谷 · 可依喜好調整湯頭、辣度與麵條硬度的豚骨拉麵。",
+          tag: "美食",
+        }],
+      },
+    };
+    render(<Food />);
+
+    fireEvent.click(screen.getByRole("button", { name: "將「一蘭 渋谷店」排入行程" }));
+    expect(screen.getByLabelText("安排日期")).toHaveValue("day2");
+    expect(screen.getByLabelText("用餐時間")).toHaveValue("18:45");
   });
 
   it("syncs wishlist status and can add a restaurant to a selected trip day", () => {
@@ -197,12 +218,15 @@ describe("Food error and status states", () => {
     const updater = mocks.updateItinerary.mock.calls[0][0] as (value: typeof mocks.itinerary) => typeof mocks.itinerary;
     const next = updater(mocks.itinerary);
     const matching = Object.entries(next).flatMap(([dayKey, day]) => (
-      day.activities.filter((activity) => activity.sourceId === sourceId).map((activity) => ({ dayKey, activity }))
+      day.activities.filter((activity) => activity.name === "用餐：一蘭 渋谷店").map((activity) => ({ dayKey, activity }))
     ));
     expect(matching).toHaveLength(1);
     expect(matching[0]).toMatchObject({
       dayKey: "day1",
-      activity: { sourceId, syncId: expect.stringMatching(/^source:/) },
+      activity: {
+        sourceId: expect.stringMatching(/^food:recommended:geo:/),
+        syncId: expect.stringMatching(/^source:/),
+      },
     });
   });
 });

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Volume2, ChevronDown, Search } from "lucide-react";
+import { Volume2, ChevronDown, Search, Languages } from "lucide-react";
 
 const PHRASE_CATEGORIES: Record<string, { emoji: string; phrases: { jp: string; romaji: string; zh: string }[] }> = {
   "基本問候": {
@@ -26,6 +26,7 @@ const PHRASE_CATEGORIES: Record<string, { emoji: string; phrases: { jp: string; 
       { jp: "この電車は〜に行きますか？", romaji: "Kono densha wa ... ni ikimasu ka?", zh: "這班電車有到～嗎？" },
       { jp: "次の駅はどこですか？", romaji: "Tsugi no eki wa doko desu ka?", zh: "下一站是哪裡？" },
       { jp: "タクシーを呼んでください", romaji: "Takushii wo yonde kudasai", zh: "請幫我叫計程車" },
+      { jp: "トイレはどこですか？", romaji: "Toire wa doko desu ka?", zh: "洗手間在哪裡？" },
     ],
   },
   "餐廳美食": {
@@ -116,6 +117,7 @@ export function JapanesePhrases() {
   const [expanded, setExpanded] = useState<string | null>("基本問候");
   const [search, setSearch] = useState("");
   const searchTerms = expandSearchTerms(search);
+  const isSearching = searchTerms.length > 0;
 
   const filteredCategories = Object.entries(PHRASE_CATEGORIES).map(([cat, data]) => ({
     category: cat,
@@ -141,13 +143,19 @@ export function JapanesePhrases() {
   };
 
   return (
-    <section id="phrases" className="py-6 md:py-20 transition-colors duration-300 scroll-mt-28">
+    <section id="phrases" className="py-4 md:py-9 transition-colors duration-300 scroll-mt-28">
       {/* Header */}
-      <div className="text-center mb-10">
+      <div className="text-center mb-7">
         <div className="inline-block bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 px-4 py-1 rounded-full text-xs font-black uppercase tracking-widest mb-4">Travel Phrases</div>
-        <h2 className="text-2xl sm:text-3xl md:text-5xl font-black mb-4">🇯🇵 實用日語短語</h2>
+        <h2 className="flex items-center justify-center gap-2 text-2xl sm:text-3xl font-black mb-3"><Languages className="h-7 w-7 text-purple-600" />實用日語短語</h2>
         <p className="text-gray-600 dark:text-gray-400">旅遊必備日語，點擊喇叭圖示可聆聽發音</p>
       </div>
+
+      {isSearching && (
+        <p role="status" className="mb-3 text-sm font-bold text-gray-600 dark:text-gray-300">
+          找到 {filteredCategories.reduce((total, category) => total + category.phrases.length, 0)} 句符合「{search.trim()}」的短語，結果已自動展開。
+        </p>
+      )}
 
       {/* Search */}
       <div className="relative mb-8 max-w-md mx-auto">
@@ -165,11 +173,11 @@ export function JapanesePhrases() {
       {/* Phrase Categories */}
       <div className="space-y-4">
         {filteredCategories.map((cat) => {
-          const isExpanded = expanded === cat.category;
+          const isExpanded = isSearching || expanded === cat.category;
           return (
-            <div key={cat.category} className="bg-white dark:bg-slate-800 rounded-3xl shadow-lg border border-gray-100 dark:border-slate-700 overflow-hidden">
+            <div key={cat.category} className="trip-card bg-white dark:bg-slate-800 rounded-3xl shadow-lg border border-gray-100 dark:border-slate-700 overflow-hidden">
               <button
-                onClick={() => setExpanded(isExpanded ? null : cat.category)}
+                onClick={() => { if (!isSearching) setExpanded(isExpanded ? null : cat.category); }}
                 aria-expanded={isExpanded}
                 className="w-full flex items-center justify-between p-5 hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors"
               >

@@ -3,9 +3,12 @@ import {
   createOfflineTripPack,
   getRainFallbacks,
   isOfflineTripPack,
+  OFFLINE_PACK_MAX_IMPORT_BYTES,
+  persistImportedOfflineTripPack,
   persistOfflineTripPack,
   readOfflineTripPack,
   shouldShowRainPlan,
+  validateOfflineTripPackImport,
 } from "@/lib/offline-pack";
 
 function createMemoryCacheStorage() {
@@ -38,6 +41,7 @@ function createMemoryCacheStorage() {
           }
           return undefined;
         },
+        delete: async (input: RequestInfo | URL) => store.delete(keyFor(input)),
       } as Cache;
     }),
   } as unknown as CacheStorage;
@@ -140,5 +144,94 @@ describe("offline trip pack", () => {
       ...pack,
       packingList: [{ id: "passport", name: "護照", packed: "yes", category: "文件" }],
     })).toBe(false);
+  });
+
+  it("strictly validates a same-trip exported backup before import", () => {
+    const pack = createOfflineTripPack({
+      tripId: "trip-import",
+      itinerary: {
+        day1: {
+          title: "抵達東京",
+          date: "9/1",
+          activities: [{ time: "12:55", name: "成田機場", desc: "入境", tag: "交通" }],
+        },
+      },
+      budgetLimit: 120_000,
+      budgetItems: [],
+      packingList: [],
+    });
+
+    const result = validateOfflineTripPackImport(JSON.stringify(pack), "trip-import");
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.pack).toEqual(pack);
+      expect(result.byteLength).toBeGreaterThan(0);
+    }
+  });
+
+  it("rejects oversized, unsupported, cross-trip, and extra-field backup data", () => {
+    const pack = createOfflineTripPack({
+      tripId: "trip-a",
+      itinerary: {},
+      budgetLimit: 100_000,
+      budgetItems: [],
+      packingList: [],
+    });
+
+    expect(validateOfflineTripPackImport(
+      "x".repeat(OFFLINE_PACK_MAX_IMPORT_BYTES + 1),
+      "trip-a",
+    )).toMatchObject({ ok: false, code: "too_large" });
+    expect(validateOfflineTripPackImport(
+      JSON.stringify({ ...pack, version: 2 }),
+      "trip-a",
+    )).toMatchObject({ ok: false, code: "unsupported_version" });
+    expect(validateOfflineTripPackImport(
+      JSON.stringify(pack),
+      "trip-b",
+    )).toMatchObject({ ok: false, code: "trip_mismatch" });
+    expect(validateOfflineTripPackImport(
+      JSON.stringify({ ...pack, hotel: { ...pack.hotel, extra: "not allowed" } }),
+      "trip-a",
+    )).toMatchObject({ ok: false, code: "invalid_schema" });
+  });
+
+  it("persists a confirmed imported snapshot without requiring the network shell", async () => {
+    const { cacheStorage } = createMemoryCacheStorage();
+    const pack = createOfflineTripPack({
+      tripId: "trip-import",
+      itinerary: {},
+      budgetLimit: 100_000,
+      budgetItems: [],
+      packingList: [],
+    });
+
+    const verified = await persistImportedOfflineTripPack({
+      cacheStorage,
+      pack,
+      expectedTripId: "trip-import",
+    });
+
+    expect(verified).toEqual(pack);
+    expect(await readOfflineTripPack(cacheStorage, "trip-import")).toEqual(pack);
+  });
+
+  it("refuses to write an imported snapshot for another trip", async () => {
+    const { cacheStorage } = createMemoryCacheStorage();
+    const pack = createOfflineTripPack({
+      tripId: "trip-a",
+      itinerary: {},
+      budgetLimit: 100_000,
+      budgetItems: [],
+      packingList: [],
+    });
+
+    await expect(persistImportedOfflineTripPack({
+      cacheStorage,
+      pack,
+      expectedTripId: "trip-b",
+    })).rejects.toThrow("validation");
+    expect(await readOfflineTripPack(cacheStorage, "trip-b")).toBeNull();
   });
 });

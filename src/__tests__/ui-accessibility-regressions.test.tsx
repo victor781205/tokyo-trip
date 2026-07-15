@@ -50,6 +50,16 @@ describe("UI accessibility regressions", () => {
     expect(speechButton).toHaveClass("md:focus-visible:opacity-100", "focus-visible:ring-2");
   });
 
+  it("expands matching Japanese phrases and includes the common toilet question", () => {
+    render(<JapanesePhrases />);
+    fireEvent.change(screen.getByRole("textbox", { name: "搜尋日語短語" }), {
+      target: { value: "廁所" },
+    });
+
+    expect(screen.getByText("トイレはどこですか？")).toBeVisible();
+    expect(screen.getByText(/結果已自動展開/)).toBeInTheDocument();
+  });
+
   it("uses the shared primary color token for the push call to action", () => {
     render(<PushSubscriptionPrompt />);
     const button = screen.getByRole("button", { name: "開啟行程推播提醒" });

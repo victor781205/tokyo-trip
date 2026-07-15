@@ -1,26 +1,38 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getForecastScopeNotice, WeatherForecast } from "@/components/WeatherForecast";
 import { TodayFocus, pushHintForSnapshot } from "@/components/TodayFocus";
+import { DEFAULT_ITINERARY } from "@/lib/default-itinerary";
 import type { TokyoForecastDay } from "@/lib/jma-forecast";
+import type { Itinerary } from "@/hooks/useTripState";
 
 const weatherResponse = (forecast: TokyoForecastDay[] = [
   { date: "9/1", weather: "100", tempMax: "30", tempMin: "22", pop: "20" },
 ]) => ({ forecast });
 
-const updateItineraryMock = vi.hoisted(() => vi.fn());
+const tripStateMocks = vi.hoisted(() => ({
+  updateItinerary: vi.fn(),
+  itinerary: {} as Itinerary,
+  packingList: [] as Array<{ id: string; name: string; packed: boolean; category: string }>,
+}));
+const updateItineraryMock = tripStateMocks.updateItinerary;
 
 vi.mock("@/hooks/useTripState", () => ({
   useTripState: () => ({
     isLoaded: true,
     tripId: "trip-test",
-    itinerary: {},
+    itinerary: tripStateMocks.itinerary,
     budgetItems: [],
     budgetLimit: 100_000,
-    packingList: [],
+    packingList: tripStateMocks.packingList,
     updateItinerary: updateItineraryMock,
   }),
 }));
+
+beforeEach(() => {
+  tripStateMocks.itinerary = {};
+  tripStateMocks.packingList = [];
+});
 
 describe("weather failure states", () => {
   beforeEach(() => {
@@ -180,6 +192,29 @@ describe("Today Focus push hint", () => {
   });
 });
 
+describe("Today Focus packing progress", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("does not count synchronized reservation tasks as luggage", async () => {
+    tripStateMocks.packingList = [
+      { id: "passport", name: "護照", packed: true, category: "證件" },
+      { id: "umbrella", name: "摺疊傘", packed: false, category: "其他" },
+      { id: "reservation:ghibli", name: "吉卜力門票", packed: true, category: "預約與門票" },
+    ];
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: vi.fn().mockResolvedValue(weatherResponse()),
+    }));
+
+    render(<TodayFocus />);
+
+    expect(await screen.findByRole("button", { name: /行李進度\s*50%/ })).toBeInTheDocument();
+  });
+});
+
 describe("Today Focus travel progress", () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -215,5 +250,51 @@ describe("Today Focus travel progress", () => {
 
     const recovered = updater({ day2: next.day2 });
     expect(Object.keys(recovered)).toEqual(["day1", "day2", "day3", "day4", "day5", "day6"]);
+  });
+
+  it.each([
+    { buttonName: "標記完成", expectedStatus: "done" },
+    { buttonName: "略過", expectedStatus: "skipped" },
+  ] as const)(
+    "does not jump back to an earlier unchecked activity after $expectedStatus",
+    ({ buttonName, expectedStatus }) => {
+      const { rerender } = render(<TodayFocus />);
+      expect(screen.getByText("目前行程")).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole("button", { name: buttonName }));
+      const updater = updateItineraryMock.mock.calls[0]?.[0] as ((current: Itinerary) => Itinerary);
+      tripStateMocks.itinerary = updater({});
+      rerender(<TodayFocus />);
+
+      expect(
+        tripStateMocks.itinerary.day2.activities.find((activity) => activity.name === "明治神宮"),
+      ).toMatchObject({ status: expectedStatus });
+      expect(screen.queryByText("目前行程")).not.toBeInTheDocument();
+      expect(screen.getByText("下一站尚未開始，可以先確認路線。")).toBeInTheDocument();
+      expect(screen.getByText(/11:30 · 原宿竹下通/)).toBeInTheDocument();
+    },
+  );
+
+  it("uses Tokyo time and advances to the latest unprocessed stop after the progress cursor", () => {
+    vi.setSystemTime(new Date("2026-09-02T02:45:00Z")); // 11:45 in Tokyo
+    tripStateMocks.itinerary = {
+      ...DEFAULT_ITINERARY,
+      day2: {
+        ...DEFAULT_ITINERARY.day2,
+        activities: DEFAULT_ITINERARY.day2.activities.map((activity) => (
+          activity.name === "明治神宮"
+            ? { ...activity, status: "done" as const }
+            : { ...activity }
+        )),
+      },
+    };
+
+    render(<TodayFocus />);
+
+    const currentCard = screen.getByText("目前行程").parentElement;
+    expect(currentCard).not.toBeNull();
+    expect(within(currentCard!).getByText("原宿竹下通")).toBeInTheDocument();
+    expect(within(currentCard!).queryByText("飯店早餐")).not.toBeInTheDocument();
+    expect(screen.getByText(/13:00 · 午餐：拉麵/)).toBeInTheDocument();
   });
 });

@@ -7,6 +7,7 @@ import { viewport } from "@/app/layout";
 vi.mock("next/font/google", () => ({
   Noto_Sans_TC: () => ({ variable: "font-sans-test" }),
   Noto_Serif_TC: () => ({ variable: "font-serif-test" }),
+  Space_Grotesk: () => ({ variable: "font-metrics-test" }),
 }));
 
 function relativeLuminance(hex: string) {
@@ -100,5 +101,18 @@ describe("app shell accessibility", () => {
     expect(source.match(/aria-label=\{themeToggleLabel\}/g)).toHaveLength(2);
     expect(source).toContain('isDarkTheme ? "切換淺色模式" : "切換深色模式"');
     expect(source).not.toContain('aria-label="切換深色模式"');
+  });
+
+  it("initializes the saved theme before paint without a client-rendered script", () => {
+    const layout = readFileSync(join(process.cwd(), "src/app/layout.tsx"), "utf8");
+    const provider = readFileSync(join(process.cwd(), "src/components/ThemeProvider.tsx"), "utf8");
+
+    expect(layout).toContain("<ThemeInitScript html={themeInitScript} />");
+    expect(layout).toContain('localStorage.getItem("theme")');
+    expect(layout).toContain('prefers-color-scheme: dark');
+    expect(provider).not.toContain("next-themes");
+    expect(provider).toContain('type={typeof window === "undefined" ? "text/javascript" : "text/plain"}');
+    expect(provider).toContain("suppressHydrationWarning");
+    expect(provider).toContain('window.addEventListener("storage"');
   });
 });

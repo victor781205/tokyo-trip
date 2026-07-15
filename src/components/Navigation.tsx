@@ -1,12 +1,13 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { useTheme } from "next-themes";
+import { useTheme } from "@/components/ThemeProvider";
 import { Menu, X, Moon, Sun, Home, Share2, Check, Settings, Plane, CalendarDays, Wallet, UtensilsCrossed, Luggage, Languages, Map as MapIcon, RefreshCw, Copy, Eye, EyeOff, Wifi, WifiOff, Loader2, Download, History, CloudUpload } from "lucide-react";
 import { useTrip } from "@/context/TripContext";
 import { useDialog } from "@/context/DialogContext";
 import type { LucideIcon } from "lucide-react";
 import { useModalAccessibility } from "@/hooks/useModalAccessibility";
+import { TokyoMark } from "@/components/TokyoBrand";
 
 export interface NavLink {
   id: string;
@@ -16,13 +17,13 @@ export interface NavLink {
 
 export const NAV_LINKS: NavLink[] = [
   { id: "hero", label: "首頁", icon: Home },
-  { id: "flights", label: "機票", icon: Plane },
+  { id: "flights", label: "航班", icon: Plane },
   { id: "tripprep", label: "行前準備", icon: Luggage },
-  { id: "transport", label: "交通", icon: MapIcon },
+  { id: "transport", label: "住宿交通", icon: MapIcon },
   { id: "itinerary", label: "行程", icon: CalendarDays },
   { id: "food", label: "美食", icon: UtensilsCrossed },
   { id: "assistant", label: "旅遊助手", icon: Languages },
-  { id: "tools", label: "預算", icon: Wallet },
+  { id: "tools", label: "旅費", icon: Wallet },
 ];
 
 interface NavigationProps {
@@ -79,20 +80,19 @@ export function Navigation({ activeTab, setActiveTab }: NavigationProps) {
   }, []);
 
   useEffect(() => {
-    const query = window.matchMedia("(max-width: 1023px)");
-    const previous = document.body.style.paddingBottom;
-    const update = () => {
-      document.body.style.paddingBottom = query.matches
-        ? "calc(4.25rem + var(--sab))"
-        : previous;
-    };
-    update();
-    query.addEventListener("change", update);
-    return () => {
-      query.removeEventListener("change", update);
-      document.body.style.paddingBottom = previous;
-    };
-  }, []);
+    if (!mounted) return;
+    const resolvedTheme = theme === "system" ? systemTheme : theme;
+    const isDark = resolvedTheme === "dark";
+    let meta = document.head.querySelector<HTMLMetaElement>('meta[name="theme-color"][data-app-theme]');
+    if (!meta) {
+      meta = document.createElement("meta");
+      meta.name = "theme-color";
+      meta.dataset.appTheme = "true";
+      document.head.appendChild(meta);
+    }
+    meta.content = isDark ? "#07111f" : "#f6f2ec";
+    document.documentElement.style.colorScheme = isDark ? "dark" : "light";
+  }, [mounted, systemTheme, theme]);
 
   const toggleTheme = () => {
     const currentTheme = theme === 'system' ? systemTheme : theme;
@@ -104,6 +104,7 @@ export function Navigation({ activeTab, setActiveTab }: NavigationProps) {
 
 
   const handleShare = async () => {
+    let flushedPendingChanges = false;
     if (pendingSliceCount > 0) {
       const flushed = await flushSync();
       if (!flushed) {
@@ -115,13 +116,26 @@ export function Navigation({ activeTab, setActiveTab }: NavigationProps) {
         });
         return;
       }
+      flushedPendingChanges = true;
     }
-    if (!isShareReady) {
+    const shareBlocked = (!isShareReady && !flushedPendingChanges)
+      || syncStatus !== "online"
+      || (saveStatus !== "synced" && !flushedPendingChanges)
+      || hasRevisionRollback
+      || Boolean(storageError);
+    if (shareBlocked) {
       await alert({
         title: "分享連結尚未就緒",
-        message: syncStatus === "offline"
-          ? "目前離線，請連線後等同步完成再分享。"
-          : "正在建立雲端行程，請稍候幾秒再試。",
+        message: storageError
+          ? "這台裝置目前無法安全保存資料，請先釋放瀏覽器空間或重試同步，再產生分享連結。"
+          : hasRevisionRollback
+            ? "偵測到較舊版本覆蓋，請先在同步中心確認要保留的版本，再分享給同伴。"
+            : syncStatus === "offline"
+              ? "目前離線，請連線後等同步完成再分享。"
+              : syncStatus === "error" || saveStatus === "error"
+                ? "同步目前發生錯誤。為避免同伴開到不完整版本，請先按「立即重試」。"
+                : "正在建立或儲存雲端行程，請稍候幾秒再試。",
+        accent: storageError || hasRevisionRollback || syncStatus === "error" || saveStatus === "error" ? "danger" : undefined,
         closeText: "知道了",
       });
       return;
@@ -260,17 +274,19 @@ export function Navigation({ activeTab, setActiveTab }: NavigationProps) {
     <>
       <nav
         aria-label="主要導覽"
-        aria-hidden={isOpen || undefined}
-        inert={isOpen || undefined}
-        className="fixed top-0 left-0 right-0 z-50 bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl border-b border-gray-100 dark:border-slate-800 transition-all duration-300 safe-top"
+        className="trip-nav fixed top-0 left-0 right-0 z-50 safe-top"
       >
-        <div className="max-w-7xl mx-auto px-4 md:px-8 h-16 flex items-center justify-between">
+        <div className="trip-nav__inner max-w-7xl mx-auto h-16 flex items-center justify-between">
           <button
             onClick={() => setActiveTab("hero")}
             aria-label="東京自由行主頁"
-            className="min-w-11 min-h-11 text-2xl font-black text-primary hover:scale-105 transition-transform flex items-center justify-center gap-2"
+            className="trip-brand min-w-11 min-h-11"
           >
-            🗼 <span className="hidden sm:inline">東京自由行</span>
+            <TokyoMark className="h-9 w-8" />
+            <span className="trip-brand__copy">
+              <span>東京旅程</span>
+              <span>TOKYO · 2026</span>
+            </span>
           </button>
 
           {/* Desktop Nav */}
@@ -280,10 +296,7 @@ export function Navigation({ activeTab, setActiveTab }: NavigationProps) {
                 key={link.id}
                 onClick={() => setActiveTab(link.id)}
                 aria-current={activeTab === link.id ? "page" : undefined}
-                className={`text-sm font-black px-4 py-2 rounded-2xl transition-all duration-300 ${activeTab === link.id
-                  ? "bg-primary text-white shadow-lg shadow-primary/30 scale-105"
-                  : "text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-800"
-                  }`}
+                className={`trip-nav__link ${activeTab === link.id ? "is-active" : ""}`}
               >
                 {link.label}
               </button>
@@ -295,7 +308,7 @@ export function Navigation({ activeTab, setActiveTab }: NavigationProps) {
               onClick={() => { setInputTripId(tripId); setInputSecret(tripSecret); setShowSyncModal(true); }}
               aria-label="同步設定"
               title="同步設定"
-              className="relative p-2.5 bg-gray-100 dark:bg-slate-800 rounded-2xl text-gray-500 hover:text-primary transition-all active:scale-90"
+              className="trip-icon-button relative"
             >
               <Settings className="w-5 h-5" />
               <span
@@ -304,7 +317,7 @@ export function Navigation({ activeTab, setActiveTab }: NavigationProps) {
               />
             </button>
 
-            <button onClick={toggleTheme} aria-label={themeToggleLabel} title={themeToggleLabel} className="p-2.5 bg-gray-100 dark:bg-slate-800 rounded-2xl transition-all active:scale-90 ml-1">
+            <button onClick={toggleTheme} aria-label={themeToggleLabel} title={themeToggleLabel} className="trip-icon-button ml-1">
               {isDarkTheme ? <Sun className="w-5 h-5 text-accent" /> : <Moon className="w-5 h-5 text-slate-700" />}
             </button>
           </div>
@@ -313,13 +326,13 @@ export function Navigation({ activeTab, setActiveTab }: NavigationProps) {
           <div className="flex lg:hidden items-center gap-1">
             <button
               onClick={() => { setInputTripId(tripId); setInputSecret(tripSecret); setShowSyncModal(true); }}
-              className="relative p-3.5 text-gray-500 dark:text-gray-300 active:bg-gray-100 dark:active:bg-slate-800 rounded-2xl transition-colors"
+              className="trip-mobile-control relative"
               aria-label="同步設定"
             >
               <Settings className="w-6 h-6" />
               <span aria-hidden="true" className={`absolute right-2.5 top-2.5 h-2.5 w-2.5 rounded-full ring-2 ring-white dark:ring-slate-900 ${syncStatus === "error" || saveStatus === "error" ? "bg-red-500" : syncStatus === "offline" || saveStatus === "pending" ? "bg-amber-500" : saveStatus === "saving" || syncStatus === "connecting" ? "bg-blue-500 animate-pulse" : "bg-green-500"}`} />
             </button>
-            <button onClick={toggleTheme} aria-label={themeToggleLabel} title={themeToggleLabel} className="p-3.5 text-gray-400 active:bg-gray-100 dark:active:bg-slate-800 rounded-2xl transition-colors">
+            <button onClick={toggleTheme} aria-label={themeToggleLabel} title={themeToggleLabel} className="trip-mobile-control">
               {isDarkTheme ? <Sun className="w-6 h-6 text-accent" /> : <Moon className="w-6 h-6 text-slate-700" />}
             </button>
             <button
@@ -327,7 +340,7 @@ export function Navigation({ activeTab, setActiveTab }: NavigationProps) {
               aria-label={isOpen ? "關閉分類選單" : "開啟分類選單"}
               aria-expanded={isOpen}
               aria-controls="mobile-nav-menu"
-              className="p-3.5 text-primary bg-primary/5 rounded-2xl ml-1 active:scale-90 transition-all"
+              className="trip-mobile-control trip-mobile-menu ml-1"
             >
               {isOpen ? <X className="w-7 h-7" /> : <Menu className="w-7 h-7" />}
             </button>
@@ -344,7 +357,7 @@ export function Navigation({ activeTab, setActiveTab }: NavigationProps) {
           aria-modal="true"
           aria-label="分類選單"
           tabIndex={-1}
-          className="fixed inset-0 z-[60] bg-white dark:bg-slate-900 lg:hidden animate-in fade-in duration-300 safe-top outline-none"
+          className="trip-menu fixed inset-0 z-[60] lg:hidden animate-in fade-in duration-300 safe-top outline-none"
         >
           <button
             type="button"
@@ -356,7 +369,12 @@ export function Navigation({ activeTab, setActiveTab }: NavigationProps) {
             <X className="w-7 h-7" />
           </button>
           <div className="h-full flex flex-col pt-[calc(6rem+var(--sat))] px-6 pb-[calc(3rem+var(--sab))] overflow-y-auto">
-            <div className="grid grid-cols-3 gap-3">
+            <div className="mb-6 pr-16">
+              <p className="font-metric text-xs font-bold tracking-[0.24em] text-primary">TOKYO JOURNEY</p>
+              <h2 className="mt-1 font-serif text-3xl font-black text-slate-950 dark:text-white">探索旅程</h2>
+              <p className="mt-1 text-sm font-medium text-slate-600 dark:text-slate-300">所有行前與旅中工具，都在這裡。</p>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               {NAV_LINKS.map((link) => {
                 const Icon = link.icon;
                 return (
@@ -364,10 +382,7 @@ export function Navigation({ activeTab, setActiveTab }: NavigationProps) {
                     key={link.id}
                     onClick={() => { setActiveTab(link.id); closeMenu(); }}
                     aria-current={activeTab === link.id ? "page" : undefined}
-                    className={`min-h-[6rem] rounded-[2rem] border-2 transition-all flex flex-col items-center justify-center gap-2 ${activeTab === link.id
-                      ? "bg-primary border-primary text-white shadow-2xl shadow-primary/30 scale-105"
-                      : "bg-gray-50 dark:bg-slate-800 border-transparent text-gray-700 dark:text-gray-300 active:scale-95"
-                      }`}
+                    className={`trip-menu-card ${activeTab === link.id ? "is-active" : ""}`}
                   >
                     <div className={activeTab === link.id ? "text-white" : "text-primary"}>
                       <Icon className="w-7 h-7" />
@@ -398,7 +413,7 @@ export function Navigation({ activeTab, setActiveTab }: NavigationProps) {
       {!isOpen && (
         <nav
           aria-label="手機快速導覽"
-          className="fixed inset-x-0 bottom-0 z-40 border-t border-gray-200 dark:border-slate-700 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl lg:hidden pb-[var(--sab)]"
+          className="trip-bottom-nav fixed inset-x-0 bottom-0 z-40 lg:hidden pb-[var(--sab)]"
         >
           <div className="grid grid-cols-5 h-[4.25rem]">
             {NAV_LINKS.filter((link) => ["hero", "itinerary", "food", "assistant", "tools"].includes(link.id)).map((link) => {
@@ -410,7 +425,7 @@ export function Navigation({ activeTab, setActiveTab }: NavigationProps) {
                   type="button"
                   onClick={() => setActiveTab(link.id)}
                   aria-current={active ? "page" : undefined}
-                  className={`min-h-11 flex flex-col items-center justify-center gap-1 text-[11px] font-black ${active ? "text-primary" : "text-gray-600 dark:text-gray-300"}`}
+                  className={`trip-bottom-nav__item min-h-11 ${active ? "is-active" : ""}`}
                 >
                   <Icon className={`w-5 h-5 ${active ? "fill-primary/10" : ""}`} />
                   {link.label}
@@ -560,12 +575,16 @@ export function Navigation({ activeTab, setActiveTab }: NavigationProps) {
 
                   <button
                     onClick={handleShare}
-                    disabled={!isShareReady}
+                    disabled={!isShareReady || syncStatus !== "online" || saveStatus === "error" || hasRevisionRollback || Boolean(storageError)}
                     className={`w-full py-4 rounded-2xl font-black text-base transition-all flex items-center justify-center gap-3 ${copied ? "bg-green-500 text-white" : "bg-primary text-white shadow-lg shadow-primary/25 active:scale-95"
                       } disabled:cursor-not-allowed disabled:bg-gray-300 disabled:shadow-none dark:disabled:bg-slate-700`}
                   >
                     {copied ? <Check className="w-5 h-5" /> : <Share2 className="w-5 h-5" />}
-                    {copied ? "已複製，去傳給同伴吧" : isShareReady ? "複製分享連結" : "等待雲端行程建立…"}
+                    {copied
+                      ? "已複製，去傳給同伴吧"
+                      : isShareReady && syncStatus === "online" && saveStatus !== "error" && !hasRevisionRollback && !storageError
+                        ? "複製分享連結"
+                        : "先完成同步再分享"}
                   </button>
 
                   <button

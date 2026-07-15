@@ -12,7 +12,7 @@ export function InteractiveMap() {
   };
 
   const spots = [
-    { id: "hotel", name: "錦糸町 (飯店)", x: 550, y: 150, color: "#e74c3c", info: "東武黎凡特飯店所在地，生活機能優越，可遠眺晴空塔。", tags: ["住宿", "交通樞紐"], image: "🏨" },
+    { id: "hotel", name: "錦糸町 (飯店)", x: 550, y: 150, color: "#c02f26", info: "東武黎凡特飯店所在地，生活機能優越，可遠眺晴空塔。", tags: ["住宿", "交通樞紐"], image: "🏨" },
     { id: "asakusa", name: "淺草寺", x: 480, y: 120, color: "#f39c12", info: "東京最古老的寺廟，必看雷門、仲見世通。", tags: ["景點", "傳統文化"], image: "⛩️" },
     { id: "shibuya", name: "澀谷", x: 150, y: 300, color: "#3498db", info: "十字路口、109百貨、SHIBUYA SKY 展望台。", tags: ["購物", "夜景"], image: "🐕" },
     { id: "shinjuku", name: "新宿", x: 150, y: 200, color: "#9b51e0", info: "全球最繁忙車站，新宿御苑、思出橫丁。", tags: ["交通", "美食"], image: "🛍️" },

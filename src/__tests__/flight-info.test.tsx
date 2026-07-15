@@ -13,6 +13,7 @@ describe("FlightInfo", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
+        retrievedAt: new Date().toISOString(),
         requestedDates: { outbound: "2026-09-01", inbound: "2026-09-06" },
         outbound: {
           isLive: true,
@@ -74,6 +75,7 @@ describe("FlightInfo", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
+        retrievedAt: new Date().toISOString(),
         requestedDates: { outbound: "2026-09-01", inbound: "2026-09-06" },
         outbound: {
           isLive: true,
@@ -106,5 +108,88 @@ describe("FlightInfo", () => {
     expect(screen.getByLabelText("去程實際起飛時間")).toHaveTextContent("實際 08:42");
     expect(screen.getByLabelText("回程預估起飛時間")).toHaveTextContent("預估 20:55");
     expect(screen.getByLabelText("回程實際抵達時間")).toHaveTextContent("實際 23:31");
+  });
+
+  it("consumes the outbound estimatedTime field returned by TDX", async () => {
+    const retrievedAt = new Date().toISOString();
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        retrievedAt,
+        requestedDates: { outbound: "2026-09-01", inbound: "2026-09-06" },
+        outbound: {
+          isLive: true,
+          source: "TDX-Departure",
+          sourceDate: "2026-09-01",
+          gate: "B2",
+          status: "scheduled",
+          terminal: "1",
+          estimatedTime: "2026-09-01T08:47:00+08:00",
+        },
+        inbound: { isLive: false },
+      }),
+    }));
+
+    render(<FlightInfo />);
+
+    await waitFor(() => expect(screen.queryByText(/正在讀取登機門/)).not.toBeInTheDocument());
+    expect(screen.getByLabelText("去程預估起飛時間")).toHaveTextContent("預估 08:47");
+    expect(screen.getByRole("status")).toHaveTextContent(/TDX FIDS.*剛剛更新/);
+  });
+
+  it("keeps cached data visible but removes every LIVE claim when it is stale", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(Date.parse("2026-09-01T03:20:00.000Z"));
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        retrievedAt: "2026-09-01T03:00:00.000Z",
+        requestedDates: { outbound: "2026-09-01", inbound: "2026-09-06" },
+        outbound: {
+          isLive: true,
+          source: "TDX-Departure",
+          sourceDate: "2026-09-01",
+          gate: "B2",
+          status: "departed",
+          terminal: "1",
+          actualTime: "2026-09-01T08:42:00+08:00",
+        },
+        inbound: { isLive: false },
+      }),
+    }));
+
+    render(<FlightInfo />);
+
+    await waitFor(() => expect(screen.queryByText(/正在讀取登機門/)).not.toBeInTheDocument());
+    expect(screen.queryByText("LIVE")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("去程實際起飛時間")).not.toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "資料已過期，不作 LIVE 判定 · 20 分鐘前更新",
+    );
+  });
+
+  it("refreshes with no-store when connectivity returns", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        retrievedAt: new Date().toISOString(),
+        requestedDates: { outbound: "2026-09-01", inbound: "2026-09-06" },
+        outbound: { isLive: false },
+        inbound: { isLive: false },
+      }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<FlightInfo />);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    window.dispatchEvent(new Event("online"));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      expect.stringContaining("/api/flight-info?"),
+      expect.objectContaining({
+        cache: "no-store",
+        signal: expect.any(AbortSignal),
+      }),
+    );
   });
 });

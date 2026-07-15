@@ -1,13 +1,19 @@
 "use client";
 
 import { useState, useRef, useMemo, useCallback } from "react";
-import { Calendar, Check, ChevronLeft, ChevronRight, Pencil, Plus, Trash2, X, Download, Loader2, CalendarPlus, AlertTriangle, MapPin, BarChart3, List, Wallet, UtensilsCrossed, MoreHorizontal } from "lucide-react";
+import { Calendar, Check, CheckCircle2, CircleSlash2, ChevronLeft, ChevronRight, Pencil, Plus, Trash2, X, Download, Loader2, CalendarPlus, AlertTriangle, MapPin, BarChart3, List, Wallet, UtensilsCrossed, MoreHorizontal, Navigation2 } from "lucide-react";
 import { useTripState, type Activity } from "@/hooks/useTripState";
 import { useDialog } from "@/context/DialogContext";
 import { downloadICS } from "@/lib/ics-export";
 import { DEFAULT_ITINERARY } from "@/lib/default-itinerary";
 import { useModalAccessibility } from "@/hooks/useModalAccessibility";
-import { getDateInTimeZone } from "@/lib/trip-dates";
+import {
+  createBudgetItem,
+  getBudgetDateForTripDay,
+  getTokyoBudgetDate,
+  MAX_YEN_AMOUNT,
+  TRIP_TRAVELERS,
+} from "@/lib/budget";
 import { generateShortId } from "@/lib/secure-id";
 import { ensureStableItineraryActivityIds } from "@/lib/trip-cache";
 
@@ -28,8 +34,6 @@ const BUDGET_SUGGESTED_AMOUNTS: Record<string, number> = {
   hotel: 10000,
   other: 1000,
 };
-const MAX_BUDGET_ITEM_AMOUNT = 999_999_999;
-
 /** 依活動名稱／標籤粗估預算類別 */
 function guessBudgetCategory(act: Activity): string {
   const blob = `${act.tag || ""} ${act.name} ${act.desc || ""}`;
@@ -53,6 +57,20 @@ function guessFoodDistrict(act: Activity): string {
     if (blob.includes(d)) return d === "晴空塔" ? "押上" : d === "台場" ? "豐洲" : d;
   }
   return "all";
+}
+
+/** 僅為具體地點提供導航；流程、休息與交通動作不應被當成地標搜尋。 */
+function getActivityNavigationUrl(activity: Activity): string | null {
+  const name = activity.name.trim();
+  if (!name) return null;
+
+  const blob = `${activity.tag || ""} ${name} ${activity.desc || ""}`;
+  const isPlaceCategory = /景點|美食|餐飲|購物|住宿|神社|寺|展覽|咖啡/i.test(activity.tag || "");
+  const isProcedure = /入境|領取行李|安檢|海關|登機|休息|自由活動|起床|出發|前往|移動|搭乘|轉乘|回程|班機|check-?\s?out/i.test(blob);
+  if (isProcedure && !isPlaceCategory) return null;
+
+  const query = name.replace(/^用餐[：:]\s*/, "");
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${query} 東京`)}`;
 }
 
 // ── 景點座標資料（用於估算移動時間）──
@@ -177,6 +195,7 @@ export function Itinerary({ onNavigate }: { onNavigate?: (tab: string) => void }
     name: string;
     amount: string;
     category: string;
+    day: string;
   } | null>(null);
   const [budgetError, setBudgetError] = useState("");
   const tabScrollRef = useRef<HTMLDivElement>(null);
@@ -391,9 +410,18 @@ export function Itinerary({ onNavigate }: { onNavigate?: (tab: string) => void }
 
   const handleTitleSave = (dayKey: string) => {
     if (!titleInput.trim()) return;
-    const newItin = { ...currentItin };
-    newItin[dayKey] = { ...newItin[dayKey], title: titleInput.trim() };
-    updateItinerary(newItin);
+    const title = titleInput.trim();
+    updateItinerary((latest) => {
+      const source = ensureStableItineraryActivityIds(
+        Object.keys(latest).length > 0 ? latest : DEFAULT_ITINERARY,
+      );
+      const latestDay = source[dayKey];
+      if (!latestDay) return latest;
+      return {
+        ...source,
+        [dayKey]: { ...latestDay, title },
+      };
+    });
     setEditingTitleDay(null);
   };
 
@@ -439,13 +467,14 @@ export function Itinerary({ onNavigate }: { onNavigate?: (tab: string) => void }
     }
   };
 
-  /** 開啟「加入預算」彈窗（可填金額／類別） */
+  /** 開啟「記錄支出」彈窗（可填金額／類別） */
   const openBudgetModal = (act: Activity) => {
     const category = guessBudgetCategory(act);
     setBudgetModal({
       name: act.name,
       amount: String(BUDGET_SUGGESTED_AMOUNTS[category] ?? BUDGET_SUGGESTED_AMOUNTS.other),
       category,
+      day: activeDayKey,
     });
     setBudgetError("");
   };
@@ -457,25 +486,34 @@ export function Itinerary({ onNavigate }: { onNavigate?: (tab: string) => void }
       !budgetModal.name.trim()
       || !Number.isSafeInteger(amountNum)
       || amountNum < 1
-      || amountNum > MAX_BUDGET_ITEM_AMOUNT
+      || amountNum > MAX_YEN_AMOUNT
     ) {
-      setBudgetError(`請輸入 1～${MAX_BUDGET_ITEM_AMOUNT.toLocaleString()} 的整數日圓金額；0 元不會列入支出。`);
+      setBudgetError(`請輸入 1～${MAX_YEN_AMOUNT.toLocaleString()} 的整數日圓金額；0 元不會列入支出。`);
       budgetAmountInputRef.current?.focus();
       return;
     }
-    const newItem = {
+    const dayMatch = budgetModal.day.match(/^day(\d+)$/);
+    const spendDate = dayMatch
+      ? getBudgetDateForTripDay(Number(dayMatch[1])) ?? getTokyoBudgetDate()
+      : getTokyoBudgetDate();
+    const newItem = createBudgetItem({
       id: Date.now(),
-      name: budgetModal.name.trim(),
+      name: budgetModal.name,
       amount: amountNum,
       category: budgetModal.category,
-      date: getDateInTimeZone(new Date(), "Asia/Tokyo"),
-    };
+      date: spendDate,
+    });
+    if (!newItem) {
+      setBudgetError("支出資料無法建立，請重新確認日期與金額。");
+      budgetAmountInputRef.current?.focus();
+      return;
+    }
     updateBudgetItems((prev) => [newItem, ...prev]);
     setBudgetModal(null);
     setBudgetError("");
     await alert({
-      title: "已加入預算",
-      message: `「${newItem.name}」¥${amountNum.toLocaleString()} 已記到預算工具。`,
+      title: "支出已記錄",
+      message: `「${newItem.name}」¥${amountNum.toLocaleString()} 已記到 ${spendDate}。`,
       accent: "primary",
     });
   };
@@ -548,13 +586,9 @@ export function Itinerary({ onNavigate }: { onNavigate?: (tab: string) => void }
   );
 
   return (
-    <section id="itinerary" className="py-6 md:py-20 px-4 md:px-6 lg:px-8 max-w-7xl mx-auto transition-colors duration-300">
-      {/* ── Header ── */}
-      <div className="text-center mb-6 md:mb-10 relative">
-        <div className="hidden sm:inline-block bg-primary/10 text-primary px-4 py-1 rounded-full text-xs font-black uppercase tracking-widest mb-4">Travel Timeline</div>
-        <h2 className="text-3xl md:text-5xl font-black mb-2 md:mb-4">📅 行程詳情</h2>
-        <p className="text-sm md:text-base text-gray-600 dark:text-gray-400 mb-4 md:mb-6">選擇天數後即可查看、編輯與導航</p>
-
+    <section id="itinerary" className="py-4 md:py-8 max-w-7xl mx-auto transition-colors duration-300">
+      {/* ── View toolbar ── */}
+      <div className="text-center mb-5 md:mb-7 relative">
         {/* ── View Mode Toggle + Actions ── */}
         <div className="flex flex-wrap justify-center gap-3">
           {/* View Mode Toggle */}
@@ -696,13 +730,13 @@ export function Itinerary({ onNavigate }: { onNavigate?: (tab: string) => void }
             </div>
 
             {/* ── Active Day Header ── */}
-            <div className="bg-gradient-to-r from-primary to-accent text-white p-5 rounded-[2rem] shadow-xl mb-6 flex items-center gap-4">
+            <div className="bg-gradient-to-r from-primary to-accent text-white p-4 sm:p-5 rounded-[2rem] shadow-xl mb-6 flex items-center gap-3 sm:gap-4">
               <div className="bg-white/20 p-3 rounded-2xl backdrop-blur-sm">
                 <Calendar className="w-6 h-6" />
               </div>
-              <div className="flex-1">
-                <h3 className="text-xl font-black leading-tight">{activeDayData.title}</h3>
-                <p className="text-sm font-bold text-white mt-0.5">{activeDayData.date}・{activeDayData.activities.length} 項行程</p>
+              <div className="min-w-0 flex-1">
+                <h3 className="text-lg sm:text-xl font-black leading-tight text-balance">{activeDayData.title}</h3>
+                <p className="text-xs sm:text-sm font-bold text-white mt-0.5 leading-snug">{activeDayData.date}・{activeDayData.activities.length} 項行程</p>
               </div>
               <div className="flex items-center gap-1">
                 <button onClick={() => goToDay(safeActiveDayIndex - 1)} aria-label="前一天" disabled={safeActiveDayIndex === 0} className="w-11 h-11 shrink-0 inline-flex items-center justify-center rounded-xl bg-white/20 disabled:opacity-30 transition-all">
@@ -716,24 +750,42 @@ export function Itinerary({ onNavigate }: { onNavigate?: (tab: string) => void }
 
             {/* ── Activities Timeline (mobile) ── */}
             <div className="relative space-y-6 before:absolute before:inset-0 before:left-[2.25rem] before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-gray-200 dark:before:via-slate-700 before:to-transparent animate-in fade-in slide-in-from-right-4 duration-400" key={activeDayKey}>
-              {activeDayData.activities.map((act) => (
+              {activeDayData.activities.map((act, idx) => (
                 <div key={act.syncId} className="relative flex items-start gap-6 group">
                   <div className="w-[4.5rem] pr-2 text-right text-primary font-black text-xl pt-0.5 shrink-0 tabular-nums relative z-10 px-1">{act.time}</div>
                   <div className="flex-1 pb-2">
-                    <div className="bg-white dark:bg-slate-800 p-5 rounded-[1.5rem] shadow-sm border border-gray-100 dark:border-slate-700 hover:shadow-xl transition-all relative group/card overflow-hidden">
+                    {activeConflicts.find((conflict) => conflict.index === idx) && (
+                      <div className="mb-2 flex items-start gap-1.5 rounded-xl bg-orange-50 px-3 py-2 text-xs font-bold text-orange-800 dark:bg-orange-900/20 dark:text-orange-200">
+                        <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                        {activeConflicts.find((conflict) => conflict.index === idx)?.message}
+                      </div>
+                    )}
+                    <div className={`trip-card bg-white dark:bg-slate-800 p-5 rounded-[1.5rem] shadow-sm border border-gray-100 dark:border-slate-700 hover:shadow-xl transition-shadow relative group/card overflow-hidden ${act.status === "done" ? "opacity-75" : act.status === "skipped" ? "opacity-60" : ""}`}>
                       <div className="absolute top-0 right-0 w-2 h-full bg-primary opacity-0 group-hover/card:opacity-100 transition-opacity"></div>
                       <div className="flex flex-col justify-between gap-3 mb-3">
                         <p className="font-black text-xl text-gray-900 dark:text-white leading-tight">{act.name}</p>
-                        {act.tag && <span className={`self-start text-[10px] font-black px-3 py-1 rounded-lg uppercase tracking-widest ${getTagColor(act.tag)}`}>{act.tag}</span>}
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          {act.status === "done" && <span className="inline-flex items-center gap-1 rounded-lg bg-emerald-100 px-2 py-1 text-[10px] font-black text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200"><CheckCircle2 className="h-3 w-3" /> 已完成</span>}
+                          {act.status === "skipped" && <span className="inline-flex items-center gap-1 rounded-lg bg-slate-200 px-2 py-1 text-[10px] font-black text-slate-700 dark:bg-slate-700 dark:text-slate-200"><CircleSlash2 className="h-3 w-3" /> 已略過</span>}
+                          {act.tag && <span className={`self-start text-[10px] font-black px-3 py-1 rounded-lg uppercase tracking-widest ${getTagColor(act.tag)}`}>{act.tag}</span>}
+                        </div>
                       </div>
                       {act.desc && <p className="text-base text-gray-500 dark:text-gray-400 leading-relaxed mb-4">{act.desc}</p>}
-                      <div className="grid grid-cols-2 min-[390px]:grid-cols-4 gap-2 transition-all duration-300">
+                      <div className="grid grid-cols-3 gap-2 transition-colors duration-300">
                         <button onClick={() => openModal(activeDayKey, act)} aria-label={`編輯「${act.name}」`} className="w-full min-w-11 h-11 flex items-center justify-center text-primary hover:bg-primary/10 rounded-xl transition-colors active:scale-90"><Pencil className="w-4 h-4" /></button>
-                        <button onClick={() => openBudgetModal(act)} aria-label={`將「${act.name}」加入預算`} className="w-full min-w-11 h-11 flex items-center justify-center text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded-xl transition-colors active:scale-90"><Wallet className="w-4 h-4" /></button>
+                        <button onClick={() => openBudgetModal(act)} aria-label={`記錄「${act.name}」支出`} className="w-full min-w-11 h-11 flex items-center justify-center text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded-xl transition-colors active:scale-90"><Wallet className="w-4 h-4" /></button>
                         <button onClick={() => findNearbyFood(act)} aria-label={`找「${act.name}」附近美食`} className="w-full min-w-11 h-11 flex items-center justify-center text-orange-500 hover:bg-orange-50 dark:hover:bg-orange-900/20 rounded-xl transition-colors active:scale-90"><UtensilsCrossed className="w-4 h-4" /></button>
+                        {getActivityNavigationUrl(act) && <a href={getActivityNavigationUrl(act)!} target="_blank" rel="noopener noreferrer" aria-label={`導航至「${act.name}」`} className="w-full min-w-11 h-11 flex items-center justify-center text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-xl transition-colors active:scale-90"><Navigation2 className="w-4 h-4" /></a>}
                         <button onClick={() => deleteActivity(activeDayKey, act)} aria-label={`刪除「${act.name}」`} className="w-full min-w-11 h-11 flex items-center justify-center text-red-500 hover:bg-red-50 rounded-xl transition-colors active:scale-90"><Trash2 className="w-4 h-4" /></button>
                       </div>
                     </div>
+                    {travelTimes.get(idx) && (
+                      <div className="mt-2 flex items-center gap-2 rounded-xl border border-dashed border-gray-200 px-3 py-2 text-xs text-gray-500 dark:border-slate-700 dark:text-gray-300">
+                        <MapPin className="h-4 w-4 shrink-0 text-primary" />
+                        <span className="font-bold">下一站約 {travelTimes.get(idx)!.duration} 分鐘</span>
+                        <span>· {travelTimes.get(idx)!.mode}</span>
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}
@@ -827,29 +879,33 @@ export function Itinerary({ onNavigate }: { onNavigate?: (tab: string) => void }
                           <AlertTriangle className="w-3.5 h-3.5" /> {activeConflicts.find(c => c.index === idx)?.message}
                         </div>
                       )}
-                      <div className="bg-gray-50 dark:bg-slate-900/50 p-4 rounded-2xl hover:shadow-md transition-all relative group/card overflow-hidden">
+                      <div className={`bg-gray-50 dark:bg-slate-900/50 p-4 rounded-2xl hover:shadow-md transition-shadow relative group/card overflow-hidden ${act.status === "done" ? "opacity-75" : act.status === "skipped" ? "opacity-60" : ""}`}>
                         <div className="absolute top-0 right-0 w-1.5 h-full bg-primary opacity-0 group-hover/card:opacity-100 transition-opacity"></div>
                         <div className="flex items-center justify-between gap-3 mb-1">
                           <p className="font-black text-lg text-gray-900 dark:text-white leading-tight">{act.name}</p>
-                          {act.tag && <span className={`text-xs font-black px-2.5 py-0.5 rounded-lg uppercase tracking-widest ${getTagColor(act.tag)}`}>{act.tag}</span>}
+                          <div className="flex flex-wrap items-center justify-end gap-1.5">
+                            {act.status === "done" && <span className="inline-flex items-center gap-1 rounded-lg bg-emerald-100 px-2 py-1 text-[10px] font-black text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200"><CheckCircle2 className="h-3 w-3" /> 已完成</span>}
+                            {act.status === "skipped" && <span className="inline-flex items-center gap-1 rounded-lg bg-slate-200 px-2 py-1 text-[10px] font-black text-slate-700 dark:bg-slate-700 dark:text-slate-200"><CircleSlash2 className="h-3 w-3" /> 已略過</span>}
+                            {act.tag && <span className={`text-xs font-black px-2.5 py-0.5 rounded-lg uppercase tracking-widest ${getTagColor(act.tag)}`}>{act.tag}</span>}
+                          </div>
                         </div>
                         {act.desc && <p className="text-sm text-gray-500 dark:text-gray-400 leading-relaxed">{act.desc}</p>}
-                        <div className="flex gap-1 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 transition-all duration-300 mt-2">
+                        <div className="flex flex-wrap gap-1 transition-opacity duration-300 mt-2">
                           <button onClick={() => openModal(activeDayKey, act)} aria-label={`編輯「${act.name}」`} className="w-11 h-11 shrink-0 flex items-center justify-center text-primary hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded-xl transition-colors active:scale-90"><Pencil className="w-3.5 h-3.5" /></button>
-                          <button onClick={() => openBudgetModal(act)} aria-label={`將「${act.name}」加入預算`} className="w-11 h-11 shrink-0 flex items-center justify-center text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 rounded-xl transition-colors active:scale-90"><Wallet className="w-3.5 h-3.5" /></button>
+                          <button onClick={() => openBudgetModal(act)} aria-label={`記錄「${act.name}」支出`} className="w-11 h-11 shrink-0 flex items-center justify-center text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 rounded-xl transition-colors active:scale-90"><Wallet className="w-3.5 h-3.5" /></button>
                           <button onClick={() => findNearbyFood(act)} aria-label={`找「${act.name}」附近美食`} className="w-11 h-11 shrink-0 flex items-center justify-center text-orange-500 hover:bg-orange-50 dark:hover:bg-orange-900/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 rounded-xl transition-colors active:scale-90"><UtensilsCrossed className="w-3.5 h-3.5" /></button>
+                          {getActivityNavigationUrl(act) && <a href={getActivityNavigationUrl(act)!} target="_blank" rel="noopener noreferrer" aria-label={`導航至「${act.name}」`} className="w-11 h-11 shrink-0 flex items-center justify-center text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded-xl transition-colors active:scale-90"><Navigation2 className="w-3.5 h-3.5" /></a>}
                           <button onClick={() => deleteActivity(activeDayKey, act)} aria-label={`刪除「${act.name}」`} className="w-11 h-11 shrink-0 flex items-center justify-center text-red-500 hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 rounded-xl transition-colors active:scale-90"><Trash2 className="w-3.5 h-3.5" /></button>
                         </div>
                       </div>
+                      {travelTimes.get(idx) && (
+                        <div className="mt-2 flex items-center gap-2 rounded-xl border border-dashed border-gray-200 px-3 py-2 text-xs text-gray-500 dark:border-slate-700 dark:text-gray-300">
+                          <MapPin className="h-4 w-4 shrink-0 text-primary" />
+                          <span className="font-bold">下一站約 {travelTimes.get(idx)!.duration} 分鐘</span>
+                          <span>· {travelTimes.get(idx)!.mode}</span>
+                        </div>
+                      )}
                     </div>
-                    {/* Travel Time to Next Activity */}
-                    {travelTimes.get(idx) && (
-                      <div className="flex items-center gap-2 ml-16 sm:ml-20 md:ml-[5rem] mt-2 text-xs sm:text-sm text-gray-400">
-                        <MapPin className="w-4 h-4" />
-                        <span className="font-medium">↓ {travelTimes.get(idx)!.duration} 分鐘</span>
-                        <span className="text-gray-300">({travelTimes.get(idx)!.mode})</span>
-                      </div>
-                    )}
                   </div>
                 ))}
                 <button onClick={() => openModal(activeDayKey)} className="w-full p-4 border-2 border-dashed border-gray-200 dark:border-slate-700 rounded-2xl text-gray-400 hover:text-primary hover:border-primary hover:bg-primary/5 transition-all flex items-center justify-center gap-2 font-black text-sm uppercase tracking-widest">
@@ -976,7 +1032,7 @@ export function Itinerary({ onNavigate }: { onNavigate?: (tab: string) => void }
         </div>
       )}
 
-      {/* ── 加入預算 Modal ── */}
+      {/* ── 記錄支出 Modal ── */}
       {budgetModal && (
         <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-300">
           <div
@@ -990,13 +1046,19 @@ export function Itinerary({ onNavigate }: { onNavigate?: (tab: string) => void }
             <div className="p-6 bg-gradient-to-r from-emerald-500 to-teal-500 text-white flex justify-between items-center shrink-0">
               <div className="flex items-center gap-3">
                 <div className="bg-white/20 p-2 rounded-xl"><Wallet className="w-5 h-5" /></div>
-                <h3 id="itinerary-budget-title" className="text-xl font-black">加入預算</h3>
+                <h3 id="itinerary-budget-title" className="text-xl font-black">記錄實際支出</h3>
               </div>
-              <button onClick={closeBudgetModal} data-autofocus className="w-11 h-11 inline-flex items-center justify-center hover:bg-white/20 rounded-full transition-colors" aria-label="關閉加入預算">
+              <button onClick={closeBudgetModal} data-autofocus className="w-11 h-11 inline-flex items-center justify-center hover:bg-white/20 rounded-full transition-colors" aria-label="關閉記錄支出">
                 <X className="w-6 h-6" />
               </button>
             </div>
             <div className="p-6 space-y-5 overflow-y-auto overscroll-contain">
+              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs font-bold text-emerald-900 dark:border-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-100">
+                <p>將記錄在 {DEFAULT_ITINERARY[budgetModal.day]?.date ?? "目前行程日"}。請在實際支付後使用，避免尚未消費的計畫提前扣除預算。</p>
+                <p className="mt-1 text-emerald-800 dark:text-emerald-200">
+                  預設由 {TRIP_TRAVELERS[0]} 付款、{TRIP_TRAVELERS.join(" 與 ")}共同分攤；可在旅費工具內修改。
+                </p>
+              </div>
               <div className="space-y-2">
                 <label htmlFor="itinerary-budget-name" className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">項目名稱</label>
                 <input
@@ -1015,7 +1077,7 @@ export function Itinerary({ onNavigate }: { onNavigate?: (tab: string) => void }
                   type="number"
                   inputMode="numeric"
                   min={1}
-                  max={MAX_BUDGET_ITEM_AMOUNT}
+                  max={MAX_YEN_AMOUNT}
                   step={1}
                   placeholder="例如 1200"
                   value={budgetModal.amount}
@@ -1065,7 +1127,7 @@ export function Itinerary({ onNavigate }: { onNavigate?: (tab: string) => void }
                 onClick={() => void confirmAddToBudget()}
                 className="w-full py-4 rounded-2xl font-black bg-emerald-500 hover:bg-emerald-600 text-white shadow-xl shadow-emerald-500/30 transition-all active:scale-95 flex items-center justify-center gap-2"
               >
-                <Check className="w-5 h-5" /> 確認加入
+                <Check className="w-5 h-5" /> 確認記錄
               </button>
             </div>
           </div>
